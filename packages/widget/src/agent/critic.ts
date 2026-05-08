@@ -111,7 +111,13 @@ export class Critic {
     let raw: Record<string, unknown>;
     try {
       raw = await llm(input);
-    } catch {
+    } catch (err) {
+      // Cancellations must propagate so the host element's clear() / new
+      // ask() flow can tear down the in-flight executor cleanly. Swallowing
+      // an AbortError here would convert "user navigated away" into a
+      // silent abort decision, then onError would fire with the original
+      // step error — confusing and hard to debug.
+      if (isAbortError(err)) throw err;
       return { action: 'abort' };
     }
 
@@ -122,6 +128,17 @@ export class Critic {
 /* -------------------------------------------------------------------------- */
 /* Decision parser                                                             */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * True for both browser AbortError DOMExceptions and Node-style AbortError
+ * subclasses. Used so cancellations escape `diagnose`'s catch instead of
+ * being mapped to `{action: 'abort'}`.
+ */
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const name = (err as { name?: unknown }).name;
+  return name === 'AbortError';
+}
 
 function parseDecision(raw: unknown, expectedStepId: string): CriticDecision {
   const parsed = CriticDecisionSchema.safeParse(raw);

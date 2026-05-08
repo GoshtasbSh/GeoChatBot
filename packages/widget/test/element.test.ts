@@ -453,6 +453,63 @@ describe('clear-race regression (kept)', () => {
     expect(el.results.length).toBe(0);
     expect(el.shadowRoot?.querySelectorAll('.table-card').length).toBe(0);
   });
+
+  it('clear() during in-flight ask() drops the resolved plan (NH1)', async () => {
+    // Regression for NH1: a planner call resolving after clear() must
+    // NOT mount a stale plan into the cleared widget. Without the
+    // generation guard in ask(), the late-resolving plan would set
+    // _pendingPlan and dispatch a 'plan' event for a session the user
+    // already cancelled.
+    const el = mountElement();
+    await flushUpdates(el);
+    el.dangerouslyAllowBrowser = true;
+    el.setProvider({
+      id: 'p',
+      label: 'P',
+      apiKey: 'sk-ant-test',
+      model: 'claude-sonnet-4-6',
+      generate: async () => ({ text: '' }),
+    } as unknown as ChatProvider);
+    await el.pushData({
+      name: 'sales',
+      kind: 'table',
+      rows: 1,
+      columns: [],
+      sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+
+    // Stub the planner to take a beat so we can race clear() into it.
+    let resolvePlan!: (v: unknown) => void;
+    el.__setLlmCall(
+      () =>
+        new Promise((res) => {
+          resolvePlan = res as (v: unknown) => void;
+        }),
+    );
+
+    const planEvents: Array<unknown> = [];
+    const errors: Array<{ code?: string; message?: string }> = [];
+    el.on('plan', (d) => planEvents.push(d));
+    el.on('error', (d) => errors.push(d));
+
+    const askPromise = el.ask('q');
+    el.clear(); // racing clear() while the planner is still pending
+    resolvePlan({
+      goal: 'g',
+      assumptions: [],
+      dataset_refs: ['sales'],
+      steps: [
+        { id: 's1', tool: 'render.summary', args: { text: 'ok' }, why: 'final' },
+      ],
+    });
+    await askPromise;
+    await flushUpdates(el);
+
+    expect(planEvents.length).toBe(0); // stale plan must NOT mount
+    // The planner-resolved-after-clear path should also not fire an error
+    // (the user explicitly cancelled the session by calling clear).
+    expect(errors.filter((e) => e.code !== 'BROWSER_KEY_GUARD').length).toBe(0);
+  });
 });
 
 describe('Phase 6: critic wiring', () => {
@@ -556,5 +613,50 @@ describe('Phase 6: critic wiring', () => {
       maxAttempts: 3,
       decision: 'retry',
     });
+  });
+
+  it('forwards an AbortSignal to critic.diagnose so clear() can cancel an in-flight call', async () => {
+    const el = document.createElement('geo-chatbot') as any;
+    document.body.appendChild(el);
+    el.setProvider({ name: 'anthropic', apiKey: 'k', generate: async () => ({ text: '' }) });
+    await el.pushData({
+      name: 'mydata',
+      kind: 'table',
+      rows: 1,
+      columns: [{ name: 'id', type: 'integer' }],
+      sample: [],
+    });
+    (el as any)._execDatasets = [{ name: 'mydata', tableName: 'mydata', hasGeometry: false }];
+
+    el.__setExecutorEngine({
+      hasSpatial: false,
+      query: async () => { throw new Error('boom'); },
+    });
+    el.__setLlmCall(vi.fn().mockResolvedValue({
+      goal: 'g', assumptions: [], dataset_refs: ['mydata'],
+      steps: [
+        { id: 's1', tool: 'sql', args: { query: 'SELECT id FROM mydata' }, output_var: 'a', why: 'p' },
+        { id: 's2', tool: 'render.summary', args: { text: 'done' }, why: 'final' },
+      ],
+    }));
+
+    let capturedSignal: AbortSignal | undefined;
+    el.__setCritic({
+      diagnose: vi.fn().mockImplementation(async (_ctx: unknown, signal?: AbortSignal) => {
+        capturedSignal = signal;
+        return { action: 'abort' };
+      }),
+    });
+
+    await el.ask('q');
+    el.approvePlan();
+    await el.__lastExecution;
+
+    // The critic must have been called WITH a signal (not undefined). The
+    // signal was created inside _execute and tied to the per-run abort
+    // controller; if it ever lands as undefined the cancel-on-clear path
+    // is silently broken.
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal!.aborted).toBe(false);
   });
 });

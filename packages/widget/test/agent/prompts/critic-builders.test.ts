@@ -86,6 +86,25 @@ describe('buildCriticUserMessage', () => {
     expect(out).toMatch(/attempt.*1.*of.*2/i);
   });
 
+  it('wraps resolved args in an UNTRUSTED fence (post-substitution data is not trusted)', () => {
+    const out = buildCriticUserMessage({
+      step: failedStep,
+      resolvedArgs: { layer: { kind: 'table', ref: 'gcb_sql_s1_1' }, suffix: 'value' },
+      errorMessage: 'boom',
+      priorOutputs: new Map(),
+      retryCount: 0,
+      maxRetries: 2,
+      datasets,
+    });
+    expect(out).toMatch(/<<<UNTRUSTED_RESOLVED_ARGS/);
+    expect(out).toMatch(/UNTRUSTED_RESOLVED_ARGS>>>/);
+    // The internal view name is allowed inside the fence (the LLM needs
+    // to know what view the runner saw) but it is now wrapped as
+    // untrusted data, not raw text the model could mistake for an
+    // instruction.
+    expect(out).toMatch(/gcb_sql_s1_1/);
+  });
+
   it('caps a long error message to a sensible size', () => {
     const huge = 'x'.repeat(20_000);
     const out = buildCriticUserMessage({

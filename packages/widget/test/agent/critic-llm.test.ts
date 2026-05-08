@@ -80,4 +80,34 @@ describe('callCriticLLM', () => {
     const headers = fetchMock.mock.calls[0]![1].headers;
     expect(headers['anthropic-dangerous-direct-browser-access']).toBe('true');
   });
+
+  it('re-throws AbortError so cancellations propagate (does NOT wrap in NETWORK)', async () => {
+    const abortErr = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    fetchMock.mockRejectedValue(abortErr);
+    await expect(callCriticLLM(baseInput)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+  });
+
+  it('throws BAD_RESPONSE when the body is not JSON (HTML error page)', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('<html>upstream error</html>', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await expect(callCriticLLM(baseInput)).rejects.toMatchObject({
+      name: 'CriticLLMError', code: 'BAD_RESPONSE',
+    });
+  });
+
+  it('omits the second system block when systemPrompt is empty', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      content: [{ type: 'tool_use', name: 'submit_diagnosis', input: { action: 'retry' } }],
+    }), { status: 200 }));
+    await callCriticLLM({ ...baseInput, systemPrompt: '' });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string);
+    expect(body.system).toHaveLength(1);
+    expect(body.system[0].text).toBe('static');
+  });
 });

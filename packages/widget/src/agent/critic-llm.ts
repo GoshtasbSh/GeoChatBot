@@ -58,14 +58,21 @@ export async function callCriticLLM(
   };
   if (inBrowser) headers['anthropic-dangerous-direct-browser-access'] = 'true';
 
+  // Build the system blocks. Skip the second block when systemPrompt is
+  // empty — Anthropic accepts a single-block array, and emitting an empty
+  // text block both wastes a structured slot and confuses the cache layout.
+  const systemBlocks: Array<Record<string, unknown>> = [
+    { type: 'text', text: input.cachedSystemPrompt, cache_control: { type: 'ephemeral' } },
+  ];
+  if (input.systemPrompt) {
+    systemBlocks.push({ type: 'text', text: input.systemPrompt });
+  }
+
   const body = {
     model: input.model,
     max_tokens: input.maxTokens ?? 1024,
     temperature: input.temperature ?? 0,
-    system: [
-      { type: 'text', text: input.cachedSystemPrompt, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: input.systemPrompt },
-    ],
+    system: systemBlocks,
     messages: [{ role: 'user', content: input.userMessage }],
     tools: [
       {
@@ -83,9 +90,12 @@ export async function callCriticLLM(
     if (input.signal) init.signal = input.signal;
     res = await fetch(ENDPOINT, init);
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new CriticLLMError('NETWORK', 'aborted');
-    }
+    // Cancellations propagate as native AbortError so callers (Critic
+    // class, ask() flow) can distinguish "user navigated away" from "the
+    // network is broken." Wrapping AbortError into a NETWORK error would
+    // collapse both cases to the same code and silently turn a
+    // cancellation into a critic-says-abort decision.
+    if (err instanceof Error && err.name === 'AbortError') throw err;
     throw new CriticLLMError('NETWORK', 'fetch failed');
   }
   if (!res.ok) {
@@ -97,7 +107,17 @@ export async function callCriticLLM(
     }
     throw new CriticLLMError('BAD_RESPONSE', `http ${res.status}`, res.status);
   }
-  const json = await res.json().catch(() => null);
+  // Distinguish "body is not JSON" (BAD_RESPONSE — wrong content-type or
+  // an HTML error page) from "JSON parsed fine but had no tool_use block"
+  // (NO_TOOL_USE — model declined to call the tool). Collapsing both into
+  // NO_TOOL_USE would mis-code the failure for any retry/monitor logic
+  // that branches on `code`.
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {
+    throw new CriticLLMError('BAD_RESPONSE', 'response body is not JSON', res.status);
+  }
   const block = extractToolUse(json, TOOL_NAME);
   if (!block) {
     throw new CriticLLMError('NO_TOOL_USE', 'no tool_use block in response');

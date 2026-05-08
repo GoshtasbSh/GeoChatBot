@@ -30,6 +30,7 @@ import {
   type ProgressEvent as ExecProgressEvent,
 } from './agent/executor/index.js';
 import './ui/plan-review.js';
+import type { PlanReview } from './ui/plan-review.js';
 import './ui/result-canvas.js';
 // MapView (MapLibre GL + deck.gl) is lazy-loaded on first geometry ingest
 // so the initial bundle stays lean (PLAN §3 hard rule: ≤ 100 KB gzipped).
@@ -339,10 +340,21 @@ export class GeoChatBotElement extends LitElement {
   /* -------------------------------------------------------------------- */
   /* Phase 6 critic state                                                 */
   /* -------------------------------------------------------------------- */
-  private _criticOverride?: { diagnose: (ctx: StepErrorContext) => Promise<CriticDecision> };
+  private _criticOverride?: {
+    diagnose: (ctx: StepErrorContext, signal?: AbortSignal) => Promise<CriticDecision>;
+  };
+  /**
+   * Per-execution AbortController. Signal is passed to every Critic LLM
+   * call so {@link clear} can cancel in-flight Anthropic round-trips
+   * instead of leaving them dangling (and burning tokens) when the user
+   * walks away or starts a new ask().
+   */
+  private _execAbort?: AbortController;
 
   /** Test-only: substitute the critic for deterministic tests. */
-  __setCritic(c: { diagnose: (ctx: StepErrorContext) => Promise<CriticDecision> }): void {
+  __setCritic(c: {
+    diagnose: (ctx: StepErrorContext, signal?: AbortSignal) => Promise<CriticDecision>;
+  }): void {
     this._criticOverride = c;
   }
 
@@ -605,6 +617,16 @@ export class GeoChatBotElement extends LitElement {
    * The plan is held pending until {@link approvePlan} or {@link rejectPlan}.
    */
   async ask(question: string): Promise<void> {
+    if (typeof question !== 'string' || !question.trim()) {
+      // Empty / whitespace-only questions otherwise reach Anthropic and
+      // get an opaque HTTP 400 response. Surface a clean code so the
+      // host UI can show a clear "type something first" message.
+      this.dispatch('error', {
+        code: 'EMPTY_QUESTION',
+        message: 'ask(question) requires a non-empty string',
+      });
+      return;
+    }
     if (!this._apiKey) {
       this.dispatch('error', { code: 'NO_KEY', message: 'No provider configured' });
       return;
@@ -644,13 +666,23 @@ export class GeoChatBotElement extends LitElement {
         ...(this._llmCall ? { llmCall: this._llmCall } : {}),
       });
     }
+    // Capture the generation BEFORE awaiting the planner. If `clear()`
+    // (which bumps generation) runs while the planner LLM call is in
+    // flight, the resolved plan belongs to a session that no longer
+    // exists — we must not set `_pendingPlan` or mount a plan-review on
+    // a cleared widget. Multi-tenant correctness: a stale plan from a
+    // previous user/session would otherwise be approvable in the new
+    // session.
+    const gen = this.generation;
     try {
       const plan = await this._planner.plan({ question, datasets: this._datasets });
+      if (gen !== this.generation) return; // clear() ran during the planner call
       const id = `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       this._pendingPlan = { id, plan };
       this.dispatch('plan', { planId: id, plan, datasets: this._datasets });
       this._renderPlanIfFull();
     } catch (err) {
+      if (gen !== this.generation) return; // clear() ran; suppress error from stale session
       this.dispatch('error', {
         code: errCode(err),
         message: errMessage(err, 'plan failed'),
@@ -691,16 +723,23 @@ export class GeoChatBotElement extends LitElement {
       });
       return;
     }
+    // Same generation guard as ask(): the rephrase planner call is
+    // in-flight when clear() can race in. Without the gen check, the
+    // newPlan would land in a cleared widget, mount a plan-review, and
+    // the previous-session plan would become approvable.
+    const gen = this.generation;
     void this._planner.plan({
       question: plan.goal,
       datasets: this._datasets,
       feedback: opts?.feedback ?? 'rejected by user',
     }).then((newPlan) => {
+      if (gen !== this.generation) return; // clear() ran during rephrase
       const id = `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       this._pendingPlan = { id, plan: newPlan };
       this.dispatch('plan', { planId: id, plan: newPlan, datasets: this._datasets });
       this._renderPlanIfFull();
     }).catch((err) => {
+      if (gen !== this.generation) return; // clear() ran; drop stale-session error
       this.dispatch('error', { code: errCode(err), message: errMessage(err) });
     });
   }
@@ -756,39 +795,52 @@ export class GeoChatBotElement extends LitElement {
 
     const exec = new Executor({ engine, datasets: this._execDatasets });
     const critic = this._buildCritic();
-    await exec.execute(plan, planId, {
-      onProgress: (e: ExecProgressEvent) => {
-        this.dispatch('progress', e);
-        if (this.mode !== 'headless') this._pushPlanStatus(e);
-      },
-      onResult: (e: ExecResultEvent) => {
-        this.dispatch('result', e);
-        if (this.mode !== 'headless') this._mountResult(e);
-      },
-      onError: (e) => this.dispatch('error', e),
-      ...(critic
-        ? {
-            onStepError: async (ctx: StepErrorContext) => {
-              const decision = await critic.diagnose(ctx);
-              const detail: GeoChatBotEvents['critic'] = {
-                planId: ctx.planId,
-                stepId: ctx.step.id,
-                attempt: ctx.retryCount + 1,
-                maxAttempts: ctx.maxRetries + 1,
-                decision: decision.action,
-                errorMessage: ctx.error.message,
-                beforeArgs: ctx.resolvedArgs,
-              };
-              if (decision.action === 'patch') {
-                detail.afterArgs = decision.patchedStep.args;
-              }
-              this.dispatch('critic', detail);
-              if (this.mode !== 'headless') this._pushCriticAttempt(detail, decision);
-              return decision;
-            },
-          }
-        : {}),
-    });
+    // Fresh controller per execution. clear() / a new ask() before this
+    // run completes will fire abort(); the signal is forwarded to every
+    // critic.diagnose() call so an in-flight Anthropic fetch can be torn
+    // down promptly instead of running to completion in the background.
+    const abort = new AbortController();
+    this._execAbort = abort;
+    try {
+      await exec.execute(plan, planId, {
+        onProgress: (e: ExecProgressEvent) => {
+          this.dispatch('progress', e);
+          if (this.mode !== 'headless') this._pushPlanStatus(e);
+        },
+        onResult: (e: ExecResultEvent) => {
+          this.dispatch('result', e);
+          if (this.mode !== 'headless') this._mountResult(e);
+        },
+        onError: (e) => this.dispatch('error', e),
+        ...(critic
+          ? {
+              onStepError: async (ctx: StepErrorContext) => {
+                const decision = await critic.diagnose(ctx, abort.signal);
+                const detail: GeoChatBotEvents['critic'] = {
+                  planId: ctx.planId,
+                  stepId: ctx.step.id,
+                  attempt: ctx.retryCount + 1,
+                  maxAttempts: ctx.maxRetries + 1,
+                  decision: decision.action,
+                  errorMessage: ctx.error.message,
+                  beforeArgs: ctx.resolvedArgs,
+                };
+                if (decision.action === 'patch') {
+                  detail.afterArgs = decision.patchedStep.args;
+                }
+                this.dispatch('critic', detail);
+                if (this.mode !== 'headless') this._pushCriticAttempt(detail, decision);
+                return decision;
+              },
+            }
+          : {}),
+      });
+    } finally {
+      // Only clear our reference if THIS execution still owns the controller.
+      // A clear() mid-flight may have already swapped in a new one (or
+      // aborted ours). Either way, never clobber a successor's controller.
+      if (this._execAbort === abort) delete this._execAbort;
+    }
   }
 
   /** Resolve the engine handle: test override → main-thread DuckDB → null. */
@@ -824,7 +876,9 @@ export class GeoChatBotElement extends LitElement {
     canvas.setResult(payload as { kind: string; [k: string]: unknown });
   }
 
-  private _buildCritic(): { diagnose: (ctx: StepErrorContext) => Promise<CriticDecision> } | null {
+  private _buildCritic():
+    | { diagnose: (ctx: StepErrorContext, signal?: AbortSignal) => Promise<CriticDecision> }
+    | null {
     if (this._criticOverride) return this._criticOverride;
     if (!this._apiKey) return null;
     return new Critic({
@@ -835,28 +889,32 @@ export class GeoChatBotElement extends LitElement {
     });
   }
 
+  /** Locate the live <plan-review> in shadow DOM. Typed via the imported class
+   *  so future renames or property changes surface as compile errors instead
+   *  of being silently absorbed by inline `as never` casts. Returns null
+   *  in headless mode (no shadow DOM children) or before the first plan. */
+  private _planReview(): PlanReview | null {
+    return this.shadowRoot?.querySelector('plan-review') ?? null;
+  }
+
   private _pushPlanStatus(e: ExecProgressEvent): void {
-    if (!this.shadowRoot) return;
-    const pr = this.shadowRoot.querySelector('plan-review') as
-      | (HTMLElement & {
-          stepStatus?: Map<string, string>;
-          stepDurations?: Map<string, number>;
-          mode?: 'plan' | 'running';
-          requestUpdate?: () => void;
-        })
-      | null;
+    const pr = this._planReview();
     if (!pr) return;
     if (pr.mode !== 'running') pr.mode = 'running';
     if (e.stepId) {
-      const next = new Map(pr.stepStatus ?? new Map());
+      const next = new Map(pr.stepStatus);
+      // ProgressEvent.status is 'running' | 'success' | 'fail'; <plan-review>
+      // treats StepStatus as a wider type that also includes 'pending' | 'retry'.
+      // The narrower-into-wider assignment is sound; cast to the wider Map
+      // so the assignment compiles without `any`.
       next.set(e.stepId, e.status);
-      pr.stepStatus = next as never;
+      pr.stepStatus = next as Map<string, import('./ui/plan-review.js').StepStatus>;
       if (e.durationMs !== undefined) {
-        const d = new Map(pr.stepDurations ?? new Map());
+        const d = new Map(pr.stepDurations);
         d.set(e.stepId, Math.round(e.durationMs));
-        pr.stepDurations = d as never;
+        pr.stepDurations = d;
       }
-      pr.requestUpdate?.();
+      pr.requestUpdate();
     }
   }
 
@@ -864,29 +922,26 @@ export class GeoChatBotElement extends LitElement {
     detail: GeoChatBotEvents['critic'],
     decision: CriticDecision,
   ): void {
-    if (!this.shadowRoot) return;
-    const pr = this.shadowRoot.querySelector('plan-review') as
-      | (HTMLElement & {
-          criticPatches?: Map<string, unknown>;
-          criticAttempts?: Map<string, Array<unknown>>;
-          stepStatus?: Map<string, string>;
-          requestUpdate?: () => void;
-        })
-      | null;
+    const pr = this._planReview();
     if (!pr) return;
-    const ss = new Map(pr.stepStatus ?? new Map());
+    const ss = new Map(pr.stepStatus);
     ss.set(detail.stepId, 'retry');
-    pr.stepStatus = ss as never;
-    const log = new Map(pr.criticAttempts ?? new Map());
-    const arr = (log.get(detail.stepId) as Array<unknown> | undefined) ?? [];
-    log.set(detail.stepId, [...arr, detail]);
-    pr.criticAttempts = log as never;
+    pr.stepStatus = ss;
+    const log = new Map(pr.criticAttempts);
+    const arr = log.get(detail.stepId) ?? [];
+    log.set(detail.stepId, [...arr, {
+      attempt: detail.attempt,
+      maxAttempts: detail.maxAttempts,
+      decision: detail.decision,
+      errorMessage: detail.errorMessage,
+    }]);
+    pr.criticAttempts = log;
     if (decision.action === 'patch') {
-      const patches = new Map(pr.criticPatches ?? new Map());
+      const patches = new Map(pr.criticPatches);
       patches.set(detail.stepId, decision.patchedStep);
-      pr.criticPatches = patches as never;
+      pr.criticPatches = patches;
     }
-    pr.requestUpdate?.();
+    pr.requestUpdate();
   }
 
   private _renderPlanIfFull(): void {
@@ -1024,6 +1079,13 @@ export class GeoChatBotElement extends LitElement {
     delete this._planner;
     delete this._apiKey;
     delete this._criticOverride;
+    // Cancel any in-flight critic LLM round-trip. The Critic.diagnose
+    // catch path re-throws AbortError, the executor maps it to abort,
+    // and the host's onError surfaces the original step error — so a
+    // clear() during a retry tears down cleanly without leaking tokens
+    // or a dangling fetch.
+    this._execAbort?.abort();
+    delete this._execAbort;
     this.provider = undefined;
     if (this.shadowRoot) {
       const canvas = this.shadowRoot.querySelector('result-canvas') as
@@ -1033,6 +1095,24 @@ export class GeoChatBotElement extends LitElement {
       const planReview = this.shadowRoot.querySelector('plan-review');
       planReview?.remove();
     }
+  }
+
+  /**
+   * Standard custom-element teardown hook. Removing `<geo-chatbot>` from
+   * the DOM (SPA navigation, dashboard panel hide, HMR) must abort any
+   * in-flight planner/critic LLM call and bump the generation token so
+   * a late-resolving promise cannot fire events on the detached element
+   * or mount a stale plan-review. We deliberately do NOT dispose the
+   * shared DuckDB engine singleton here — other widget instances on the
+   * same page still rely on it. Provider / apiKey survive so that
+   * re-attaching the element resumes correctly.
+   */
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.generation++;
+    this._execAbort?.abort();
+    delete this._execAbort;
+    delete this._pendingPlan;
   }
 
   /**

@@ -130,4 +130,14 @@ describe('Critic', () => {
     const decision = await critic.diagnose(makeCtx());
     expect(decision).toMatchObject({ action: 'patch' });
   });
+
+  it('re-throws AbortError instead of swallowing as {action: "abort"}', async () => {
+    // Cancellations must propagate so the host element can tear down
+    // cleanly. Swallowing AbortError here would silently turn "user
+    // navigated away" into "critic says abort", masking the cancellation.
+    const abortErr = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    const llm = vi.fn().mockRejectedValue(abortErr);
+    const critic = new Critic({ apiKey: 'k', model: 'm', datasets: [], llmCall: llm });
+    await expect(critic.diagnose(makeCtx())).rejects.toMatchObject({ name: 'AbortError' });
+  });
 });
