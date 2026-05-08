@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>GeoChatBot — standalone CDN (UMD) embed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #fff; color: #111; }
+      h1 { font-size: 18px; margin: 0 0 12px; }
+      .note {
+        background: #fffbeb; border: 1px solid #fde68a; padding: 10px 12px;
+        border-radius: 8px; font-size: 13px; color: #92400e; margin-bottom: 16px;
+      }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .row > div { display: flex; flex-direction: column; gap: 8px; }
+      .row h2 { margin: 0; font-size: 14px; color: #555; }
+      geo-chatbot { display: block; height: 480px; border: 1px solid #e5e7eb; border-radius: 8px; }
+      .toolbar { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+      button {
+        font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+        border: 1px solid #d4d4d8; background: #fafafa;
+      }
+      button:hover { background: #f4f4f5; }
+      pre {
+        background: #0b1020; color: #e2e8f0; padding: 10px; border-radius: 6px;
+        font-size: 12px; max-height: 180px; overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>GeoChatBot — CDN-style embed (UMD)</h1>
+    <p class="note">
+      <strong>Important:</strong> this page must be served by an HTTP server (not <code>file://</code>),
+      because DuckDB-WASM loads workers and <code>.wasm</code> as siblings of the bundle.
+      From the repo root: <code>npx serve .</code> then visit
+      <code>/examples/standalone-cdn/</code>. Build the widget first with
+      <code>npm run build --workspace=@geochatbot/widget</code>.
+    </p>
+
+    <!--
+      Pure classic-script embed. The UMD bundle exposes window.GeoChatBot and
+      registers the <geo-chatbot> element via side-effect.
+    -->
+    <script src="../../packages/widget/dist/geochatbot.umd.cjs"></script>
+
+    <div class="toolbar">
+      <button id="useEcho">setProvider(createEcho())</button>
+      <button id="toggleA">Toggle theme on left bot</button>
+      <button id="purpleA">Purple accent on left bot</button>
+    </div>
+
+    <div class="row">
+      <div>
+        <h2>theme="light" (default)</h2>
+        <geo-chatbot id="botA" theme="light"></geo-chatbot>
+      </div>
+      <div>
+        <h2>theme="dark"</h2>
+        <geo-chatbot id="botB" theme="dark"></geo-chatbot>
+      </div>
+    </div>
+
+    <h3>Event log</h3>
+    <pre id="log"></pre>
+
+    <script>
+      (function () {
+        var log = document.getElementById('log');
+        function append(line) { log.textContent += line + '\n'; log.scrollTop = log.scrollHeight; }
+
+        var botA = document.getElementById('botA');
+        var botB = document.getElementById('botB');
+
+        function wire(bot, label) {
+          try {
+            if (typeof bot.on === 'function') {
+              bot.on('result', function (e) { append('[' + label + '][result] ' + JSON.stringify(e).slice(0, 160)); });
+              bot.on('error', function (e) { append('[' + label + '][error] ' + (e && e.message ? e.message : String(e))); });
+            }
+          } catch (err) { append('on() wiring failed: ' + err); }
+        }
+        wire(botA, 'A');
+        wire(botB, 'B');
+
+        document.getElementById('useEcho').addEventListener('click', function () {
+          try {
+            var GCB = window.GeoChatBot;
+            if (GCB && typeof GCB.createEcho === 'function' && typeof botA.setProvider === 'function') {
+              botA.setProvider(GCB.createEcho());
+              append('A: provider=echo (via window.GeoChatBot.createEcho)');
+            } else {
+              append('createEcho/setProvider not available on global yet.');
+            }
+          } catch (err) {
+            append('error: ' + err);
+          }
+        });
+
+        document.getElementById('toggleA').addEventListener('click', function () {
+          var next = botA.getAttribute('theme') === 'dark' ? 'light' : 'dark';
+          botA.setAttribute('theme', next);
+          append('A: theme=' + next);
+        });
+
+        document.getElementById('purpleA').addEventListener('click', function () {
+          botA.style.setProperty('--gcb-accent', '#a855f7');
+          append('A: --gcb-accent=#a855f7');
+        });
+      })();
+    </script>
+  </body>
+</html>

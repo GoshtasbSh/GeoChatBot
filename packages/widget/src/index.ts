@@ -8,7 +8,24 @@
 
 export { GeoChatBotElement } from './element';
 export type { GeoChatBotEvents } from './element';
-export type { ChatProvider, ChatMessage } from './providers';
+export type {
+  ChatProvider,
+  ChatMessage,
+  GenerateInput,
+  GenerateOutput,
+  ProviderErrorCode,
+} from './providers';
+export {
+  ProviderError,
+  setProvider,
+  getProvider,
+  clearProvider,
+  createEcho,
+  createGroq,
+  createAnthropic,
+  createOpenAICompat,
+  createGemini,
+} from './providers';
 export type {
   BinaryInput,
   DataLoader,

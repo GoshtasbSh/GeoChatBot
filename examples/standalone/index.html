@@ -2,25 +2,100 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>GeoChatBot — standalone embed example</title>
+    <title>GeoChatBot — standalone (ESM) embed</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
-      body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #fff; }
-      h1 { font-size: 18px; }
+      body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #fff; color: #111; }
+      h1 { font-size: 18px; margin: 0 0 12px; }
       .note {
         background: #fffbeb; border: 1px solid #fde68a; padding: 10px 12px;
         border-radius: 8px; font-size: 13px; color: #92400e; margin-bottom: 16px;
       }
+      .toolbar { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+      button {
+        font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+        border: 1px solid #d4d4d8; background: #fafafa;
+      }
+      button:hover { background: #f4f4f5; }
+      pre {
+        background: #0b1020; color: #e2e8f0; padding: 10px; border-radius: 6px;
+        font-size: 12px; max-height: 200px; overflow: auto;
+      }
+      geo-chatbot { display: block; height: 560px; border: 1px solid #e5e7eb; border-radius: 8px; }
     </style>
   </head>
   <body>
-    <h1>GeoChatBot — embed example</h1>
+    <h1>GeoChatBot — embed example (ESM)</h1>
     <p class="note">
-      This page consumes the built bundle from <code>packages/widget/dist</code>.
+      Consumes the built bundle from <code>packages/widget/dist</code>.
       Run <code>npm run build --workspace=@geochatbot/widget</code> first, then
-      open this file via any static server (e.g. <code>npx serve examples/standalone</code>).
+      serve via any static server (e.g. <code>npx serve examples/standalone</code>).
     </p>
-    <script type="module" src="../../packages/widget/dist/geochatbot.js"></script>
-    <geo-chatbot></geo-chatbot>
+
+    <div class="toolbar">
+      <button id="toggleTheme">Toggle theme (light/dark)</button>
+      <button id="purpleAccent">Purple accent (CSS var)</button>
+      <button id="resetAccent">Reset accent</button>
+      <button id="useEcho">setProvider(createEcho())</button>
+      <button id="clearBot">clear()</button>
+    </div>
+
+    <geo-chatbot id="bot" theme="light"></geo-chatbot>
+
+    <h3>Event log</h3>
+    <pre id="log"></pre>
+
+    <script type="module">
+      import * as GeoChatBot from '../../packages/widget/dist/geochatbot.js';
+
+      const bot = document.getElementById('bot');
+      const log = document.getElementById('log');
+      const append = (line) => {
+        log.textContent += line + '\n';
+        log.scrollTop = log.scrollHeight;
+      };
+
+      // Subscribe via the new on() API (Agent A).
+      try {
+        bot.on?.('result', (e) => append('[result] ' + JSON.stringify(e).slice(0, 200)));
+        bot.on?.('error', (e) => append('[error] ' + (e?.message ?? String(e))));
+        bot.on?.('plan', (p) => append('[plan] ' + JSON.stringify(p).slice(0, 200)));
+      } catch (err) {
+        append('on() not available yet: ' + err);
+      }
+
+      document.getElementById('toggleTheme').addEventListener('click', () => {
+        const next = bot.getAttribute('theme') === 'dark' ? 'light' : 'dark';
+        bot.setAttribute('theme', next);
+        append('theme=' + next);
+      });
+
+      document.getElementById('purpleAccent').addEventListener('click', () => {
+        bot.style.setProperty('--gcb-accent', '#a855f7');
+        append('--gcb-accent=#a855f7');
+      });
+
+      document.getElementById('resetAccent').addEventListener('click', () => {
+        bot.style.removeProperty('--gcb-accent');
+        append('reset --gcb-accent');
+      });
+
+      document.getElementById('useEcho').addEventListener('click', () => {
+        try {
+          if (typeof GeoChatBot.createEcho === 'function' && typeof bot.setProvider === 'function') {
+            bot.setProvider(GeoChatBot.createEcho());
+            append('provider=echo');
+          } else {
+            append('createEcho/setProvider not available yet');
+          }
+        } catch (err) {
+          append('error: ' + err);
+        }
+      });
+
+      document.getElementById('clearBot').addEventListener('click', () => {
+        try { bot.clear?.(); append('cleared'); } catch (err) { append('error: ' + err); }
+      });
+    </script>
   </body>
 </html>

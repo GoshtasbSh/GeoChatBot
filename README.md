@@ -39,18 +39,99 @@ npm run dev --workspace=@geochatbot/widget
 
 ```bash
 npm run build --workspace=@geochatbot/widget
-# packages/widget/dist/geochatbot.js  ← ESM bundle
-# examples/standalone/index.html      ← consumes the built bundle
+# packages/widget/dist/geochatbot.js       ← ESM bundle
+# packages/widget/dist/geochatbot.umd.cjs  ← UMD bundle (window.GeoChatBot)
+```
+
+Print bundle sizes (raw + gzipped ESM):
+
+```bash
+npm run build:size --workspace=@geochatbot/widget
+```
+
+## Embed forms
+
+### 1. `<script src>` (UMD, no bundler)
+
+```html
+<script src="/path/to/geochatbot.umd.cjs"></script>
+<geo-chatbot theme="light"></geo-chatbot>
+<script>
+  const bot = document.querySelector('geo-chatbot');
+  bot.on('result', (r) => console.log(r));
+  bot.setProvider(GeoChatBot.createEcho());
+</script>
+```
+
+The UMD bundle exposes `window.GeoChatBot` and registers `<geo-chatbot>` via
+side effect. Serve over HTTP (not `file://`) so the DuckDB-WASM workers/wasm
+load correctly from siblings of the bundle.
+
+### 2. ESM (with a bundler)
+
+```ts
+import '@geochatbot/widget';                  // registers <geo-chatbot>
+import { createEcho } from '@geochatbot/widget';
+
+const bot = document.querySelector('geo-chatbot')!;
+bot.setProvider(createEcho());
+const off = bot.on('result', (r) => console.log(r));
+// off() to unsubscribe
+```
+
+### 3. React
+
+```tsx
+import '@geochatbot/widget';
+import { createEcho } from '@geochatbot/widget';
+
+declare module 'react' {
+  namespace JSX {
+    interface IntrinsicElements {
+      'geo-chatbot': React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement> & { theme?: 'light' | 'dark' },
+        HTMLElement
+      >;
+    }
+  }
+}
+
+export function MyView() {
+  return <geo-chatbot theme="dark" />;
+}
+```
+
+A working wrapper with refs and typed `on('result' | 'error' | 'plan')`
+subscriptions lives in `examples/react/`.
+
+### Theming
+
+The widget honors a `theme="light" | "dark"` attribute and exposes CSS
+custom properties on the host:
+
+```html
+<geo-chatbot theme="dark" style="--gcb-accent: #a855f7;"></geo-chatbot>
+```
+
+## End-to-end tests
+
+```bash
+npm run e2e:install   # one-time: downloads Chromium for Playwright
+npm run e2e           # runs Playwright against the demo workspace
 ```
 
 ## Repository layout
 
 ```
 packages/
-  widget/    The embeddable Web Component (<geo-chatbot>)
+  widget/             Embeddable Web Component (<geo-chatbot>)
+  demo/               Local demo app (drop file → see table + map)
 examples/
-  standalone/  Vanilla HTML page that loads the built widget
-PLAN.md      Phased roadmap (read this before adding features)
+  standalone/         ESM-form embed example
+  standalone-cdn/     <script src> (UMD) embed example
+  react/              React + Vite example
+e2e/                  Playwright end-to-end tests
+PLAN.md               Phased roadmap (read this before adding features)
 ```
 
 ## License

@@ -7,5 +7,10 @@
     "emitDeclarationOnly": true,
     "outDir": "dist"
   },
-  "include": ["src/index.ts", "src/data/contracts.ts"]
+  "include": [
+    "src/index.ts",
+    "src/element.ts",
+    "src/data/contracts.ts",
+    "src/providers/**/*.ts"
+  ]
 }

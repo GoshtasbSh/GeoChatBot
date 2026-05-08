@@ -6,16 +6,20 @@
   "license": "MIT",
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "examples/*",
+    "e2e"
   ],
   "scripts": {
     "dev": "npm run dev --workspace=@geochatbot/widget",
     "demo": "npm run dev --workspace=@geochatbot/demo",
     "build": "npm run build --workspaces --if-present",
+    "build:widget": "npm run build --workspace=@geochatbot/widget",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "biome ci .",
     "format": "biome format --write .",
+    "e2e": "npm test --workspace=@geochatbot/e2e",
+    "e2e:install": "npm run test:install --workspace=@geochatbot/e2e",
     "hello": "echo \"GeoChatBot widget v0.0.0\""
   },
   "devDependencies": {

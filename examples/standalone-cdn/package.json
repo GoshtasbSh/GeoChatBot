@@ -1,0 +1,6 @@
+{
+  "name": "@geochatbot/example-standalone-cdn",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Pure <script src> (UMD) embed example for the GeoChatBot widget."
+}

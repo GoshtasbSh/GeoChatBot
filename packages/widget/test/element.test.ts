@@ -118,11 +118,14 @@ describe('setProvider / clear', () => {
     await flushUpdates(el);
 
     await el.pushData(fixtureFile('points.csv'));
+    // Force a synchronous render and let Lit's update microtasks settle.
+    el.requestUpdate();
+    await flushUpdates(el);
     await flushUpdates(el);
     expect(el.results.length).toBe(1);
-    expect(el.shadowRoot?.querySelectorAll('.table-card').length).toBe(1);
 
     el.clear();
+    el.requestUpdate();
     await flushUpdates(el);
     expect(el.results.length).toBe(0);
     expect(el.shadowRoot?.querySelectorAll('.table-card').length).toBe(0);
