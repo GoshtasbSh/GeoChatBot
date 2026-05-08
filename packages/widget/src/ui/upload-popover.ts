@@ -103,6 +103,8 @@ export class GcbUploadPopover extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     document.addEventListener('keydown', this._onKeydown);
+    // Capture phase: composedPath() is intact before retargeting strips
+    // shadow nodes, so an inside-popover click reliably includes `this`.
     document.addEventListener('mousedown', this._onDocMouseDown, true);
   }
   override disconnectedCallback(): void {
@@ -149,7 +151,14 @@ export class GcbUploadPopover extends LitElement {
   };
   private _onFileChange = (e: Event): void => {
     const t = e.target as HTMLInputElement;
-    if (t.files && t.files.length) this._emitFiles(Array.from(t.files));
+    if (t.files && t.files.length) {
+      this._emitFiles(Array.from(t.files));
+      // Reset so re-picking the SAME file fires `change` again. Without
+      // this, browsers (Chrome/Safari/Firefox) coalesce identical
+      // selections into a single change event and the user has to pick
+      // a different file or close+reopen the popover.
+      t.value = '';
+    }
   };
   private _onPasteHint = (): void => {
     // Hint click does not pull files; we listen for `paste` on the host.
