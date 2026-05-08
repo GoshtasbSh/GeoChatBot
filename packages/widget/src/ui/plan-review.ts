@@ -1,6 +1,7 @@
 import { LitElement, html, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import type { Plan, Step } from '../agent/types.js';
+import { getTool } from '../agent/index.js';
 import { planReviewStyles } from './plan-review.styles.js';
 
 export type StepStatus = 'pending' | 'running' | 'success' | 'retry' | 'fail';
@@ -15,6 +16,10 @@ export class PlanReview extends LitElement {
   @property({ attribute: false }) stepDurations: Map<string, number> = new Map();
   @property({ attribute: false }) criticPatches: Map<string, Step> = new Map();
   @property({ type: String }) mode: PlanReviewMode = 'plan';
+
+  @state() private _editingStepId: string | null = null;
+  @state() private _editArgs: Record<string, unknown> = {};
+  @state() private _editValid = false;
 
   override render() {
     if (!this.plan) return nothing;
@@ -53,24 +58,100 @@ export class PlanReview extends LitElement {
     const duration = this.stepDurations.get(s.id);
     const patch = this.criticPatches.get(s.id);
     const orbClass = status === 'pending' ? '' : status;
+    const isEditing = this._editingStepId === s.id;
     return html`
       <article class="step">
         <div class="orb ${orbClass}">${this._orbContent(status, n)}</div>
         <div>
           <div class="tool">${s.tool}</div>
           <div class="why">${s.why}</div>
-          ${this._renderArgs(s)}
+          ${isEditing ? this._renderEditingArgs(s) : this._renderArgs(s)}
           ${s.output_var ? html`<div class="out">→ <b>${s.output_var}</b></div>` : nothing}
           ${duration !== undefined ? html`<div class="out"><span class="chip">${duration} ms</span></div>` : nothing}
           ${patch ? html`<div class="critic">Critic patched: ${patch.why}</div>` : nothing}
         </div>
         <div class="step-actions">
-          ${this.mode === 'plan' ? html`
-            <button class="iconbtn">edit</button>
+          ${this.mode === 'plan' && !isEditing ? html`
+            <button class="iconbtn" @click=${() => this._enterEdit(s)}>edit</button>
             <button class="iconbtn">why?</button>` : nothing}
         </div>
       </article>
     `;
+  }
+
+  private _enterEdit(step: Step) {
+    this._editingStepId = step.id;
+    this._editArgs = { ...step.args };
+    this._validateEdit(step.tool);
+  }
+
+  private _exitEdit = () => {
+    this._editingStepId = null;
+    this._editArgs = {};
+    this._editValid = false;
+  };
+
+  private _validateEdit(toolId: string) {
+    const t = getTool(toolId);
+    if (!t) { this._editValid = false; return; }
+    this._editValid = t.args.safeParse(this._editArgs).success;
+  }
+
+  private _onEditInput(toolId: string, key: string, ev: Event) {
+    const target = ev.target as HTMLInputElement | HTMLSelectElement;
+    const raw = target.value;
+    // Coerce numbers when the input is type=number (HTMLInputElement only).
+    let coerced: unknown = raw;
+    if (target instanceof HTMLInputElement && target.type === 'number') {
+      coerced = raw === '' ? '' : Number(raw);
+    }
+    this._editArgs = { ...this._editArgs, [key]: coerced };
+    this._validateEdit(toolId);
+  }
+
+  private _saveEdit(step: Step) {
+    if (!this._editValid) return;
+    this.dispatchEvent(new CustomEvent('step:edit', {
+      detail: { stepId: step.id, args: this._editArgs },
+    }));
+    this._exitEdit();
+  }
+
+  private _renderEditingArgs(step: Step) {
+    const t = getTool(step.tool);
+    if (!t) return nothing;
+    const shape = (t.args as any)?._def?.shape?.() ?? {};
+    return html`
+      <div class="args">
+        ${Object.entries(shape).map(([k, schema]: any) => html`
+          <div class="row">
+            <span class="k">${k}</span>
+            <span class="v">
+              ${this._renderEditInput(step.tool, k, schema)}
+            </span>
+          </div>
+        `)}
+      </div>
+      <div style="margin-top:8px; display:flex; gap:8px;">
+        <button class="btn save" ?disabled=${!this._editValid} @click=${() => this._saveEdit(step)}>save</button>
+        <button class="btn ghost" @click=${this._exitEdit}>cancel</button>
+      </div>
+    `;
+  }
+
+  private _renderEditInput(toolId: string, key: string, schema: any) {
+    // Detect z.enum via _def.values
+    const enumValues = schema?._def?.values;
+    if (Array.isArray(enumValues)) {
+      return html`<select name=${key} @input=${(e: Event) => this._onEditInput(toolId, key, e)}>
+        ${enumValues.map((v: string) => html`<option value=${v} ?selected=${this._editArgs[key] === v}>${v}</option>`)}
+      </select>`;
+    }
+    const isNumber = schema?._def?.typeName === 'ZodNumber';
+    return html`<input name=${key}
+      .value=${String(this._editArgs[key] ?? '')}
+      @input=${(e: Event) => this._onEditInput(toolId, key, e)}
+      type=${isNumber ? 'number' : 'text'} />`;
   }
 
   private _orbContent(status: StepStatus, n: number) {

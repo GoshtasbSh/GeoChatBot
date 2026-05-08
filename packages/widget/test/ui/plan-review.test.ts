@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
 import '../../src/ui/plan-review.js';
+import '../../src/agent/tools/index.js';
 import type { Plan } from '../../src/agent/types.js';
 
 const plan: Plan = {
@@ -60,5 +61,48 @@ describe('<plan-review>', () => {
     const orbs = el.shadowRoot!.querySelectorAll('.orb');
     expect(orbs[0]!.classList.contains('success')).toBe(true);
     expect(orbs[1]!.classList.contains('running')).toBe(true);
+  });
+});
+
+describe('<plan-review> inline edit', () => {
+  it('clicking edit reveals input controls', async () => {
+    const el = mount(plan);
+    await el.updateComplete;
+    const editBtn = el.shadowRoot!.querySelectorAll('button.iconbtn')[0]! as HTMLButtonElement;
+    editBtn.click();
+    await el.updateComplete;
+    const inputs = el.shadowRoot!.querySelectorAll('input, select');
+    expect(inputs.length).toBeGreaterThan(0);
+  });
+
+  it('save with valid args emits step:edit and exits edit mode', async () => {
+    const el = mount(plan);
+    await el.updateComplete;
+    el.shadowRoot!.querySelector('button.iconbtn')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await el.updateComplete;
+    const queryInput = el.shadowRoot!.querySelector('input[name="query"]') as HTMLInputElement;
+    queryInput.value = 'SELECT 2';
+    queryInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await el.updateComplete;
+    const edits: any[] = [];
+    el.addEventListener('step:edit', (e: any) => edits.push(e.detail));
+    el.shadowRoot!.querySelector('button.save')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(edits.length).toBe(1);
+    expect(edits[0].args.query).toBe('SELECT 2');
+  });
+
+  it('save is disabled while args fail tool zod parse', async () => {
+    const el = mount(plan);
+    await el.updateComplete;
+    const editBtns = el.shadowRoot!.querySelectorAll('button.iconbtn');
+    // The 3rd iconbtn (index 2) is the first iconbtn of step s2 (render.summary)
+    (editBtns[2] as HTMLButtonElement).click();
+    await el.updateComplete;
+    const textInput = el.shadowRoot!.querySelector('input[name="text"]') as HTMLInputElement;
+    textInput.value = '';
+    textInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await el.updateComplete;
+    const save = el.shadowRoot!.querySelector('button.save') as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
   });
 });

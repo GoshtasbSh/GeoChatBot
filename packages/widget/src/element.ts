@@ -441,9 +441,27 @@ export class GeoChatBotElement extends LitElement {
   }
 
   private _renderPlanIfFull(): void {
-    // In Task 16 this is filled in. Headless mode never renders.
     if (this.getAttribute('mode') === 'headless') return;
-    // Defer to Task 16 — not yet wired in Task 15.
+    if (!this._pendingPlan) return;
+    let pr = this.shadowRoot!.querySelector('plan-review') as any;
+    if (!pr) {
+      pr = document.createElement('plan-review');
+      pr.addEventListener('plan:approve', () => this.approvePlan(this._pendingPlan?.id));
+      pr.addEventListener('plan:reject', () => {
+        const id = this._pendingPlan?.id;
+        this.rejectPlan(id !== undefined ? { id } : {});
+      });
+      pr.addEventListener('step:edit', (e: any) => {
+        if (!this._pendingPlan) return;
+        const idx = this._pendingPlan.plan.steps.findIndex((s) => s.id === e.detail.stepId);
+        if (idx === -1) return;
+        this._pendingPlan.plan.steps[idx]!.args = e.detail.args;
+        pr.plan = { ...this._pendingPlan.plan };
+      });
+      this.shadowRoot!.appendChild(pr);
+    }
+    pr.plan = this._pendingPlan.plan;
+    pr.mode = 'plan';
   }
 
   private _emit(name: string, detail: unknown): void {
