@@ -3,7 +3,6 @@ import { customElement, state, property } from 'lit/decorators.js';
 import { tableFromJSON } from 'apache-arrow';
 import { tokensCSS } from './ui/tokens.js';
 import {
-  resolveTheme,
   applyTheme,
   subscribeOSTheme,
   type ThemeMode,
@@ -223,8 +222,8 @@ export class GeoChatBotElement extends LitElement {
         --gcb-muted-fg: var(--gcb-ink-muted);
         --gcb-border: var(--gcb-line);
         --gcb-table-bg: var(--gcb-bg-3);
-        --gcb-error-bg: color-mix(in srgb, var(--gcb-accent) 14%, transparent);
-        --gcb-error-fg: var(--gcb-accent);
+        --gcb-error-bg: color-mix(in srgb, #ef4444 14%, transparent);
+        --gcb-error-fg: #b91c1c;
         --gcb-accent-soft-bg: var(--gcb-accent-soft);
         --gcb-accent-badge-bg: var(--gcb-accent-soft);
         --gcb-drop-border: var(--gcb-line);
@@ -284,8 +283,8 @@ export class GeoChatBotElement extends LitElement {
       th { color: var(--gcb-ink-muted); font-weight: 500; }
       .err {
         margin-top: 12px; padding: 10px; border-radius: var(--gcb-radius-sm);
-        background: color-mix(in srgb, #ef4444 14%, transparent);
-        color: #b91c1c; font-size: 13px;
+        background: var(--gcb-error-bg);
+        color: var(--gcb-error-fg); font-size: 13px;
       }
       .geom { color: var(--gcb-accent); font-weight: 500; }
       gcb-map { margin-top: 12px; }
@@ -428,7 +427,11 @@ export class GeoChatBotElement extends LitElement {
     super.connectedCallback();
     this._restoreSettings();
     applyTheme(this, this.theme);
-    this._unsubscribeTheme = subscribeOSTheme(() => this.requestUpdate(), null);
+    // Only auto-mode visually depends on the OS preference; in light/dark
+    // the rendered tokens are fully determined and a re-render is wasted.
+    this._unsubscribeTheme = subscribeOSTheme(() => {
+      if (this.theme === 'auto') this.requestUpdate();
+    }, null);
   }
 
   /** Read persisted settings on connect; silently no-op if storage is unavailable. */
