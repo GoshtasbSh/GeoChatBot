@@ -466,6 +466,10 @@ export class GeoChatBotElement extends LitElement {
 
   private _emit(name: string, detail: unknown): void {
     this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
+    if (name in EVENT_NAME) {
+      const prefixed = EVENT_NAME[name as keyof GeoChatBotEvents];
+      this.dispatchEvent(new CustomEvent(prefixed, { detail, bubbles: true, composed: true }));
+    }
   }
 
   /**
