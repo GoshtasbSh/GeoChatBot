@@ -260,6 +260,40 @@ Phase 5 alignment fixes shipped in the same phase:
 
 ---
 
+### ✅ Phase 7 Slice 1 — Dashboard chrome replacement · *done 2026-05-08*
+
+The widget shell, not the agent loop. Replaces the giant inline drop
+zone with a top-right **+ Add data** popover, mounts plan-review
+inside a centered `<gcb-modal>` instead of an inline strip under the
+chat, introduces a dashboard layout (`<gcb-shell>`: topbar / left
+rail / 3-tab main / bottom dock), and adds persistent saved results
+via `SavesStore` (localStorage v1, FIFO 200) + `<gcb-rail>`.
+
+Spec: [`docs/superpowers/specs/2026-05-08-phase-7-dashboard-redesign-design.md`](docs/superpowers/specs/2026-05-08-phase-7-dashboard-redesign-design.md)
+Plan: [`docs/superpowers/plans/2026-05-08-phase-7-dashboard-redesign-slice-1.md`](docs/superpowers/plans/2026-05-08-phase-7-dashboard-redesign-slice-1.md)
+
+Implemented in 13 TDD-driven commits:
+- 7.1 `ui/tokens.ts` — Phase 7 design tokens (light + dark + auto via `prefers-color-scheme`, reduced-motion gating).
+- 7.2 `state/theme.ts` (+ tests) — pure `resolveTheme / applyTheme / subscribeOSTheme`.
+- 7.3 `element.ts` styles routed through tokensCSS; reflected `theme` property + OS subscription wired into `connectedCallback` / `disconnectedCallback`.
+- 7.4 `<gcb-modal>` (+ tests) — scrim, Esc, focus trap with detached-node guard.
+- 7.5 `<plan-review>` re-mounted inside `<gcb-modal>`; query selectors in tests updated to walk through the modal.
+- 7.6 `<gcb-upload-popover>` (+ tests) — anchored popover with drop area, Esc, outside-click, file-input value reset for re-pick.
+- 7.7 Drop zone removed from `element.ts`; topbar gains the **+ Add data** button + popover.
+- 7.8 `<gcb-shell>` (+ tests) — layout grid with 4 named slots and Map/Results/Detail tab strip emitting `gcb:tab`.
+- 7.9 `<gcb-shell>` rendered as full-mode root in `element.ts`; existing tables + map projected into the `main` slot via slot composition.
+- 7.10 `state/saves-store.ts` (+ tests) — versioned localStorage CRUD with FIFO 200 cap.
+- 7.11 `<gcb-rail>` (+ tests) — datasets + saves listings, three composed events.
+- 7.12 `SavesStore` + `<gcb-rail>` wired into `element.ts`; result-canvas gains a ☆ Save overlay button.
+- 7.13 Bundle/test marker — 465 tests pass, typecheck clean.
+
+**Out of Slice 1, in flight:** Slice 2 (Results gallery + Detail drill-down) and Slice 3 (standalone `/dashboard` route + ?embed= mode + a11y/E2E pass).
+
+**Initial prompt:**
+> i checked the URL of this geochatbot was very based and disguseting!!!! not modern, use design skills to create this as a dashboard that any one can use it without add to their website or dashboard … left panel for saves, three tabs (Map / Results / Detail), upload as popup, approve & run as popup not under the chat.
+
+---
+
 ### ✅ Phase 7 — Eval harness · *scaffold done 2026-05-08*
 
 Status: **harness scaffolded + 31/31 unit tests green; ready to run as soon
