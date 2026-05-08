@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -452,5 +452,109 @@ describe('clear-race regression (kept)', () => {
 
     expect(el.results.length).toBe(0);
     expect(el.shadowRoot?.querySelectorAll('.table-card').length).toBe(0);
+  });
+});
+
+describe('Phase 6: critic wiring', () => {
+  it('passes onStepError to the executor when ask() runs', async () => {
+    const el = document.createElement('geo-chatbot') as any;
+    document.body.appendChild(el);
+    el.setProvider({ name: 'anthropic', apiKey: 'k', generate: async () => ({ text: '' }) });
+    await el.pushData({
+      name: 'mydata',
+      kind: 'table',
+      rows: 1,
+      columns: [{ name: 'id', type: 'integer' }],
+      sample: [],
+    });
+    (el as any)._execDatasets = [
+      { name: 'mydata', tableName: 'mydata', hasGeometry: false },
+    ];
+
+    let attempts = 0;
+    const failingEngine = {
+      hasSpatial: false,
+      query: async () => {
+        attempts++;
+        // First time: fail. Critic will (in test) return retry. Second time: succeed.
+        if (attempts === 1) throw new Error('Binder Error: Referenced column "bad_col" not found');
+        const { tableFromJSON } = await import('apache-arrow');
+        return tableFromJSON([{ ok: 1 }]);
+      },
+    };
+    el.__setExecutorEngine(failingEngine);
+
+    const planWithSql = {
+      goal: 'g', assumptions: [], dataset_refs: ['mydata'],
+      steps: [
+        { id: 's1', tool: 'sql', args: { query: 'SELECT bad_col FROM mydata' }, output_var: 'a', why: 'p' },
+        { id: 's2', tool: 'render.summary', args: { text: 'done' }, why: 'final' },
+      ],
+    };
+    el.__setLlmCall(vi.fn().mockResolvedValue(planWithSql));
+
+    // Inject a stub critic that always retries.
+    el.__setCritic({
+      diagnose: vi.fn().mockResolvedValue({ action: 'retry' }),
+    });
+
+    const errors: any[] = [];
+    el.shadowRoot!.host.addEventListener('error', (e: Event) => errors.push((e as CustomEvent).detail));
+
+    await el.ask('q');
+    el.approvePlan();
+    await el.__lastExecution;
+
+    // Critic's retry produced a successful s1, then s2 ran.
+    expect(errors).toEqual([]);
+    expect(attempts).toBeGreaterThanOrEqual(2);
+  });
+
+  it('emits a typed `critic` event for each diagnose call', async () => {
+    const el = document.createElement('geo-chatbot') as any;
+    document.body.appendChild(el);
+    el.setProvider({ name: 'anthropic', apiKey: 'k', generate: async () => ({ text: '' }) });
+    await el.pushData({
+      name: 'mydata',
+      kind: 'table',
+      rows: 1,
+      columns: [{ name: 'id', type: 'integer' }],
+      sample: [],
+    });
+    (el as any)._execDatasets = [{ name: 'mydata', tableName: 'mydata', hasGeometry: false }];
+
+    let attempts = 0;
+    el.__setExecutorEngine({
+      hasSpatial: false,
+      query: async () => {
+        attempts++;
+        if (attempts === 1) throw new Error('column missing');
+        const { tableFromJSON } = await import('apache-arrow');
+        return tableFromJSON([{ ok: 1 }]);
+      },
+    });
+    el.__setLlmCall(vi.fn().mockResolvedValue({
+      goal: 'g', assumptions: [], dataset_refs: ['mydata'],
+      steps: [
+        { id: 's1', tool: 'sql', args: { query: 'SELECT id FROM mydata' }, output_var: 'a', why: 'p' },
+        { id: 's2', tool: 'render.summary', args: { text: 'done' }, why: 'final' },
+      ],
+    }));
+    el.__setCritic({ diagnose: vi.fn().mockResolvedValue({ action: 'retry' }) });
+
+    const critics: any[] = [];
+    el.shadowRoot!.host.addEventListener('critic', (e: Event) => critics.push((e as CustomEvent).detail));
+
+    await el.ask('q');
+    el.approvePlan();
+    await el.__lastExecution;
+
+    expect(critics).toHaveLength(1);
+    expect(critics[0]).toMatchObject({
+      stepId: 's1',
+      attempt: 1,
+      maxAttempts: 3,
+      decision: 'retry',
+    });
   });
 });

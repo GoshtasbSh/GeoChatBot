@@ -16,8 +16,9 @@ import {
   type ChatProvider,
   setProvider as setActiveProvider,
 } from './providers/index';
-import { Planner } from './agent/index.js';
+import { Planner, Critic } from './agent/index.js';
 import type { Plan, DatasetProfile as PlannerDatasetProfile } from './agent/index.js';
+import type { CriticDecision, StepErrorContext } from './agent/executor/index.js';
 import type { PlannerLLMInput } from './agent/llm.js';
 import { validateSql } from './agent/validate-sql.js';
 import { validatePlan, PlanValidationError } from './agent/validate-plan.js';
@@ -154,6 +155,22 @@ export type GeoChatBotEvents = {
     planId?: string;
     stepId?: string;
   };
+  critic: {
+    planId: string;
+    stepId: string;
+    /** 1-based attempt number (1 = first try; 2 = first retry; …). */
+    attempt: number;
+    /** Total budget = maxRetries + 1. */
+    maxAttempts: number;
+    /** What the critic decided. */
+    decision: 'patch' | 'retry' | 'abort';
+    /** The original error message (already truncated for the prompt). */
+    errorMessage: string;
+    /** Args before substitution — what the runner actually saw. */
+    beforeArgs: Record<string, unknown>;
+    /** Patched args, only when decision==='patch'. */
+    afterArgs?: Record<string, unknown>;
+  };
 };
 
 const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
@@ -162,6 +179,7 @@ const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
   plan: 'geochatbot:plan',
   progress: 'geochatbot:progress',
   error: 'geochatbot:error',
+  critic: 'geochatbot:critic',
 };
 
 /**
@@ -317,6 +335,16 @@ export class GeoChatBotElement extends LitElement {
   private _execDatasets: ExecDatasetEntry[] = [];
   /** Test-only override; otherwise the executor uses the main-thread DuckDB singleton. */
   private _executorEngine?: ExecutorEngine;
+
+  /* -------------------------------------------------------------------- */
+  /* Phase 6 critic state                                                 */
+  /* -------------------------------------------------------------------- */
+  private _criticOverride?: { diagnose: (ctx: StepErrorContext) => Promise<CriticDecision> };
+
+  /** Test-only: substitute the critic for deterministic tests. */
+  __setCritic(c: { diagnose: (ctx: StepErrorContext) => Promise<CriticDecision> }): void {
+    this._criticOverride = c;
+  }
 
   render() {
     // In headless mode the widget renders nothing — the host owns the UI
@@ -727,13 +755,39 @@ export class GeoChatBotElement extends LitElement {
     }
 
     const exec = new Executor({ engine, datasets: this._execDatasets });
+    const critic = this._buildCritic();
     await exec.execute(plan, planId, {
-      onProgress: (e: ExecProgressEvent) => this.dispatch('progress', e),
+      onProgress: (e: ExecProgressEvent) => {
+        this.dispatch('progress', e);
+        if (this.mode !== 'headless') this._pushPlanStatus(e);
+      },
       onResult: (e: ExecResultEvent) => {
         this.dispatch('result', e);
         if (this.mode !== 'headless') this._mountResult(e);
       },
       onError: (e) => this.dispatch('error', e),
+      ...(critic
+        ? {
+            onStepError: async (ctx: StepErrorContext) => {
+              const decision = await critic.diagnose(ctx);
+              const detail: GeoChatBotEvents['critic'] = {
+                planId: ctx.planId,
+                stepId: ctx.step.id,
+                attempt: ctx.retryCount + 1,
+                maxAttempts: ctx.maxRetries + 1,
+                decision: decision.action,
+                errorMessage: ctx.error.message,
+                beforeArgs: ctx.resolvedArgs,
+              };
+              if (decision.action === 'patch') {
+                detail.afterArgs = decision.patchedStep.args;
+              }
+              this.dispatch('critic', detail);
+              if (this.mode !== 'headless') this._pushCriticAttempt(detail, decision);
+              return decision;
+            },
+          }
+        : {}),
     });
   }
 
@@ -768,6 +822,71 @@ export class GeoChatBotElement extends LitElement {
     const { planId: _p, stepId: _s, ...payload } = e;
     void _p; void _s;
     canvas.setResult(payload as { kind: string; [k: string]: unknown });
+  }
+
+  private _buildCritic(): { diagnose: (ctx: StepErrorContext) => Promise<CriticDecision> } | null {
+    if (this._criticOverride) return this._criticOverride;
+    if (!this._apiKey) return null;
+    return new Critic({
+      apiKey: this._apiKey,
+      model: this._model,
+      datasets: this._datasets,
+      dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
+    });
+  }
+
+  private _pushPlanStatus(e: ExecProgressEvent): void {
+    if (!this.shadowRoot) return;
+    const pr = this.shadowRoot.querySelector('plan-review') as
+      | (HTMLElement & {
+          stepStatus?: Map<string, string>;
+          stepDurations?: Map<string, number>;
+          mode?: 'plan' | 'running';
+          requestUpdate?: () => void;
+        })
+      | null;
+    if (!pr) return;
+    if (pr.mode !== 'running') pr.mode = 'running';
+    if (e.stepId) {
+      const next = new Map(pr.stepStatus ?? new Map());
+      next.set(e.stepId, e.status);
+      pr.stepStatus = next as never;
+      if (e.durationMs !== undefined) {
+        const d = new Map(pr.stepDurations ?? new Map());
+        d.set(e.stepId, Math.round(e.durationMs));
+        pr.stepDurations = d as never;
+      }
+      pr.requestUpdate?.();
+    }
+  }
+
+  private _pushCriticAttempt(
+    detail: GeoChatBotEvents['critic'],
+    decision: CriticDecision,
+  ): void {
+    if (!this.shadowRoot) return;
+    const pr = this.shadowRoot.querySelector('plan-review') as
+      | (HTMLElement & {
+          criticPatches?: Map<string, unknown>;
+          criticAttempts?: Map<string, Array<unknown>>;
+          stepStatus?: Map<string, string>;
+          requestUpdate?: () => void;
+        })
+      | null;
+    if (!pr) return;
+    const ss = new Map(pr.stepStatus ?? new Map());
+    ss.set(detail.stepId, 'retry');
+    pr.stepStatus = ss as never;
+    const log = new Map(pr.criticAttempts ?? new Map());
+    const arr = (log.get(detail.stepId) as Array<unknown> | undefined) ?? [];
+    log.set(detail.stepId, [...arr, detail]);
+    pr.criticAttempts = log as never;
+    if (decision.action === 'patch') {
+      const patches = new Map(pr.criticPatches ?? new Map());
+      patches.set(detail.stepId, decision.patchedStep);
+      pr.criticPatches = patches as never;
+    }
+    pr.requestUpdate?.();
   }
 
   private _renderPlanIfFull(): void {
@@ -899,11 +1018,12 @@ export class GeoChatBotElement extends LitElement {
     this.dragOver = false;
     this.busy = false;
     this._execDatasets = [];
-    // Phase 4 / 5 state — must be wiped to avoid cross-session leaks.
+    // Phase 4 / 5 / 6 state — must be wiped to avoid cross-session leaks.
     this._datasets = [];
     delete this._pendingPlan;
     delete this._planner;
     delete this._apiKey;
+    delete this._criticOverride;
     this.provider = undefined;
     if (this.shadowRoot) {
       const canvas = this.shadowRoot.querySelector('result-canvas') as
