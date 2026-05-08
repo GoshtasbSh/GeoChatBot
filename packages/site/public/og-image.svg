@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#18181b"/>
+  <!-- Grid lines -->
+  <line x1="0" y1="315" x2="1200" y2="315" stroke="#27272a" stroke-width="1"/>
+  <line x1="600" y1="0" x2="600" y2="630" stroke="#27272a" stroke-width="1"/>
+  <!-- Globe mark -->
+  <circle cx="600" cy="240" r="80" stroke="#3f3f46" stroke-width="2" fill="none"/>
+  <circle cx="600" cy="240" r="80" stroke="#71717a" stroke-width="1.5" fill="none" stroke-dasharray="8 4"/>
+  <ellipse cx="600" cy="240" rx="40" ry="80" stroke="#52525b" stroke-width="1.5" fill="none"/>
+  <circle cx="600" cy="240" r="18" fill="#71717a"/>
+  <!-- Heading -->
+  <text x="600" y="380" font-family="system-ui, -apple-system, sans-serif" font-size="56" font-weight="700" fill="#fafafa" text-anchor="middle">GeoChatBot</text>
+  <!-- Sub -->
+  <text x="600" y="430" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#a1a1aa" text-anchor="middle">Ask plain-English questions about your spatial data — in your browser.</text>
+  <!-- Badges -->
+  <rect x="380" y="470" width="160" height="36" rx="18" fill="#27272a"/>
+  <text x="460" y="493" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#a1a1aa" text-anchor="middle">Browser-only</text>
+  <rect x="560" y="470" width="160" height="36" rx="18" fill="#27272a"/>
+  <text x="640" y="493" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#a1a1aa" text-anchor="middle">Plan before action</text>
+  <rect x="740" y="470" width="120" height="36" rx="18" fill="#27272a"/>
+  <text x="800" y="493" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#a1a1aa" text-anchor="middle">Self-healing</text>
+</svg>

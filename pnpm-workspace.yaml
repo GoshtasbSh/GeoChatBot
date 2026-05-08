@@ -1,0 +1,3 @@
+packages:
+  - 'packages/widget'
+  - 'packages/site'
