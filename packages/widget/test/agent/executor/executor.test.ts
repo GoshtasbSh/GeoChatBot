@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { tableFromJSON, type Table as ArrowTable } from 'apache-arrow';
 
 import { Executor, MissingRunnerError } from '../../../src/agent/executor/executor.js';
@@ -176,6 +176,23 @@ describe('Executor — orchestration', () => {
 });
 
 describe('Executor — Phase 6 critic hook (onStepError)', () => {
+  // Snapshot the tool registry around each test in this block. The Phase 6
+  // tests call _resetRegistry() to install test-only ToolDefs, which would
+  // otherwise leak into later test files (notably the integration tests
+  // that rely on the real geometry/joins/stats catalog). Snapshot/restore
+  // makes these cases hermetic regardless of vitest's parallel worker
+  // ordering.
+  let _toolsSnapshot: import('../../../src/agent/tools/types.js').ToolDef[] = [];
+  beforeEach(async () => {
+    const reg = await import('../../../src/agent/tools/registry.js');
+    _toolsSnapshot = reg.listTools();
+  });
+  afterEach(async () => {
+    const reg = await import('../../../src/agent/tools/registry.js');
+    reg._resetRegistry();
+    for (const t of _toolsSnapshot) reg.registerTool(t);
+  });
+
   it('aborts when no critic is provided (existing behavior)', async () => {
     registerRunner('boom', async () => { throw new Error('initial fail'); });
     registerRunner('after', async () => ({ output: { kind: 'table', ref: 'unused' } }));
