@@ -77,14 +77,15 @@ export const tokensCSS = css`
     }
   }
 
-  /* Reduced motion: kill scaling/translate animations everywhere
-     downstream by exposing a token components can opt into. */
+  /* Default animation duration. Declared BEFORE the reduced-motion
+     media query so the @media block can override it — source-order
+     resolution would otherwise let the unconditional rule win. */
+  :host {
+    --gcb-anim-duration: 200ms;
+  }
   @media (prefers-reduced-motion: reduce) {
     :host {
       --gcb-anim-duration: 0ms;
     }
-  }
-  :host {
-    --gcb-anim-duration: 200ms;
   }
 `;
