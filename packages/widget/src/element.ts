@@ -32,6 +32,10 @@ import {
 import './ui/plan-review.js';
 import type { PlanReview } from './ui/plan-review.js';
 import './ui/result-canvas.js';
+import './ui/settings-drawer.js';
+import type { SettingsValue } from './ui/settings-drawer.js';
+import './ui/ask-input.js';
+import type { AskInputDisabledReason } from './ui/ask-input.js';
 // MapView (MapLibre GL + deck.gl) is lazy-loaded on first geometry ingest
 // so the initial bundle stays lean (PLAN §3 hard rule: ≤ 100 KB gzipped).
 
@@ -246,7 +250,42 @@ export class GeoChatBotElement extends LitElement {
       --gcb-map-bg: #0f172a;
     }
     header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-    header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    header h2 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      padding: 3px 8px 3px 6px;
+      border-radius: 999px;
+      background: var(--gcb-accent-soft-bg);
+      color: var(--gcb-accent);
+      border: 1px solid var(--gcb-accent-badge-bg);
+    }
+    .status-chip.muted {
+      background: transparent;
+      color: var(--gcb-muted-fg);
+      border-color: var(--gcb-border);
+    }
+    .status-chip .dot {
+      width: 6px; height: 6px; border-radius: 999px;
+      background: var(--gcb-accent);
+      box-shadow: 0 0 0 3px rgba(67, 56, 202, .12);
+    }
+    .status-chip .dot-muted { background: var(--gcb-muted-fg); box-shadow: none; }
+    .icon-btn {
+      font: inherit;
+      font-size: 16px;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--gcb-border);
+      background: var(--gcb-bg);
+      color: var(--gcb-muted-fg);
+      cursor: pointer;
+      transition: background 120ms ease;
+    }
+    .icon-btn:hover { background: var(--gcb-accent-soft-bg); color: var(--gcb-accent); }
     header .badge {
       font-size: 11px; padding: 2px 6px; border-radius: 4px;
       background: var(--gcb-accent-badge-bg); color: var(--gcb-accent);
@@ -358,6 +397,123 @@ export class GeoChatBotElement extends LitElement {
     this._criticOverride = c;
   }
 
+  /* -------------------------------------------------------------------- */
+  /* Settings + chat UI state                                             */
+  /* -------------------------------------------------------------------- */
+  /** Whether the settings drawer is open. */
+  @state() private _settingsOpen = false;
+  /** True while a plan is being produced or executed; disables the Ask button. */
+  @state() private _agentBusy = false;
+  /** Mirrors the persisted key for the masked header chip; never the raw bytes. */
+  @state() private _maskedKey: string | null = null;
+
+  /* -------------------------------------------------------------------- */
+  /* Persistence                                                          */
+  /* -------------------------------------------------------------------- */
+  /**
+   * localStorage key namespace. Values stored:
+   *   geochatbot:apiKey                  — raw Anthropic key
+   *   geochatbot:model                   — selected model id
+   *   geochatbot:dangerouslyAllowBrowser — '1' or '0' opt-in flag
+   *
+   * Stored only if the user hits Save in the drawer. Never written from
+   * setProvider() so programmatic callers don't accidentally persist a
+   * key. Reads silently no-op if localStorage is unavailable (private
+   * browsing, hardened CSP) — the widget falls back to in-memory only.
+   */
+  private static readonly _STORAGE_KEYS = {
+    apiKey: 'geochatbot:apiKey',
+    model: 'geochatbot:model',
+    dangerouslyAllowBrowser: 'geochatbot:dangerouslyAllowBrowser',
+  } as const;
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this._restoreSettings();
+  }
+
+  /** Read persisted settings on connect; silently no-op if storage is unavailable. */
+  private _restoreSettings(): void {
+    try {
+      const k = GeoChatBotElement._STORAGE_KEYS;
+      const apiKey = localStorage.getItem(k.apiKey);
+      const model = localStorage.getItem(k.model);
+      const dangerous = localStorage.getItem(k.dangerouslyAllowBrowser) === '1';
+      if (apiKey) {
+        this._apiKey = apiKey;
+        this._maskedKey = this._maskKey(apiKey);
+      }
+      if (model) this._model = model;
+      if (dangerous) this.dangerouslyAllowBrowser = true;
+    } catch {
+      // localStorage unavailable — remain in-memory only.
+    }
+  }
+
+  /** Compact masked form of a key for the header chip. Never reveals the middle. */
+  private _maskKey(key: string): string {
+    if (!key) return '';
+    if (key.length <= 8) return '•'.repeat(key.length);
+    return `${key.slice(0, 4)}…${key.slice(-4)}`;
+  }
+
+  private _onSaveSettings = (e: Event) => {
+    const detail = (e as CustomEvent<SettingsValue>).detail;
+    this._apiKey = detail.apiKey;
+    this._model = detail.model;
+    this.dangerouslyAllowBrowser = detail.dangerouslyAllowBrowser;
+    this._maskedKey = this._maskKey(detail.apiKey);
+    // Force planner rebuild so the next ask() picks up the new model/key.
+    delete this._planner;
+    try {
+      const k = GeoChatBotElement._STORAGE_KEYS;
+      localStorage.setItem(k.apiKey, detail.apiKey);
+      localStorage.setItem(k.model, detail.model);
+      localStorage.setItem(k.dangerouslyAllowBrowser, detail.dangerouslyAllowBrowser ? '1' : '0');
+    } catch {
+      // Persistence is best-effort; in-memory state above is authoritative.
+    }
+    this._settingsOpen = false;
+  };
+
+  private _openSettings = () => { this._settingsOpen = true; };
+  private _closeSettings = () => { this._settingsOpen = false; };
+
+  /**
+   * Compute why the chat input is disabled, or null when ready. The
+   * <gcb-ask-input> renders an empty-state CTA based on this so the
+   * user never wonders why the box is greyed out.
+   */
+  private _askDisabledReason(): AskInputDisabledReason {
+    if (this.loaded.length === 0) return 'no-data';
+    if (!this._apiKey) return 'no-key';
+    return null;
+  }
+
+  private _exampleQuestions(): string[] {
+    if (this.loaded.length === 0) return [];
+    const names = this.loaded.map((r) => r.name);
+    const first = names[0]!;
+    const hasGeom = this.loaded.some((r) => !!r.geometry);
+    const out = [
+      `How many rows are in ${first}?`,
+      `Show a chart of ${first}.`,
+    ];
+    if (hasGeom) out.push(`Map the ${first} layer.`);
+    return out;
+  }
+
+  private _onAskFromInput = async (e: Event) => {
+    const q = (e as CustomEvent<string>).detail;
+    if (!q || this._agentBusy) return;
+    this._agentBusy = true;
+    try {
+      await this.ask(q);
+    } finally {
+      this._agentBusy = false;
+    }
+  };
+
   render() {
     // In headless mode the widget renders nothing — the host owns the UI
     // and listens for typed events. We still render an invisible host so
@@ -365,10 +521,24 @@ export class GeoChatBotElement extends LitElement {
     if (this.mode === 'headless') {
       return html``;
     }
+    const disabledReason = this._askDisabledReason();
     return html`
       <header>
         <h2>GeoChatBot</h2>
-        <span class="badge">phase 2 · ingest</span>
+        ${this._maskedKey
+          ? html`<span class="status-chip" title="API key configured">
+              <span class="dot"></span>Anthropic · ${this._maskedKey}
+            </span>`
+          : html`<span class="status-chip muted" title="No API key set">
+              <span class="dot dot-muted"></span>not connected
+            </span>`}
+        <button
+          class="icon-btn"
+          type="button"
+          aria-label="Open settings"
+          title="Settings"
+          @click=${this._openSettings}
+        >⚙</button>
       </header>
 
       <div
@@ -391,6 +561,27 @@ export class GeoChatBotElement extends LitElement {
       <div class="tables">
         ${this.loaded.map((r) => this.renderTable(r))}
       </div>
+
+      <gcb-ask-input
+        .disabledReason=${disabledReason}
+        .examples=${disabledReason === null ? this._exampleQuestions() : []}
+        ?busy=${this._agentBusy}
+        @gcb:ask=${this._onAskFromInput}
+        @gcb:request-settings=${this._openSettings}
+      ></gcb-ask-input>
+
+      ${this._settingsOpen
+        ? html`<gcb-settings-drawer
+            .value=${{
+              provider: 'anthropic',
+              model: this._model,
+              apiKey: this._apiKey ?? '',
+              dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
+            } as SettingsValue}
+            @gcb:settings=${this._onSaveSettings}
+            @gcb:settings-close=${this._closeSettings}
+          ></gcb-settings-drawer>`
+        : null}
     `;
   }
 
@@ -1087,6 +1278,13 @@ export class GeoChatBotElement extends LitElement {
     this._execAbort?.abort();
     delete this._execAbort;
     this.provider = undefined;
+    // UI state: drop the masked key chip, close any open drawer, reset
+    // busy. The localStorage values are NOT removed — clear() is a
+    // session reset, not a "forget my key" affordance. Users opt out
+    // of persistence by reopening Settings and saving an empty key.
+    this._settingsOpen = false;
+    this._agentBusy = false;
+    this._maskedKey = null;
     if (this.shadowRoot) {
       const canvas = this.shadowRoot.querySelector('result-canvas') as
         | (HTMLElement & { clear(): void })
