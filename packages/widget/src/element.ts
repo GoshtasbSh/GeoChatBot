@@ -1,6 +1,13 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state, property } from 'lit/decorators.js';
 import { tableFromJSON } from 'apache-arrow';
+import { tokensCSS } from './ui/tokens.js';
+import {
+  resolveTheme,
+  applyTheme,
+  subscribeOSTheme,
+  type ThemeMode,
+} from './state/theme.js';
 import { loadFile } from './data/loaders';
 import { getEngine } from './data/engine';
 import type { DuckDBEngine } from './data/engine/DuckDBEngine.js';
@@ -206,119 +213,84 @@ const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
  */
 @customElement('geo-chatbot')
 export class GeoChatBotElement extends LitElement {
-  static styles = css`
-    :host {
-      /* Theme tokens — override from light DOM by setting these on the host. */
-      --gcb-bg: #ffffff;
-      --gcb-fg: #1a1a1a;
-      --gcb-muted-fg: #555555;
-      --gcb-border: #e3e3e3;
-      --gcb-radius: 12px;
-      --gcb-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-      --gcb-accent: #4338ca;
-      --gcb-accent-soft-bg: #f5f3ff;
-      --gcb-accent-badge-bg: #eef2ff;
-      --gcb-drop-border: #c7c7c7;
-      --gcb-table-bg: #fafafa;
-      --gcb-error-bg: #fef2f2;
-      --gcb-error-fg: #991b1b;
-      --gcb-geom-fg: #047857;
-      --gcb-font: system-ui, -apple-system, 'Segoe UI', sans-serif;
-      --gcb-map-height: 360px;
-      --gcb-max-width: 880px;
+  static styles = [
+    tokensCSS,
+    css`
+      /* The legacy color tokens map onto the new ones so any host page
+         that already overrides --gcb-bg / --gcb-fg / etc. still works. */
+      :host {
+        --gcb-fg: var(--gcb-ink);
+        --gcb-muted-fg: var(--gcb-ink-muted);
+        --gcb-border: var(--gcb-line);
+        --gcb-table-bg: var(--gcb-bg-3);
+        --gcb-error-bg: color-mix(in srgb, var(--gcb-accent) 14%, transparent);
+        --gcb-error-fg: var(--gcb-accent);
+        --gcb-accent-soft-bg: var(--gcb-accent-soft);
+        --gcb-accent-badge-bg: var(--gcb-accent-soft);
+        --gcb-drop-border: var(--gcb-line);
+        --gcb-geom-fg: var(--gcb-accent);
+        --gcb-radius: var(--gcb-radius-lg);
+        --gcb-shadow: var(--gcb-shadow-1);
+        --gcb-font: var(--gcb-font-sans);
+        --gcb-map-height: 360px;
+        --gcb-max-width: 880px;
 
-      display: block;
-      font-family: var(--gcb-font);
-      color: var(--gcb-fg);
-      background: var(--gcb-bg);
-      border: 1px solid var(--gcb-border);
-      border-radius: var(--gcb-radius);
-      box-shadow: var(--gcb-shadow);
-      padding: 16px;
-      max-width: var(--gcb-max-width);
-    }
-    :host([theme='dark']) {
-      --gcb-bg: #0b1020;
-      --gcb-fg: #e5e7eb;
-      --gcb-muted-fg: #9ca3af;
-      --gcb-border: #1f2937;
-      --gcb-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
-      --gcb-accent: #818cf8;
-      --gcb-accent-soft-bg: #1e1b4b;
-      --gcb-accent-badge-bg: #312e81;
-      --gcb-drop-border: #374151;
-      --gcb-table-bg: #111827;
-      --gcb-error-bg: #3f1d1d;
-      --gcb-error-fg: #fca5a5;
-      --gcb-geom-fg: #34d399;
-      --gcb-map-bg: #0f172a;
-    }
-    header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-    header h2 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
-    .status-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      padding: 3px 8px 3px 6px;
-      border-radius: 999px;
-      background: var(--gcb-accent-soft-bg);
-      color: var(--gcb-accent);
-      border: 1px solid var(--gcb-accent-badge-bg);
-    }
-    .status-chip.muted {
-      background: transparent;
-      color: var(--gcb-muted-fg);
-      border-color: var(--gcb-border);
-    }
-    .status-chip .dot {
-      width: 6px; height: 6px; border-radius: 999px;
-      background: var(--gcb-accent);
-      box-shadow: 0 0 0 3px rgba(67, 56, 202, .12);
-    }
-    .status-chip .dot-muted { background: var(--gcb-muted-fg); box-shadow: none; }
-    .icon-btn {
-      font: inherit;
-      font-size: 16px;
-      line-height: 1;
-      padding: 4px 8px;
-      border-radius: 6px;
-      border: 1px solid var(--gcb-border);
-      background: var(--gcb-bg);
-      color: var(--gcb-muted-fg);
-      cursor: pointer;
-      transition: background 120ms ease;
-    }
-    .icon-btn:hover { background: var(--gcb-accent-soft-bg); color: var(--gcb-accent); }
-    header .badge {
-      font-size: 11px; padding: 2px 6px; border-radius: 4px;
-      background: var(--gcb-accent-badge-bg); color: var(--gcb-accent);
-    }
-    .drop {
-      border: 2px dashed var(--gcb-drop-border); border-radius: 10px;
-      padding: 28px; text-align: center; cursor: pointer;
-      transition: border-color .15s, background .15s;
-    }
-    .drop.over { border-color: var(--gcb-accent); background: var(--gcb-accent-soft-bg); }
-    .drop p { margin: 0; color: var(--gcb-muted-fg); font-size: 14px; }
-    .hint { font-size: 12px; color: var(--gcb-muted-fg); margin-top: 4px; opacity: 0.8; }
-    .tables { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
-    .table-card {
-      border: 1px solid var(--gcb-border); border-radius: 8px; padding: 12px;
-      background: var(--gcb-table-bg);
-    }
-    .table-card h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
-    .table-card .summary { font-size: 12px; color: var(--gcb-muted-fg); margin-bottom: 8px; }
-    table { border-collapse: collapse; font-size: 12px; width: 100%; }
-    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--gcb-border); }
-    th { color: var(--gcb-muted-fg); font-weight: 500; }
-    .err {
-      margin-top: 12px; padding: 10px; border-radius: 6px;
-      background: var(--gcb-error-bg); color: var(--gcb-error-fg); font-size: 13px;
-    }
-    .geom { color: var(--gcb-geom-fg); font-weight: 500; }
-    gcb-map { margin-top: 12px; }
-  `;
+        display: block;
+        font-family: var(--gcb-font);
+        color: var(--gcb-ink);
+        background: var(--gcb-bg);
+        border: 1px solid var(--gcb-line);
+        border-radius: var(--gcb-radius);
+        box-shadow: var(--gcb-shadow);
+        padding: 16px;
+        max-width: var(--gcb-max-width);
+      }
+      header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+      header h2 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
+      .status-chip {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 11px; padding: 3px 8px 3px 6px; border-radius: 999px;
+        background: var(--gcb-accent-soft); color: var(--gcb-accent);
+        border: 1px solid var(--gcb-line);
+      }
+      .status-chip.muted { background: transparent; color: var(--gcb-ink-muted); border-color: var(--gcb-line); }
+      .status-chip .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--gcb-accent); }
+      .status-chip .dot-muted { background: var(--gcb-ink-muted); box-shadow: none; }
+      .icon-btn {
+        font: inherit; font-size: 16px; line-height: 1;
+        padding: 4px 8px; border-radius: var(--gcb-radius-sm);
+        border: 1px solid var(--gcb-line);
+        background: var(--gcb-bg-2); color: var(--gcb-ink-muted);
+        cursor: pointer; transition: background 120ms ease;
+      }
+      .icon-btn:hover { background: var(--gcb-accent-soft); color: var(--gcb-accent); }
+      .drop {
+        border: 2px dashed var(--gcb-line); border-radius: var(--gcb-radius);
+        padding: 28px; text-align: center; cursor: pointer;
+        transition: border-color .15s, background .15s;
+      }
+      .drop.over { border-color: var(--gcb-accent); background: var(--gcb-accent-soft); }
+      .drop p { margin: 0; color: var(--gcb-ink-muted); font-size: 14px; }
+      .hint { font-size: 12px; color: var(--gcb-ink-muted); margin-top: 4px; opacity: 0.8; }
+      .tables { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+      .table-card {
+        border: 1px solid var(--gcb-line); border-radius: var(--gcb-radius-sm);
+        padding: 12px; background: var(--gcb-bg-3);
+      }
+      .table-card h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+      .table-card .summary { font-size: 12px; color: var(--gcb-ink-muted); margin-bottom: 8px; }
+      table { border-collapse: collapse; font-size: 12px; width: 100%; }
+      th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--gcb-line); }
+      th { color: var(--gcb-ink-muted); font-weight: 500; }
+      .err {
+        margin-top: 12px; padding: 10px; border-radius: var(--gcb-radius-sm);
+        background: color-mix(in srgb, #ef4444 14%, transparent);
+        color: #b91c1c; font-size: 13px;
+      }
+      .geom { color: var(--gcb-accent); font-weight: 500; }
+      gcb-map { margin-top: 12px; }
+    `,
+  ];
 
   @state() private loaded: LoadResult[] = [];
   @state() private profiles: Record<string, DatasetProfile> = {};
@@ -336,6 +308,12 @@ export class GeoChatBotElement extends LitElement {
    */
   @property({ reflect: true })
   mode: GeoChatBotMode = 'full';
+
+  /** Theme mode. `auto` follows OS, otherwise the explicit setting wins.
+   *  Reflects to the `theme` attribute so the token sheet's
+   *  `:host([theme="dark"])` selector can react. */
+  @property({ reflect: true })
+  theme: ThemeMode = 'auto';
 
   /**
    * Explicit acknowledgement that the host accepts the API-key exposure
@@ -449,6 +427,8 @@ export class GeoChatBotElement extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this._restoreSettings();
+    applyTheme(this, this.theme);
+    this._unsubscribeTheme = subscribeOSTheme(() => this.requestUpdate(), null);
   }
 
   /** Read persisted settings on connect; silently no-op if storage is unavailable. */
@@ -1346,12 +1326,16 @@ export class GeoChatBotElement extends LitElement {
    * same page still rely on it. Provider / apiKey survive so that
    * re-attaching the element resumes correctly.
    */
+  private _unsubscribeTheme?: () => void;
+
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.generation++;
     this._execAbort?.abort();
     delete this._execAbort;
     delete this._pendingPlan;
+    this._unsubscribeTheme?.();
+    delete this._unsubscribeTheme;
   }
 
   /**
