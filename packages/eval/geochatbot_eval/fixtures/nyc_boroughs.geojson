@@ -1,0 +1,100 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Manhattan",
+        "boro_code": 1
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-74.0479, 40.6829],
+            [-73.9070, 40.6829],
+            [-73.9070, 40.8820],
+            [-74.0479, 40.8820],
+            [-74.0479, 40.6829]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Brooklyn",
+        "boro_code": 3
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-74.0600, 40.5700],
+            [-73.8330, 40.5700],
+            [-73.8330, 40.7395],
+            [-74.0600, 40.7395],
+            [-74.0600, 40.5700]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Queens",
+        "boro_code": 4
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-73.9624, 40.5420],
+            [-73.7004, 40.5420],
+            [-73.7004, 40.8012],
+            [-73.9624, 40.8012],
+            [-73.9624, 40.5420]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bronx",
+        "boro_code": 2
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-73.9338, 40.7855],
+            [-73.7654, 40.7855],
+            [-73.7654, 40.9176],
+            [-73.9338, 40.9176],
+            [-73.9338, 40.7855]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Staten Island",
+        "boro_code": 5
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-74.2591, 40.4960],
+            [-74.0522, 40.4960],
+            [-74.0522, 40.6501],
+            [-74.2591, 40.6501],
+            [-74.2591, 40.4960]
+          ]
+        ]
+      }
+    }
+  ]
+}

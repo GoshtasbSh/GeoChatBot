@@ -1,0 +1,125 @@
+[
+  {
+    "id": "count_total",
+    "question": "How many 311 requests are there?",
+    "dataset_refs": ["nyc311", "boroughs"],
+    "acceptable_plan_shapes": [
+      [{"tool": "sql"}, {"tool": "render.summary"}],
+      [{"tool": "stats.aggregate"}, {"tool": "render.summary"}],
+      [{"tool": "sql"}]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 50.0,
+      "tolerance": 5.0
+    },
+    "tags": ["aggregate", "basic"]
+  },
+  {
+    "id": "top_borough",
+    "question": "Which borough received the most 311 requests?",
+    "dataset_refs": ["nyc311", "boroughs"],
+    "acceptable_plan_shapes": [
+      [{"tool": "sql"}, {"tool": "render.summary"}],
+      [{"tool": "stats.aggregate"}, {"tool": "render.summary"}],
+      [{"tool": "sql"}, {"tool": "render.table"}]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain": ["brooklyn"]
+    },
+    "tags": ["aggregate", "basic"]
+  },
+  {
+    "id": "requests_per_borough",
+    "question": "Show a chart of 311 requests by borough.",
+    "dataset_refs": ["nyc311", "boroughs"],
+    "acceptable_plan_shapes": [
+      [{"tool": "stats.aggregate"}, {"tool": "render.chart"}],
+      [{"tool": "sql"}, {"tool": "render.chart"}]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain": ["borough", "count"]
+    },
+    "tags": ["aggregate", "render", "chart"]
+  },
+  {
+    "id": "requests_in_brooklyn",
+    "question": "How many requests are in Brooklyn?",
+    "dataset_refs": ["nyc311", "boroughs"],
+    "acceptable_plan_shapes": [
+      [{"tool": "sql"}, {"tool": "render.summary"}],
+      [{"tool": "stats.aggregate"}, {"tool": "render.summary"}],
+      [{"tool": "sql"}]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 15.0,
+      "tolerance": 10.0
+    },
+    "tags": ["aggregate", "filter"]
+  },
+  {
+    "id": "top_complaint_type",
+    "question": "What's the most common complaint type?",
+    "dataset_refs": ["nyc311"],
+    "acceptable_plan_shapes": [
+      [{"tool": "sql"}, {"tool": "render.summary"}],
+      [{"tool": "stats.aggregate"}, {"tool": "render.summary"}],
+      [{"tool": "sql"}, {"tool": "render.table"}]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain": ["noise", "illegal parking", "heat"]
+    },
+    "tags": ["aggregate", "basic"]
+  },
+  {
+    "id": "points_within_buffer",
+    "question": "How many requests are within 500m of a Brooklyn centroid?",
+    "dataset_refs": ["nyc311", "boroughs"],
+    "acceptable_plan_shapes": [
+      [{"tool": "geometry.buffer"}, {"tool": "geometry.intersects"}, {"tool": "render.summary"}],
+      [{"tool": "geometry.buffer"}, {"tool": "sql"}, {"tool": "render.summary"}],
+      [{"tool": "sql"}, {"tool": "geometry.buffer"}, {"tool": "render.summary"}]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 5.0,
+      "tolerance": 10.0
+    },
+    "tags": ["spatial", "buffer"]
+  },
+  {
+    "id": "request_density_map",
+    "question": "Map all 311 request locations.",
+    "dataset_refs": ["nyc311"],
+    "acceptable_plan_shapes": [
+      [{"tool": "render.map"}],
+      [{"tool": "sql"}, {"tool": "render.map"}],
+      [{"tool": "geometry.points"}, {"tool": "render.map"}]
+    ],
+    "expected": {
+      "kind": "geometry",
+      "feature_count": 50,
+      "feature_count_tolerance": 5
+    },
+    "tags": ["spatial", "render", "map"]
+  },
+  {
+    "id": "summary_stats",
+    "question": "What's the date range of these requests?",
+    "dataset_refs": ["nyc311"],
+    "acceptable_plan_shapes": [
+      [{"tool": "sql"}, {"tool": "render.summary"}],
+      [{"tool": "stats.aggregate"}, {"tool": "render.summary"}],
+      [{"tool": "sql"}]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain": ["2024"]
+    },
+    "tags": ["aggregate", "temporal"]
+  }
+]

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geochatbot-eval"
+version = "0.1.0"
+description = "Python + Playwright evaluation harness for GeoChatBot widget"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.44",
+    "anthropic>=0.28",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "typing-extensions>=4.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-cov",
+]
+
+[project.scripts]
+geochatbot-eval = "geochatbot_eval.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["geochatbot_eval*"]
+
+[tool.setuptools.package-data]
+geochatbot_eval = ["fixtures/*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.pyright]
+pythonVersion = "3.11"
