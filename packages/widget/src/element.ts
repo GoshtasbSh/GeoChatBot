@@ -552,7 +552,7 @@ export class GeoChatBotElement extends LitElement {
         <h2>GeoChatBot</h2>
         ${this._maskedKey
           ? html`<span class="status-chip" title="API key configured">
-              <span class="dot"></span>Anthropic · ${this._maskedKey}
+              <span class="dot"></span>${this._providerLabel()} · ${this._maskedKey}
             </span>`
           : html`<span class="status-chip muted" title="No API key set">
               <span class="dot dot-muted"></span>not connected
