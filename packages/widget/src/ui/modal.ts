@@ -71,9 +71,15 @@ export class GcbModal extends LitElement {
       if (this.open) {
         this._previouslyFocused = (document.activeElement as HTMLElement) ?? null;
       } else if (this._previouslyFocused) {
-        // Use a microtask so any host re-render finishes first.
+        // Microtask so any host re-render finishes first. The
+        // document.contains() guard handles a trigger element that
+        // was unmounted while the modal was open (e.g. the rail
+        // re-rendered) — without it, .focus() silently no-ops on a
+        // detached node and the user has keyboard focus nowhere.
         queueMicrotask(() => {
-          this._previouslyFocused?.focus();
+          if (this._previouslyFocused && document.contains(this._previouslyFocused)) {
+            this._previouslyFocused.focus();
+          }
           this._previouslyFocused = null;
         });
       }

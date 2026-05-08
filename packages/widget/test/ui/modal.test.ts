@@ -70,6 +70,9 @@ describe('<gcb-modal>', () => {
 
     el.open = false;
     await el.updateComplete;
+    // Focus restore is queued via queueMicrotask after updateComplete
+    // resolves, so flush one extra microtask before asserting.
+    await Promise.resolve();
 
     expect(document.activeElement).toBe(trigger);
   });
