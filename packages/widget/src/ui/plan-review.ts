@@ -69,6 +69,12 @@ export class PlanReview extends LitElement {
   @property({ attribute: false }) stepStatus: Map<string, StepStatus> = new Map();
   @property({ attribute: false }) stepDurations: Map<string, number> = new Map();
   @property({ attribute: false }) criticPatches: Map<string, Step> = new Map();
+  @property({ attribute: false }) criticAttempts: Map<string, Array<{
+    attempt: number;
+    maxAttempts: number;
+    decision: 'patch' | 'retry' | 'abort';
+    errorMessage: string;
+  }>> = new Map();
   @property({ type: String }) mode: PlanReviewMode = 'plan';
 
   @state() private _editingStepId: string | null = null;
@@ -134,6 +140,7 @@ export class PlanReview extends LitElement {
           ${s.output_var ? html`<div class="out">→ <b>${s.output_var}</b></div>` : nothing}
           ${duration !== undefined ? html`<div class="out"><span class="chip">${duration} ms</span></div>` : nothing}
           ${patch ? html`<div class="critic">Critic patched: ${patch.why}</div>` : nothing}
+          ${this._renderAttempts(s.id)}
         </div>
         <div class="step-actions">
           ${this.mode === 'plan' && !isEditing ? html`
@@ -262,6 +269,21 @@ export class PlanReview extends LitElement {
     return html`<div class="args">${entries.map(([k, v]) => html`
       <div class="row"><span class="k">${k}</span><span class="v">${this._renderArgValue(v)}</span></div>
     `)}</div>`;
+  }
+
+  private _renderAttempts(stepId: string) {
+    const log = this.criticAttempts.get(stepId);
+    if (!log || log.length === 0) return nothing;
+    return html`
+      <div class="critic-timeline" aria-label="Critic attempt log">
+        ${log.map((a) => html`
+          <div class="attempt-badge ${a.decision}">
+            attempt ${a.attempt} of ${a.maxAttempts} — ${a.decision}
+            <div class="attempt-error">${a.errorMessage}</div>
+          </div>
+        `)}
+      </div>
+    `;
   }
 
   private _renderArgValue(v: unknown): unknown {

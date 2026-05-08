@@ -103,4 +103,22 @@ export const planReviewStyles = css`
   button.btn.run:hover { background: color-mix(in srgb, var(--accent) 90%, white); }
 
   .critic { margin-top: 8px; padding: 10px 12px; background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.35); border-radius: 6px; font-size: 12.5px; color: var(--warn); }
+
+  .critic-timeline { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .attempt-badge {
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    background: var(--gcb-accent-soft-bg, #f5f3ff);
+    color: var(--gcb-accent, #4338ca);
+  }
+  .attempt-badge.abort { background: var(--gcb-error-bg, #fef2f2); color: var(--gcb-error-fg, #991b1b); }
+  .attempt-error {
+    font-family: ui-monospace, monospace;
+    font-size: 10px;
+    margin-top: 2px;
+    opacity: 0.8;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 `;
