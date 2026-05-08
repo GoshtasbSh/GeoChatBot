@@ -99,6 +99,12 @@ export async function createWorkerExecutor(): Promise<WorkerExecutorHandle | nul
     return null;
   }
 
+  // Idempotency latch for `dispose()`. After the first call we tear
+  // down the worker; the Comlink remote then has no live channel to
+  // talk to, so a naive second `remote.dispose()` rejects with a
+  // MessageChannel error. This flag short-circuits the second call.
+  let disposed = false;
+
   return {
     async registerDataset(ds) {
       return remote.registerDataset(ds);
@@ -136,10 +142,14 @@ export async function createWorkerExecutor(): Promise<WorkerExecutorHandle | nul
       await remote.execute({ plan, planId }, Comlink.proxy(wrapped));
     },
     async dispose() {
+      if (disposed) return;
+      disposed = true;
       try {
         await remote.dispose();
+      } catch {
+        /* worker may already be torn down; ignore */
       } finally {
-        worker.terminate();
+        try { worker.terminate(); } catch { /* idempotent */ }
       }
     },
   };

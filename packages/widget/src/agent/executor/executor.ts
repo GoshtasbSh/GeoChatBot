@@ -15,6 +15,7 @@ import { substitute } from '../substitute.js';
 import { getTool } from '../tools/registry.js';
 import type { Plan, OutputRef, Step } from '../types.js';
 import { getRunner } from './runtime.js';
+import { quoteIdent } from './sql-helpers.js';
 import type {
   CriticDecision,
   DatasetEntry,
@@ -121,6 +122,34 @@ export class Executor {
         const result = await runner(resolvedArgs, ctx);
         if (step.output_var !== undefined) {
           outputs.set(step.output_var, result.output);
+          // Also expose the output as a DuckDB temporary view named
+          // exactly `output_var`. Lets a subsequent `sql` step write
+          // `FROM <output_var>` directly inside its query body — partial-
+          // string `${var}` substitution is deliberately disabled
+          // (substitute.ts WHOLE_STRING_VAR) for SQL-injection safety,
+          // so without this alias there is no way to reference a prior
+          // step's output inside a SQL body. Output_var is zod-validated
+          // to `^[a-z_][a-z0-9_]*$`, so quoting via quoteIdent (which
+          // also length-caps + NUL-rejects) is paranoid-safe.
+          // We only alias `layer`/`table` outputs — `scalar`/`rendered`
+          // have no view to wrap.
+          if (
+            (result.output.kind === 'layer' || result.output.kind === 'table') &&
+            typeof result.output.ref === 'string'
+          ) {
+            try {
+              await this.engine.query(
+                `CREATE OR REPLACE TEMPORARY VIEW ${quoteIdent(step.output_var)} AS ` +
+                  `SELECT * FROM ${quoteIdent(result.output.ref)}`,
+              );
+            } catch {
+              // Engines without spatial / older DuckDB may reject the
+              // alias creation under edge cases. Fall back silently —
+              // the output is still in the outputs Map and downstream
+              // steps using ${var} substitution will still work; only
+              // the bare-name access path is unavailable.
+            }
+          }
         }
         if (result.payload) {
           callbacks.onResult?.({ planId, stepId: step.id, ...result.payload });

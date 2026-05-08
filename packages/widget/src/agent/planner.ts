@@ -41,6 +41,13 @@ export class Planner {
   }
 
   async plan(req: PlanRequest): Promise<Plan> {
+    // Defense-in-depth: element.ts already guards empty questions, but
+    // a host using the Planner directly (tests, custom integrations)
+    // would otherwise send an empty user message to Anthropic and get
+    // an opaque HTTP 400 — the retry budget gets consumed for nothing.
+    if (typeof req.question !== 'string' || !req.question.trim()) {
+      throw new PlannerError('plan() requires a non-empty question');
+    }
     const llmCall = this.opts.llmCall ?? callPlannerLLM;
     // Cached prefix: full template with tools+examples filled in and datasets
     // left as an explicit placeholder. This text is identical across every

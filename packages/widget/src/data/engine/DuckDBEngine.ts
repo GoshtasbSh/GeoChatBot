@@ -193,6 +193,20 @@ export class DuckDBEngine {
 
   /** Tear down DB + worker. Idempotent. */
   async dispose(): Promise<void> {
+    // Drain any in-flight init() before tearing down. Without this, a
+    // dispose() that runs while bootstrap is still fetching the WASM
+    // bundle would clear `this.conn`/`this.db`/`this.worker` (still
+    // undefined) and skip cleanup. Bootstrap then completes and assigns
+    // live resources to those fields — leaking a Worker forever.
+    // Errors from a pending bootstrap are swallowed; we are tearing
+    // down regardless.
+    if (this.initPromise) {
+      try {
+        await this.initPromise;
+      } catch {
+        /* swallow — bootstrap failed; we still need to clean up */
+      }
+    }
     try {
       if (this.conn) {
         try {

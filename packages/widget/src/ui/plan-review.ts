@@ -41,9 +41,14 @@ function getZodEnumValues(schema: z.ZodTypeAny): readonly string[] | null {
  */
 function unwrapZod(schema: z.ZodTypeAny): z.ZodTypeAny {
   let s: z.ZodTypeAny = schema;
-  // Bounded loop: handles e.g. `.optional().default(...)` chains without
-  // any chance of infinite recursion if a future Zod version adds new
-  // wrappers we don't unwrap.
+  // Bounded loop: handles `.optional().default(...).refine(...)` chains
+  // without any chance of infinite recursion if a future Zod version
+  // adds new wrappers we don't unwrap. ZodEffects covers `.refine()`,
+  // `.transform()`, and `.preprocess()` — they all wrap an inner
+  // schema accessible via `_def.schema`. Without ZodEffects unwrapping,
+  // a `z.string().refine(...)` field would render as a free-text input
+  // even though the underlying type is a string (today, harmless; it
+  // matters once a future tool wraps a number/enum in `.refine`).
   for (let i = 0; i < 4; i++) {
     if (s instanceof z.ZodOptional || s instanceof z.ZodNullable) {
       s = s.unwrap();
@@ -51,6 +56,10 @@ function unwrapZod(schema: z.ZodTypeAny): z.ZodTypeAny {
     }
     if (s instanceof z.ZodDefault) {
       s = s.removeDefault();
+      continue;
+    }
+    if (s instanceof z.ZodEffects) {
+      s = s.innerType();
       continue;
     }
     break;

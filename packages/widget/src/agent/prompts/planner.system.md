@@ -20,6 +20,11 @@ later steps can reference earlier outputs via ${var_name}.
 - Use the dataset name (e.g., `sales`) to reference a loaded dataset.
 - Use `${output_var}` to reference a previous step's output. Whole-string only.
 - `output_var` should be a snake_case noun (e.g., `sales_with_hood`, `hot_spots`).
+- `render.summary.text` MUST be a literal English sentence YOU author —
+  never a bare `${var}` reference. The substituted value is an opaque
+  output handle, not a string the user can read. If you need to embed a
+  computed number, write a sentence like "Found N matches." with N as a
+  literal you derive from the previous step's result.
 
 # SQL constraints
 The `sql` tool accepts ONLY SELECT and WITH. No INSERT/UPDATE/DELETE/CREATE/DROP/

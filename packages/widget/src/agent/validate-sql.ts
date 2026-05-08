@@ -133,7 +133,30 @@ function splitStatements(sql: string): string[] {
 }
 
 function tokenize(sql: string): string[] {
-  return Array.from(sql.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)).map((m) => m[0].toUpperCase());
+  // Strip double-quoted identifier spans before regex-scanning so a
+  // quoted column name like "into" or "select" is not tokenized as the
+  // SQL keyword. Single-quoted string literals are also stripped — they
+  // are user data, not keywords. Embedded `""`/`''` (the SQL-standard
+  // escape) is handled by `findStringEnd`.
+  let cleaned = '';
+  let i = 0;
+  while (i < sql.length) {
+    const c = sql.charAt(i);
+    if (c === '"' || c === "'") {
+      // Skip over the entire quoted span. findStringEnd handles the
+      // escape-by-doubling rule. Replace the span with a single space
+      // so token boundaries on either side are preserved.
+      const end = findStringEnd(sql, i, c);
+      cleaned += ' ';
+      i = end + 1;
+      continue;
+    }
+    cleaned += c;
+    i++;
+  }
+  return Array.from(cleaned.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)).map((m) =>
+    m[0].toUpperCase(),
+  );
 }
 
 export function validateSql(sql: string): void {

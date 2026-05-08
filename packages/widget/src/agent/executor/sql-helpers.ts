@@ -70,6 +70,16 @@ export function isOutputRef(v: unknown): v is OutputRef {
 /** Resolve a layer-kind arg (must produce a view exposing `geom`). */
 export function resolveLayer(arg: unknown, ctx: ExecCtx): string {
   if (isOutputRef(arg)) {
+    // Reject prior-step outputs that aren't layer-kind. Without this
+    // check, a `kind:'table'` ref (e.g. `stats.aggregate` output) would
+    // flow into a spatial runner; DuckDB then throws an opaque binder
+    // error on `<view>.geom` instead of a clean tool-level message,
+    // and the Phase 6 critic gets garbage to diagnose.
+    if (arg.kind !== 'layer') {
+      throw new Error(
+        `expected layer OutputRef but got kind '${arg.kind}' (ref=${arg.ref})`,
+      );
+    }
     return arg.ref;
   }
   if (typeof arg === 'string') {

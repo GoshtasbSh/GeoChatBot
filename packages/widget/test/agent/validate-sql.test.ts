@@ -83,6 +83,40 @@ describe('validateSql — blocked DuckDB table-valued read functions', () => {
   });
 });
 
+describe('validateSql — quoted-identifier safety (NM1)', () => {
+  // Regression: tokenize() must skip double-quoted identifier spans
+  // before keyword-matching, otherwise a column named "into" would
+  // falsely trigger the INTO blocklist entry.
+  for (const q of [
+    'SELECT "into" FROM t',
+    'SELECT "select" FROM t',
+    'SELECT "drop" AS d FROM t',
+    'SELECT t."from", t."where" FROM t',
+    'SELECT "INTO" FROM t', // upper-case quoted identifier
+    'SELECT "READ_CSV_AUTO" FROM t', // function-name as a column
+    'SELECT "information_schema" FROM t',
+  ]) {
+    it(`accepts: ${q}`, () => {
+      expect(() => validateSql(q)).not.toThrow();
+    });
+  }
+
+  // String literals must also not poison the tokenizer.
+  it("accepts a SELECT with 'INTO' inside a string literal", () => {
+    expect(() => validateSql("SELECT 'INTO this' AS msg FROM t")).not.toThrow();
+  });
+
+  // The actual unquoted keyword still rejects.
+  it('still rejects unquoted SELECT ... INTO new_table', () => {
+    expect(() => validateSql('SELECT * INTO sink FROM t')).toThrow();
+  });
+
+  // Mixing both: quoted "into" plus unquoted INTO should still reject.
+  it('rejects unquoted INTO even when a quoted "into" appears', () => {
+    expect(() => validateSql('SELECT "into" INTO sink FROM t')).toThrow();
+  });
+});
+
 describe('validateSql — extended SSRF / catalog blocklist', () => {
   // Functions and aliases not covered by the original blocklist that
   // would otherwise pass the leading-token check. Each must be rejected.

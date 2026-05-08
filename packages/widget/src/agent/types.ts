@@ -17,7 +17,11 @@ export const StepSchema = z.object({
 export const PlanSchema = z.object({
   goal: z.string().min(1),
   assumptions: z.array(z.string()).default([]),
-  dataset_refs: z.array(z.string()).min(1),
+  // Each element must be a non-empty string. Dedup is enforced in
+  // validate-plan.ts (the schema itself can't easily express "no
+  // duplicates" without a refine, and the same plan-level error type
+  // already handles duplicate step ids).
+  dataset_refs: z.array(z.string().min(1)).min(1),
   steps: z.array(StepSchema).min(1).max(10),
 });
 

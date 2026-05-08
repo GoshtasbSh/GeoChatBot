@@ -118,6 +118,42 @@ describe('runner: geometry.buffer', () => {
     );
     expect(errs).toHaveLength(1);
   });
+
+  it('rejects a non-layer OutputRef from a prior step (kind discriminator)', async () => {
+    // Regression for NH3: a `kind:'table'` OutputRef (e.g. from
+    // stats.aggregate) must not be silently accepted as a layer arg.
+    // Without the kind check, DuckDB would throw an opaque binder error
+    // on `<view>.geom` instead of a clean tool-level message.
+    const errs: Array<{ message: string }> = [];
+    const plan: Plan = {
+      goal: 'g',
+      assumptions: [],
+      dataset_refs: ['sales'],
+      steps: [
+        // Aggregate produces a `kind:'table'` OutputRef.
+        {
+          id: 's1',
+          tool: 'stats.aggregate',
+          args: { layer: 'sales', group_by: 'region', value_col: 'amt', agg_fn: 'sum' },
+          output_var: 'agg',
+          why: 'a',
+        },
+        // Buffer expects a layer arg — passing the table-kind ref must fail clean.
+        {
+          id: 's2',
+          tool: 'geometry.buffer',
+          args: { layer: '${agg}', distance: 100, units: 'meters' },
+          why: 'b',
+        },
+        { id: 's3', tool: 'render.summary', args: { text: 'x' }, why: 'final' },
+      ],
+    };
+    await new Executor({ engine, datasets: [sales] }).execute(plan, 'pid', {
+      onError: (e) => errs.push(e),
+    });
+    expect(errs).toHaveLength(1);
+    expect(errs[0]!.message).toMatch(/expected layer OutputRef/i);
+  });
 });
 
 describe('runner: geometry.centroid', () => {

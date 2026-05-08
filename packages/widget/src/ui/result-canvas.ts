@@ -143,12 +143,18 @@ export class ResultCanvas extends LitElement {
     // ECharts integration is post-Phase-5 (~250 KB lazy-load). For now we
     // surface the spec inline so the developer can see / pipe it elsewhere
     // and so the headless contract is verifiable end-to-end.
+    // Defensive: a malformed payload could omit `data`/`x`/`y` (the
+    // executor type guarantees them, but a future critic-patched step or
+    // host-injected event could violate the type at runtime). Coerce to
+    // safe defaults so the entire shadow root render doesn't throw.
+    const spec = this._chart.spec;
+    const dataLen = Array.isArray(spec.data) ? spec.data.length : 0;
     return html`
       <div class="panel">
-        <h4>Chart (${this._chart.spec.kind})</h4>
+        <h4>Chart (${spec.kind})</h4>
         <div class="chart-placeholder">
-          ${this._chart.spec.data.length} data points · x=${this._chart.spec.x}, y=${this._chart.spec.y}
-          <pre>${JSON.stringify(this._chart.spec, null, 2)}</pre>
+          ${dataLen} data points · x=${spec.x ?? '(missing)'}, y=${spec.y ?? '(missing)'}
+          <pre>${JSON.stringify(spec, null, 2)}</pre>
         </div>
       </div>
     `;
@@ -157,11 +163,14 @@ export class ResultCanvas extends LitElement {
   private _renderLayer(): TemplateResult | typeof nothing {
     if (!this._layer || this._layer.kind !== 'layer') return nothing;
     const fc = this._layer.geojson;
+    // Same defensive coercion as _renderChart: an upstream malformed
+    // layer payload (no `features`) would throw on `.features.length`.
+    const featCount = Array.isArray(fc?.features) ? fc.features.length : 0;
     return html`
       <div class="panel">
-        <h4>Map (${fc.features.length} features)</h4>
+        <h4>Map (${featCount} features)</h4>
         <div class="chart-placeholder">
-          GeoJSON FeatureCollection with ${fc.features.length} features.
+          GeoJSON FeatureCollection with ${featCount} features.
           Drop into your map via the <code>result</code> event payload, or
           enable the bundled <code>&lt;gcb-map&gt;</code> renderer (lazy-loaded after the first geometry ingest).
         </div>

@@ -228,29 +228,42 @@ function buildScatterplot(
 
   const rowCount = table.numRows;
 
+  // Pre-collect indices of rows with finite numeric lon AND lat.
+  // ScatterplotLayer iterates the `data` collection 1:1 — without this
+  // filter, rows with missing/non-finite coords would render at
+  // ScatterplotLayer's `getPosition` fallback `[0, 0]` (Null Island in
+  // the Gulf of Guinea). Real-world CSVs commonly have footer/summary
+  // rows with no coordinates, so this matters in practice.
+  const validIdx: number[] = [];
   for (let i = 0; i < rowCount; i++) {
     const lon = lonVec.get(i) as number | null | undefined;
     const lat = latVec.get(i) as number | null | undefined;
     if (lon == null || lat == null) continue;
+    if (typeof lon !== 'number' || typeof lat !== 'number') continue;
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    validIdx.push(i);
     if (lon < bbox[0]) bbox[0] = lon;
     if (lat < bbox[1]) bbox[1] = lat;
     if (lon > bbox[2]) bbox[2] = lon;
     if (lat > bbox[3]) bbox[3] = lat;
   }
 
+  if (validIdx.length === 0) {
+    console.warn(`[gcb-map] layer "${name}": no rows with finite lon/lat — skipping`);
+    return null;
+  }
+
   return new ScatterplotLayer({
     id: `gcb-scatter-${name}`,
-    data: { length: rowCount } as unknown as Iterable<unknown>,
+    data: validIdx,
     getPosition: ((
-      _: unknown,
-      info: { index: number; data: unknown; target: number[] },
+      rowIdx: number,
+      info: { target: number[] },
     ) => {
-      const { index, target } = info;
-      const lon = lonVec.get(index) as number | null | undefined;
-      const lat = latVec.get(index) as number | null | undefined;
-      target[0] = typeof lon === 'number' ? lon : 0;
-      target[1] = typeof lat === 'number' ? lat : 0;
+      const { target } = info;
+      // rowIdx is the validIdx[i] value — guaranteed numeric & finite.
+      target[0] = lonVec.get(rowIdx) as number;
+      target[1] = latVec.get(rowIdx) as number;
       target[2] = 0;
       return target as unknown as [number, number, number];
     }) as unknown as never,

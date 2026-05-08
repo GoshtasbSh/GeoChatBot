@@ -28,9 +28,16 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
     seenIds.add(s.id);
   }
 
-  // dataset_refs must be loaded
+  // dataset_refs: dedup, non-empty, every entry is a loaded dataset.
+  // Duplicates indicate planner confusion and would let two cross-ref
+  // checks fight over the same name; reject up front.
   const loaded = new Set(loadedDatasets);
+  const seenRefs = new Set<string>();
   for (const d of plan.dataset_refs) {
+    if (seenRefs.has(d)) {
+      throw new PlanValidationError(`duplicate dataset_refs entry: ${d}`);
+    }
+    seenRefs.add(d);
     if (!loaded.has(d)) throw new PlanValidationError(`dataset_refs contains missing dataset: ${d}`);
   }
 
@@ -93,17 +100,35 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
   return plan;
 }
 
-function collectVarRefs(value: unknown, out: string[] = []): string[] {
+/**
+ * Maximum nesting depth for `args` walking. A pathologically nested
+ * args object would otherwise blow the JS call stack — which would
+ * crash validation BEFORE any tool args.safeParse() saw the input.
+ * Real plans are 1–3 levels deep; 32 leaves enormous headroom while
+ * preventing a DoS via deeply-nested LLM output.
+ */
+const MAX_REF_DEPTH = 32;
+
+function collectVarRefs(
+  value: unknown,
+  out: string[] = [],
+  depth = 0,
+): string[] {
+  if (depth > MAX_REF_DEPTH) {
+    throw new PlanValidationError(
+      `args nesting too deep (>${MAX_REF_DEPTH}); refusing to validate`,
+    );
+  }
   if (typeof value === 'string') {
     for (const m of value.matchAll(VAR_REF)) out.push(m[1]!);
     return out;
   }
   if (Array.isArray(value)) {
-    for (const v of value) collectVarRefs(v, out);
+    for (const v of value) collectVarRefs(v, out, depth + 1);
     return out;
   }
   if (value && typeof value === 'object') {
-    for (const v of Object.values(value)) collectVarRefs(v, out);
+    for (const v of Object.values(value)) collectVarRefs(v, out, depth + 1);
   }
   return out;
 }
