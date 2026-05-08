@@ -40,13 +40,13 @@ export class GcbMap extends LitElement {
         height: var(--gcb-map-height, 360px);
         border-radius: 10px;
         overflow: hidden;
-        border: 1px solid #e3e3e3;
+        border: 1px solid var(--gcb-border, #e3e3e3);
         position: relative;
       }
       .root {
         width: 100%;
         height: 100%;
-        background: #f4f4f5;
+        background: var(--gcb-map-bg, #f4f4f5);
       }
       .err {
         position: absolute;
@@ -55,9 +55,9 @@ export class GcbMap extends LitElement {
         bottom: 0;
         padding: 8px 12px;
         font-size: 12px;
-        color: #991b1b;
-        background: #fef2f2;
-        border-top: 1px solid #fecaca;
+        color: var(--gcb-error-fg, #991b1b);
+        background: var(--gcb-error-bg, #fef2f2);
+        border-top: 1px solid var(--gcb-border, #fecaca);
       }
     `,
     css`${unsafeCSS(maplibreCss)}`,

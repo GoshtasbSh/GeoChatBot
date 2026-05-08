@@ -18,6 +18,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build:size": "du -h dist/geochatbot.js dist/geochatbot.umd.cjs && printf 'gzipped ESM: %s bytes\\n' \"$(gzip -c dist/geochatbot.js | wc -c | tr -d ' ')\"",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
