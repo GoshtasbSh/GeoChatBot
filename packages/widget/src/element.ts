@@ -43,6 +43,8 @@ import './ui/plan-review.js';
 import type { PlanReview } from './ui/plan-review.js';
 import './ui/modal.js';
 import './ui/upload-popover.js';
+import './ui/shell.js';
+import type { ShellTab } from './ui/shell.js';
 import './ui/result-canvas.js';
 import './ui/settings-drawer.js';
 import type { SettingsValue } from './ui/settings-drawer.js';
@@ -234,7 +236,6 @@ export class GeoChatBotElement extends LitElement {
         --gcb-shadow: var(--gcb-shadow-1);
         --gcb-font: var(--gcb-font-sans);
         --gcb-map-height: 360px;
-        --gcb-max-width: 880px;
 
         display: block;
         font-family: var(--gcb-font);
@@ -243,8 +244,7 @@ export class GeoChatBotElement extends LitElement {
         border: 1px solid var(--gcb-line);
         border-radius: var(--gcb-radius);
         box-shadow: var(--gcb-shadow);
-        padding: 16px;
-        max-width: var(--gcb-max-width);
+        padding: 0;
       }
       header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
       header h2 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; }
@@ -387,6 +387,9 @@ export class GeoChatBotElement extends LitElement {
   /* -------------------------------------------------------------------- */
   /* Settings + chat UI state                                             */
   /* -------------------------------------------------------------------- */
+  /** Active dashboard tab. Slice 1 = chrome only; non-Map tabs render
+   *  a "coming in next slice" hint until Slice 2 lands. */
+  @state() private _activeTab: ShellTab = 'map';
   /** Whether the settings drawer is open. */
   @state() private _settingsOpen = false;
   /** Whether the upload popover is open. */
@@ -540,63 +543,84 @@ export class GeoChatBotElement extends LitElement {
   };
 
   render() {
-    // In headless mode the widget renders nothing — the host owns the UI
-    // and listens for typed events. We still render an invisible host so
-    // CSS-targeted host queries do not break.
-    if (this.mode === 'headless') {
-      return html``;
-    }
+    if (this.mode === 'headless') return html``;
     const disabledReason = this._askDisabledReason();
     return html`
-      <header>
-        <h2>GeoChatBot</h2>
-        ${this._maskedKey
-          ? html`<span class="status-chip" title="API key configured">
-              <span class="dot"></span>${this._providerLabel()} · ${this._maskedKey}
-            </span>`
-          : html`<span class="status-chip muted" title="No API key set">
-              <span class="dot dot-muted"></span>not connected
-            </span>`}
-        <span style="position: relative;">
+      <gcb-shell
+        .activeTab=${this._activeTab}
+        .datasetCount=${this.loaded.length}
+        .savedCount=${0}
+        @gcb:tab=${(e: CustomEvent<ShellTab>) => (this._activeTab = e.detail)}
+      >
+        <div slot="topbar" style="display:flex; align-items:center; gap:10px; height:100%; padding:0 14px;">
+          <strong style="font-family: var(--gcb-font-display); font-style: italic; font-size: 18px;">GeoChatBot</strong>
+          ${this._maskedKey
+            ? html`<span class="status-chip" title="API key configured">
+                <span class="dot"></span>${this._providerLabel()} · ${this._maskedKey}
+              </span>`
+            : html`<span class="status-chip muted" title="No API key set">
+                <span class="dot dot-muted"></span>not connected
+              </span>`}
+          <span style="margin-left:auto; position:relative;">
+            <button
+              class="icon-btn"
+              type="button"
+              aria-label="Add data"
+              title="Add data"
+              @click=${(e: MouseEvent) => { e.stopPropagation(); this._uploadOpen = !this._uploadOpen; }}
+            >+ Add data</button>
+            <gcb-upload-popover
+              ?open=${this._uploadOpen}
+              @gcb:files=${this._onFilesFromPopover}
+              @gcb:popover-close=${() => (this._uploadOpen = false)}
+            ></gcb-upload-popover>
+          </span>
           <button
             class="icon-btn"
             type="button"
-            aria-label="Add data"
-            title="Add data"
-            @click=${(e: MouseEvent) => { e.stopPropagation(); this._uploadOpen = !this._uploadOpen; }}
-          >+ Add data</button>
-          <gcb-upload-popover
-            ?open=${this._uploadOpen}
-            @gcb:files=${this._onFilesFromPopover}
-            @gcb:popover-close=${() => (this._uploadOpen = false)}
-          ></gcb-upload-popover>
-        </span>
-        <button
-          class="icon-btn"
-          type="button"
-          aria-label="Open settings"
-          title="Settings"
-          @click=${this._openSettings}
-        >⚙</button>
-      </header>
+            aria-label="Open settings"
+            title="Settings"
+            @click=${this._openSettings}
+          >⚙</button>
+        </div>
 
-      ${this.error ? html`<div class="err">${this.error}</div>` : null}
+        <div slot="rail" style="padding: 14px;">
+          <div style="font-family: var(--gcb-font-mono); font-size: 11px; color: var(--gcb-ink-muted); text-transform: uppercase; letter-spacing: 0.14em;">Datasets</div>
+          ${this.loaded.length === 0
+            ? html`<div style="font-size:12px; color:var(--gcb-ink-muted); margin-top:8px;">No datasets yet. Click + Add data.</div>`
+            : html`<ul style="list-style:none; padding:0; margin:8px 0; display:flex; flex-direction:column; gap:4px;">
+                ${this.loaded.map((r) => html`
+                  <li style="font-size:12px; padding:6px 8px; border-radius:6px; background:var(--gcb-bg-3);">
+                    ${r.name}
+                  </li>`)}
+              </ul>`}
+        </div>
 
-      ${this._mapModuleLoaded && this.geometryLayers().length
-        ? html`<gcb-map .layers=${this.geometryLayers()}></gcb-map>`
-        : null}
+        <div slot="main" style="height:100%; overflow:auto; padding: 14px;">
+          ${this.error ? html`<div class="err">${this.error}</div>` : null}
+          ${this._activeTab === 'map'
+            ? html`
+                ${this._mapModuleLoaded && this.geometryLayers().length
+                  ? html`<gcb-map .layers=${this.geometryLayers()}></gcb-map>` : null}
+                <div class="tables">
+                  ${this.loaded.map((r) => this.renderTable(r))}
+                </div>`
+            : html`<div style="padding: 32px; color: var(--gcb-ink-muted); font-size: 13px;">
+                ${this._activeTab === 'results' ? 'Saved results gallery — Slice 2.' : 'Detail drill-down — Slice 2.'}
+              </div>`}
+        </div>
 
-      <div class="tables">
-        ${this.loaded.map((r) => this.renderTable(r))}
-      </div>
-
-      <gcb-ask-input
-        .disabledReason=${disabledReason}
-        .examples=${disabledReason === null ? this._exampleQuestions() : []}
-        ?busy=${this._agentBusy}
-        @gcb:ask=${this._onAskFromInput}
-        @gcb:request-settings=${this._openSettings}
-      ></gcb-ask-input>
+        <div slot="dock" style="height:100%; display:flex; align-items:center; padding: 0 14px;">
+          <gcb-ask-input
+            style="flex:1;"
+            .disabledReason=${disabledReason}
+            .examples=${disabledReason === null ? this._exampleQuestions() : []}
+            ?busy=${this._agentBusy}
+            @gcb:ask=${this._onAskFromInput}
+            @gcb:request-settings=${this._openSettings}
+          ></gcb-ask-input>
+        </div>
+      </gcb-shell>
 
       ${this._settingsOpen
         ? html`<gcb-settings-drawer
