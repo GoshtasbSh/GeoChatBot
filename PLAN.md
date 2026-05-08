@@ -158,25 +158,30 @@ Subtasks (parallelizable after `DatasetProfile` and `DuckDBEngine` interfaces ar
 
 ---
 
-### Phase 4 — Planner + Plan UI + Approval Gate · 1 week · [S]
+### Phase 4 — Planner + Plan UI + Approval Gate · ~2.5 weeks · [S]
+
+> Updated 2026-05-08. See docs/superpowers/specs/2026-05-08-phase-4-planner-design.md and docs/superpowers/plans/2026-05-08-phase-4-planner.md.
 
 This is the heart and the differentiator.
 
 - `Plan` zod schema: `{ goal, steps: Step[], assumptions, dataset_refs }`
 - `Step`: `{ id, tool, args, output_var, why }`
-- Tool catalog v1 (small, locked):
-  - `sql(query)` — `SELECT`-only, validated
-  - `buffer(layer, distance, units)`
-  - `point_in_polygon(points_layer, polygons_layer)`
-  - `distance_matrix(a, b, k?)`
-  - `aggregate(layer, group_by, agg_fn, value_col)`
-  - `summary_stats(layer, columns)`
-  - `render_map(layer, style?)`
-  - `render_chart(table, kind, x, y)`
-  - `render_table(table)`
-  - `write_summary(text)`
-- Planner uses Anthropic tool-use with structured output to emit a `Plan`.
-- Plan UI: numbered steps with Why, inline edit of args, Approve / Reject / Edit. No execution before approval.
+- Tool catalog v1 (25 tools — locked; see the design spec for full signatures):
+  - **SQL (1):** `sql`
+  - **Geometry (8):** `buffer`, `point_in_polygon`, `distance_matrix`,
+    `nearest`, `convex_hull`, `centroid`, `union`, `intersection`
+  - **Aggregation / stats (5):** `aggregate`, `summary_stats`,
+    `correlation`, `histogram`, `topk`
+  - **Transforms (3):** `filter`, `sort`, `project`
+  - **Joins (2):** `attribute_join`, `spatial_join`
+  - **Renderers (4):** `render.map`, `render.chart`, `render.table`,
+    `render.summary`
+  - **Critic helpers (2):** `clarify`, `decline`
+- Planner uses Anthropic tool-use with structured output (forced
+  `submit_plan` tool) and prompt caching on the system prompt + 20
+  few-shot exemplars.
+- Plan UI: numbered steps with Why, inline edit of args (zod-validated
+  per tool), Approve / Reject. No execution before approval.
 
 **Initial prompt:**
 > Phase 4: build the Planner + Plan UI. Implement `Plan` and `Step` as zod schemas (PLAN.md §5 Phase 4). Build a typed tool registry in `src/agent/tools.ts` — each tool has a JSON-Schema arg signature and a runtime executor stub returning mock outputs. Implement `Planner.plan(question, profile, history) → Plan` using Anthropic's tool-use. Build `PlanReview` Lit component inside Shadow DOM with numbered steps, expandable Why, inline arg editing, Approve / Reject buttons. Wire `ask()` from Phase 2 to call the planner, emit a `plan` event, and only call the (still stubbed) executor on user approval. Test end-to-end with a real Anthropic key on the fixture GeoJSON.

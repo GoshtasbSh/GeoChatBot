@@ -18,9 +18,9 @@ Embeddable chatbot widget for **in-browser** spatial and tabular data analysis. 
 | 0 — workspace | done |
 | 1 — data + engine + map | in progress (drop GeoJSON → see map ✅) |
 | 2 — public dev API + headless mode | next |
-| 3 — LLM provider + BYO key UI | pending |
-| 4 — planner + plan UI + approval gate | pending |
-| 5 — executors + renderers | pending |
+| 3 — LLM provider + BYO key UI | done |
+| 4 — planner + plan UI + approval gate | done ([plan](./docs/superpowers/plans/2026-05-08-phase-4-planner.md)) |
+| 5 — executors + renderers | next |
 | 6 — critic loop | pending |
 | 7 — eval harness | pending |
 | 8 — site + README + demo video | pending |
