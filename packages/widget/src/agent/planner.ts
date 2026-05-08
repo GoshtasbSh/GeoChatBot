@@ -1,5 +1,6 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { callPlannerLLM, type PlannerLLMInput } from './llm.js';
+import type { ProviderId } from './forced-tool/index.js';
 import type { DatasetProfile } from './prompts/builders.js';
 import { renderDatasetsBlock, renderToolsBlock, renderPrompt } from './prompts/builders.js';
 import { renderExamplesBlock } from './prompts/examples.js';
@@ -18,6 +19,8 @@ export class PlannerError extends Error {
 type LlmCallFn = (input: PlannerLLMInput) => Promise<Record<string, unknown>>;
 
 export interface PlannerOptions {
+  /** LLM provider id. Defaults to 'anthropic' for backwards compat. */
+  provider?: ProviderId;
   apiKey: string;
   model: string;
   llmCall?: LlmCallFn;
@@ -90,6 +93,9 @@ export class Planner {
         temperature: 0,
         maxTokens: 2048,
       };
+      if (this.opts.provider !== undefined) {
+        inputBase.provider = this.opts.provider;
+      }
       if (this.opts.dangerouslyAllowBrowser !== undefined) {
         inputBase.dangerouslyAllowBrowser = this.opts.dangerouslyAllowBrowser;
       }

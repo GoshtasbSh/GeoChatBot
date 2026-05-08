@@ -14,9 +14,11 @@ const DEV_API = `const bot = document.querySelector('geo-chatbot') as any;
 bot.pushData(file: File);
 bot.pushData({ name: 'sales', rows: [...], geometry?: {...} });
 
-// LLM provider
+// LLM provider — pick any of: 'groq' (free, default), 'gemini' (free), 'anthropic', 'openai'.
 bot.setProvider({ name: 'anthropic', apiKey: 'sk-ant-…', model: 'claude-sonnet-4-6' });
-// (or set \`dangerously-allow-browser\` attribute + use the in-widget settings drawer)
+// In practice, end users open the in-widget settings drawer (⚙ icon) and
+// paste their key there — it persists to localStorage and is sent only
+// to the provider they pick. The drawer defaults to Groq (free tier).
 
 // Ask
 await bot.ask('How many points fall within 500 m of each school?');
@@ -97,6 +99,60 @@ export default function DocsPage() {
               </code>
               .
             </p>
+          </div>
+        </section>
+
+        <Separator />
+
+        {/* Section 1.5: Providers */}
+        <section>
+          <h2 className="mb-4 text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+            LLM providers
+          </h2>
+          <p className="mb-4 text-zinc-600 dark:text-zinc-400">
+            Bring your own key. The widget defaults to Groq (free tier);
+            users pick a different provider in the in-widget settings
+            drawer. The selected key is stored in <code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs dark:bg-zinc-800">localStorage</code>{' '}
+            and sent only to the provider they choose — never to a
+            GeoChatBot server (there isn&apos;t one).
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 dark:bg-zinc-900">
+                <tr className="text-left">
+                  <th className="px-4 py-2 font-medium">Provider</th>
+                  <th className="px-4 py-2 font-medium">Free tier</th>
+                  <th className="px-4 py-2 font-medium">Recommended model</th>
+                  <th className="px-4 py-2 font-medium">Get a key</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                <tr>
+                  <td className="px-4 py-2 font-medium">Groq <span className="text-xs text-zinc-500">(default)</span></td>
+                  <td className="px-4 py-2"><span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100">FREE</span></td>
+                  <td className="px-4 py-2 font-mono text-xs">llama-3.3-70b-versatile</td>
+                  <td className="px-4 py-2"><a href="https://console.groq.com/keys" className="text-indigo-600 underline" target="_blank" rel="noopener">console.groq.com/keys</a></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2 font-medium">Google Gemini</td>
+                  <td className="px-4 py-2"><span className="rounded bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100">FREE</span></td>
+                  <td className="px-4 py-2 font-mono text-xs">gemini-2.0-flash</td>
+                  <td className="px-4 py-2"><a href="https://aistudio.google.com/app/apikey" className="text-indigo-600 underline" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2 font-medium">Anthropic</td>
+                  <td className="px-4 py-2 text-zinc-500">paid</td>
+                  <td className="px-4 py-2 font-mono text-xs">claude-sonnet-4-6</td>
+                  <td className="px-4 py-2"><a href="https://console.anthropic.com/settings/keys" className="text-indigo-600 underline" target="_blank" rel="noopener">console.anthropic.com</a></td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2 font-medium">OpenAI</td>
+                  <td className="px-4 py-2 text-zinc-500">$5 sign-up credit</td>
+                  <td className="px-4 py-2 font-mono text-xs">gpt-4o-mini</td>
+                  <td className="px-4 py-2"><a href="https://platform.openai.com/api-keys" className="text-indigo-600 underline" target="_blank" rel="noopener">platform.openai.com</a></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 

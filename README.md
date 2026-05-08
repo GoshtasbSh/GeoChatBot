@@ -13,7 +13,18 @@
 <geo-chatbot dangerously-allow-browser></geo-chatbot>
 ```
 
-That's it. Drop a CSV or GeoJSON, paste your Anthropic key, ask a question.
+That's it. Drop a CSV or GeoJSON, paste a free Groq or Gemini API key (or a paid Anthropic / OpenAI key), ask a question.
+
+## Bring-your-own LLM — including free options
+
+| Provider | Free tier | Models | Where to get a key |
+|---|---|---|---|
+| **Groq** *(default)* | ✅ free | Llama 3.3 70B, Mixtral 8x7B, Llama 3.1 8B | [console.groq.com/keys](https://console.groq.com/keys) |
+| **Google Gemini** | ✅ free | Gemini 2.0 Flash, 1.5 Pro, 1.5 Flash | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
+| Anthropic | paid | Claude Sonnet 4.6, Haiku 4.5, Opus 4.7 | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+| OpenAI | $5 sign-up credit | GPT-4o mini, GPT-4o, GPT-4 Turbo | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+
+Pick a provider in the in-widget settings drawer (⚙ icon) — your key stays in `localStorage` and is sent only to the provider you choose. Free-tier reality: Groq and Gemini have no per-token charge but you still register for an API key.
 
 ## Why this is different
 

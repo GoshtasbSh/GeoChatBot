@@ -1,28 +1,30 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import {
+  PROVIDER_CATALOGUE,
+  DEFAULT_PROVIDER_ID,
+  defaultModelFor,
+  getProviderInfo,
+  type ProviderId,
+} from '../agent/forced-tool/index.js';
 
 /**
  * <gcb-settings-drawer>
  *
- * Self-contained Lit component for the GeoChatBot settings panel:
- *   - provider dropdown (Anthropic only for v1; others labelled "soon")
- *   - model dropdown (a small allowlist; matches the planner's expectations)
+ * Multi-provider settings panel:
+ *   - Provider dropdown (Groq default — free tier; Gemini also free; Anthropic + OpenAI paid)
+ *   - Model dropdown (auto-populated from the selected provider's catalogue)
  *   - API key input (type="password", masked display)
- *   - "Allow direct browser calls" opt-in (mirrors the agent/llm.ts guard)
+ *   - Per-provider "get a key here" link (signupUrl)
+ *   - "Allow direct browser calls" opt-in (mirrors agent/forced-tool/* guards)
  *
  * Stateless re: storage — persistence lives in the host <geo-chatbot>.
  * On Save, dispatches a typed `gcb:settings` CustomEvent. On Cancel /
- * close, dispatches `gcb:settings-close`. Keeps the host element thin.
+ * close, dispatches `gcb:settings-close`.
  */
 
-const MODELS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (recommended)' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (cheaper)' },
-  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7 (heaviest)' },
-];
-
 export interface SettingsValue {
-  provider: 'anthropic';
+  provider: ProviderId;
   model: string;
   apiKey: string;
   dangerouslyAllowBrowser: boolean;
@@ -56,7 +58,7 @@ export class GcbSettingsDrawer extends LitElement {
       border-radius: 12px;
       padding: 18px 20px;
       width: 100%;
-      max-width: 460px;
+      max-width: 480px;
       box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
       animation: pop-in 200ms cubic-bezier(.34, 1.56, .64, 1);
     }
@@ -90,6 +92,26 @@ export class GcbSettingsDrawer extends LitElement {
     select:focus-visible, input:focus-visible {
       outline: 2px solid var(--gcb-accent, #4338ca);
       outline-offset: -1px;
+    }
+    .free-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--gcb-geom-fg, #047857);
+      color: #fff;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .signup-hint {
+      font-size: 11px;
+      color: var(--gcb-muted-fg, #555);
+      margin: -4px 0 0;
+    }
+    .signup-hint a {
+      color: var(--gcb-accent, #4338ca);
+      text-decoration: underline;
     }
     .toggle {
       display: flex;
@@ -144,10 +166,10 @@ export class GcbSettingsDrawer extends LitElement {
     }
   `;
 
-  /** Pre-fill the form with these values (e.g. restored from localStorage). */
+  /** Pre-fill the form (e.g. restored from localStorage). */
   @property({ attribute: false }) value: SettingsValue = {
-    provider: 'anthropic',
-    model: 'claude-sonnet-4-6',
+    provider: DEFAULT_PROVIDER_ID,
+    model: defaultModelFor(DEFAULT_PROVIDER_ID),
     apiKey: '',
     dangerouslyAllowBrowser: false,
   };
@@ -160,14 +182,22 @@ export class GcbSettingsDrawer extends LitElement {
   }
 
   override willUpdate(changed: Map<string, unknown>): void {
-    // Use willUpdate (pre-render) rather than updated (post-render) so a
-    // re-seeded draft does NOT trigger a second render cycle. Lit warns
-    // about state writes from updated() because it indicates avoidable
-    // double-render work; willUpdate is the documented escape hatch.
     if (changed.has('value')) {
       this._draft = { ...this.value };
     }
   }
+
+  private _onProvider = (e: Event) => {
+    const target = e.target as HTMLSelectElement;
+    const provider = target.value as ProviderId;
+    // Reset model to the new provider's default — the previous model id
+    // is almost certainly wrong for the new provider's API.
+    this._draft = {
+      ...this._draft,
+      provider,
+      model: defaultModelFor(provider),
+    };
+  };
 
   private _onModel = (e: Event) => {
     const target = e.target as HTMLSelectElement;
@@ -185,7 +215,6 @@ export class GcbSettingsDrawer extends LitElement {
   };
 
   private _onSave = () => {
-    // Trim the key — pasted keys often arrive with surrounding whitespace.
     const detail: SettingsValue = { ...this._draft, apiKey: this._draft.apiKey.trim() };
     this.dispatchEvent(new CustomEvent<SettingsValue>('gcb:settings', { detail }));
   };
@@ -195,7 +224,6 @@ export class GcbSettingsDrawer extends LitElement {
   };
 
   private _onScrimClick = (e: MouseEvent) => {
-    // Only close on backdrop click, never on panel click bubbled up.
     if (e.target === e.currentTarget) this._onClose();
   };
 
@@ -206,6 +234,7 @@ export class GcbSettingsDrawer extends LitElement {
         ? `${this._draft.apiKey.slice(0, 4)}…${this._draft.apiKey.slice(-4)}`
         : '•'.repeat(this._draft.apiKey.length)
       : '';
+    const providerInfo = getProviderInfo(this._draft.provider);
     return html`
       <div class="scrim" @click=${this._onScrimClick} role="dialog" aria-modal="true" aria-label="GeoChatBot settings">
         <div class="panel">
@@ -213,24 +242,39 @@ export class GcbSettingsDrawer extends LitElement {
           <p class="note">
             GeoChatBot calls the LLM directly from your browser. Your API key
             is stored in this browser's <code>localStorage</code> and sent only
-            to the provider you choose.
+            to the provider you choose. Pick Groq or Gemini for a free tier.
           </p>
 
           <label class="row">
             <span class="label-text">Provider</span>
-            <select disabled aria-label="Provider">
-              <option value="anthropic" selected>Anthropic</option>
-              <option disabled>OpenAI · soon</option>
-              <option disabled>Gemini · soon</option>
+            <select aria-label="Provider" .value=${this._draft.provider} @change=${this._onProvider}>
+              ${PROVIDER_CATALOGUE.map(
+                (p) => html`
+                  <option value=${p.id} ?selected=${p.id === this._draft.provider}>
+                    ${p.label}${p.free ? ' · free' : ''}
+                  </option>
+                `,
+              )}
             </select>
+            ${providerInfo.signupUrl
+              ? html`<p class="signup-hint">
+                  ${providerInfo.free
+                    ? html`<span class="free-badge">FREE</span>`
+                    : nothing}
+                  Get a key:
+                  <a href=${providerInfo.signupUrl} target="_blank" rel="noopener">${providerInfo.signupUrl}</a>
+                </p>`
+              : nothing}
           </label>
 
           <label class="row">
             <span class="label-text">Model</span>
             <select aria-label="Model" .value=${this._draft.model} @change=${this._onModel}>
-              ${MODELS.map((m) => html`
-                <option value=${m.id} ?selected=${m.id === this._draft.model}>${m.label}</option>
-              `)}
+              ${providerInfo.models.map(
+                (m) => html`
+                  <option value=${m.id} ?selected=${m.id === this._draft.model}>${m.label}</option>
+                `,
+              )}
             </select>
           </label>
 
@@ -240,7 +284,7 @@ export class GcbSettingsDrawer extends LitElement {
               type="password"
               autocomplete="off"
               spellcheck="false"
-              placeholder="sk-ant-…"
+              placeholder=${this._placeholderFor(this._draft.provider)}
               .value=${this._draft.apiKey}
               @input=${this._onKey}
             />
@@ -253,7 +297,7 @@ export class GcbSettingsDrawer extends LitElement {
               .checked=${this._draft.dangerouslyAllowBrowser}
               @change=${this._onDangerous}
             />
-            <span>I acknowledge that calling Anthropic from the browser exposes my API key to scripts on this page (<a href="https://docs.anthropic.com/en/api/getting-started#making-requests-from-the-browser" target="_blank" rel="noopener">why</a>).</span>
+            <span>I acknowledge that calling ${providerInfo.label} from the browser exposes my API key to scripts on this page.</span>
           </label>
 
           <div class="privacy">
@@ -274,6 +318,15 @@ export class GcbSettingsDrawer extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private _placeholderFor(p: ProviderId): string {
+    switch (p) {
+      case 'anthropic': return 'sk-ant-…';
+      case 'openai': return 'sk-…';
+      case 'groq': return 'gsk_…';
+      case 'gemini': return 'AIza…';
+    }
   }
 }
 

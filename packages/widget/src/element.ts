@@ -16,8 +16,12 @@ import {
   type ChatProvider,
   setProvider as setActiveProvider,
 } from './providers/index';
-import { Planner, Critic } from './agent/index.js';
-import type { Plan, DatasetProfile as PlannerDatasetProfile } from './agent/index.js';
+import { Planner, Critic, DEFAULT_PROVIDER_ID, defaultModelFor } from './agent/index.js';
+import type {
+  Plan,
+  DatasetProfile as PlannerDatasetProfile,
+  ProviderId,
+} from './agent/index.js';
 import type { CriticDecision, StepErrorContext } from './agent/executor/index.js';
 import type { PlannerLLMInput } from './agent/llm.js';
 import { validateSql } from './agent/validate-sql.js';
@@ -366,7 +370,12 @@ export class GeoChatBotElement extends LitElement {
   private _pendingPlan?: { id: string; plan: Plan };
   private _datasets: PlannerDatasetProfile[] = [];
   private _apiKey?: string;
-  private _model = 'claude-sonnet-4-6';
+  /**
+   * Active LLM provider id. Defaults to Groq (free tier). Restored from
+   * localStorage on connect; updated by the settings drawer on Save.
+   */
+  private _llmProvider: ProviderId = DEFAULT_PROVIDER_ID;
+  private _model = defaultModelFor(DEFAULT_PROVIDER_ID);
 
   /* -------------------------------------------------------------------- */
   /* Phase 5 executor state                                               */
@@ -412,8 +421,9 @@ export class GeoChatBotElement extends LitElement {
   /* -------------------------------------------------------------------- */
   /**
    * localStorage key namespace. Values stored:
-   *   geochatbot:apiKey                  — raw Anthropic key
-   *   geochatbot:model                   — selected model id
+   *   geochatbot:provider                — provider id ('groq' | 'gemini' | 'anthropic' | 'openai')
+   *   geochatbot:apiKey                  — raw API key for the active provider
+   *   geochatbot:model                   — selected model id (provider-specific)
    *   geochatbot:dangerouslyAllowBrowser — '1' or '0' opt-in flag
    *
    * Stored only if the user hits Save in the drawer. Never written from
@@ -422,10 +432,19 @@ export class GeoChatBotElement extends LitElement {
    * browsing, hardened CSP) — the widget falls back to in-memory only.
    */
   private static readonly _STORAGE_KEYS = {
+    provider: 'geochatbot:provider',
     apiKey: 'geochatbot:apiKey',
     model: 'geochatbot:model',
     dangerouslyAllowBrowser: 'geochatbot:dangerouslyAllowBrowser',
   } as const;
+
+  /** Provider ids the persistence layer knows about. Anything else is ignored. */
+  private static readonly _KNOWN_PROVIDERS: ReadonlySet<ProviderId> = new Set([
+    'anthropic',
+    'groq',
+    'openai',
+    'gemini',
+  ]);
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -436,6 +455,13 @@ export class GeoChatBotElement extends LitElement {
   private _restoreSettings(): void {
     try {
       const k = GeoChatBotElement._STORAGE_KEYS;
+      const persistedProvider = localStorage.getItem(k.provider);
+      if (
+        persistedProvider &&
+        GeoChatBotElement._KNOWN_PROVIDERS.has(persistedProvider as ProviderId)
+      ) {
+        this._llmProvider = persistedProvider as ProviderId;
+      }
       const apiKey = localStorage.getItem(k.apiKey);
       const model = localStorage.getItem(k.model);
       const dangerous = localStorage.getItem(k.dangerouslyAllowBrowser) === '1';
@@ -457,16 +483,29 @@ export class GeoChatBotElement extends LitElement {
     return `${key.slice(0, 4)}…${key.slice(-4)}`;
   }
 
+  /** Short, header-friendly label for the active provider. */
+  private _providerLabel(): string {
+    switch (this._llmProvider) {
+      case 'anthropic': return 'Anthropic';
+      case 'openai': return 'OpenAI';
+      case 'groq': return 'Groq';
+      case 'gemini': return 'Gemini';
+    }
+  }
+
   private _onSaveSettings = (e: Event) => {
     const detail = (e as CustomEvent<SettingsValue>).detail;
+    this._llmProvider = detail.provider;
     this._apiKey = detail.apiKey;
     this._model = detail.model;
     this.dangerouslyAllowBrowser = detail.dangerouslyAllowBrowser;
     this._maskedKey = this._maskKey(detail.apiKey);
-    // Force planner rebuild so the next ask() picks up the new model/key.
+    // Force planner rebuild so the next ask() picks up the new
+    // provider/model/key tuple.
     delete this._planner;
     try {
       const k = GeoChatBotElement._STORAGE_KEYS;
+      localStorage.setItem(k.provider, detail.provider);
       localStorage.setItem(k.apiKey, detail.apiKey);
       localStorage.setItem(k.model, detail.model);
       localStorage.setItem(k.dangerouslyAllowBrowser, detail.dangerouslyAllowBrowser ? '1' : '0');
@@ -527,7 +566,7 @@ export class GeoChatBotElement extends LitElement {
         <h2>GeoChatBot</h2>
         ${this._maskedKey
           ? html`<span class="status-chip" title="API key configured">
-              <span class="dot"></span>Anthropic · ${this._maskedKey}
+              <span class="dot"></span>${this._providerLabel()} · ${this._maskedKey}
             </span>`
           : html`<span class="status-chip muted" title="No API key set">
               <span class="dot dot-muted"></span>not connected
@@ -573,7 +612,7 @@ export class GeoChatBotElement extends LitElement {
       ${this._settingsOpen
         ? html`<gcb-settings-drawer
             .value=${{
-              provider: 'anthropic',
+              provider: this._llmProvider,
               model: this._model,
               apiKey: this._apiKey ?? '',
               dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
@@ -845,12 +884,13 @@ export class GeoChatBotElement extends LitElement {
       this.dispatch('error', {
         code: 'BROWSER_KEY_GUARD',
         message:
-          'Direct-from-browser Anthropic calls leak the API key. Set the `dangerously-allow-browser` attribute (or .dangerouslyAllowBrowser=true) to acknowledge, or proxy through your own server.',
+          `Direct-from-browser ${this._providerLabel()} calls leak the API key. Set the \`dangerously-allow-browser\` attribute (or .dangerouslyAllowBrowser=true) to acknowledge, or proxy through your own server.`,
       });
       return;
     }
     if (!this._planner) {
       this._planner = new Planner({
+        provider: this._llmProvider,
         apiKey: this._apiKey,
         model: this._model,
         dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
@@ -1073,6 +1113,7 @@ export class GeoChatBotElement extends LitElement {
     if (this._criticOverride) return this._criticOverride;
     if (!this._apiKey) return null;
     return new Critic({
+      provider: this._llmProvider,
       apiKey: this._apiKey,
       model: this._model,
       datasets: this._datasets,

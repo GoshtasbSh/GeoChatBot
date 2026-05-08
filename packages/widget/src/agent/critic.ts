@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { callCriticLLM, type CriticLLMInput } from './critic-llm.js';
 import { buildCriticUserMessage } from './prompts/critic-builders.js';
+import type { ProviderId } from './forced-tool/index.js';
 import type { DatasetProfile } from './prompts/builders.js';
 import { renderToolsBlock } from './prompts/builders.js';
 import { StepSchema, type Step } from './types.js';
@@ -28,6 +29,8 @@ export class CriticError extends Error {
 type LlmCallFn = (input: CriticLLMInput) => Promise<Record<string, unknown>>;
 
 export interface CriticOptions {
+  /** LLM provider id. Defaults to 'anthropic' for backwards compat. */
+  provider?: ProviderId;
   apiKey: string;
   model: string;
   /** Planner-side dataset profiles, used to ground the prompt. */
@@ -103,6 +106,7 @@ export class Critic {
       temperature: 0,
       maxTokens: 1024,
     };
+    if (this.opts.provider !== undefined) input.provider = this.opts.provider;
     if (signal !== undefined) input.signal = signal;
     if (this.opts.dangerouslyAllowBrowser !== undefined) {
       input.dangerouslyAllowBrowser = this.opts.dangerouslyAllowBrowser;

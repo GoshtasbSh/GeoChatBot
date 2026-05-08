@@ -1,16 +1,26 @@
 /**
- * Planner-specific Anthropic Messages call. Forces a single `tool_use`
- * round-trip with `tool_choice` pinned to `submit_plan`. Caches the static
- * system prefix via `cache_control: ephemeral` so subsequent calls are cheap.
+ * Planner-side forced-tool dispatcher.
  *
- * NOT routed through `src/providers/anthropic.ts` because that provider is
- * vendor-neutral and text-only by design.
+ * Thin wrapper that adapts the planner's existing `PlannerLLMInput`
+ * shape to the provider-agnostic `callForcedTool` registry. Each
+ * provider's API quirks (Anthropic's tool_use vs OpenAI's function
+ * calls vs Gemini's functionDeclarations) are encapsulated in
+ * `agent/forced-tool/<provider>.ts`.
+ *
+ * Default provider is `'anthropic'` for backwards compatibility — the
+ * settings UI defaults to Groq, but tests + code that constructed
+ * PlannerLLMInput before multi-provider support continue to work.
  */
 
-const ENDPOINT = 'https://api.anthropic.com/v1/messages';
-const VERSION = '2023-06-01';
+import {
+  callForcedTool,
+  ForcedToolError,
+  type ProviderId,
+} from './forced-tool/index.js';
 
 export interface PlannerLLMInput {
+  /** Provider id; defaults to 'anthropic' if omitted. */
+  provider?: ProviderId;
   apiKey: string;
   model: string;
   cachedSystemPrompt: string;
@@ -25,6 +35,11 @@ export interface PlannerLLMInput {
   dangerouslyAllowBrowser?: boolean;
 }
 
+/**
+ * Legacy error class — preserved so existing tests / callers that
+ * `instanceof PlannerLLMError` keep working. New code can catch
+ * {@link ForcedToolError} directly via `agent/forced-tool/index.js`.
+ */
 export class PlannerLLMError extends Error {
   readonly code:
     | 'AUTH'
@@ -42,79 +57,36 @@ export class PlannerLLMError extends Error {
   }
 }
 
-export async function callPlannerLLM(input: PlannerLLMInput): Promise<Record<string, unknown>> {
-  const inBrowser = typeof window !== 'undefined';
-  if (inBrowser && input.dangerouslyAllowBrowser !== true) {
-    throw new PlannerLLMError(
-      'NETWORK',
-      'Direct-from-browser Anthropic calls leak the API key. Pass dangerouslyAllowBrowser:true to acknowledge, or proxy through your own server.',
-    );
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'x-api-key': input.apiKey,
-    'anthropic-version': VERSION,
-  };
-  if (inBrowser) headers['anthropic-dangerous-direct-browser-access'] = 'true';
-
-  const body = {
-    model: input.model,
-    max_tokens: input.maxTokens ?? 2048,
-    temperature: input.temperature ?? 0,
-    system: [
-      { type: 'text', text: input.cachedSystemPrompt, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: input.systemPrompt },
-    ],
-    messages: [
-      { role: 'user', content: input.userQuestion },
-    ],
-    tools: [
-      {
-        name: input.toolName,
-        description: input.toolDescription,
-        input_schema: input.toolInputSchema,
-      },
-    ],
-    tool_choice: { type: 'tool', name: input.toolName },
-  };
-
-  let res: Response;
+export async function callPlannerLLM(
+  input: PlannerLLMInput,
+): Promise<Record<string, unknown>> {
+  const provider = input.provider ?? 'anthropic';
   try {
-    const init: RequestInit = { method: 'POST', headers, body: JSON.stringify(body) };
-    if (input.signal) init.signal = input.signal;
-    res = await fetch(ENDPOINT, init);
+    return await callForcedTool({
+      provider,
+      apiKey: input.apiKey,
+      model: input.model,
+      cachedSystemPrompt: input.cachedSystemPrompt,
+      systemPrompt: input.systemPrompt,
+      userMessage: input.userQuestion,
+      toolName: input.toolName,
+      toolDescription: input.toolDescription,
+      toolInputSchema: input.toolInputSchema,
+      ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+      ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
+      ...(input.signal !== undefined ? { signal: input.signal } : {}),
+      ...(input.dangerouslyAllowBrowser !== undefined
+        ? { dangerouslyAllowBrowser: input.dangerouslyAllowBrowser }
+        : {}),
+    });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new PlannerLLMError('ABORTED', 'aborted');
+    // Cancellations propagate as native AbortError so the host can
+    // distinguish user-initiated abort from a real network failure.
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    if (err instanceof ForcedToolError) {
+      const code = err.code === 'ABORTED' ? 'ABORTED' : err.code;
+      throw new PlannerLLMError(code, err.message, err.status);
     }
-    throw new PlannerLLMError('NETWORK', 'fetch failed');
+    throw err;
   }
-  if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
-      throw new PlannerLLMError('AUTH', `auth failed (${res.status})`, res.status);
-    }
-    if (res.status === 429) {
-      throw new PlannerLLMError('RATE_LIMIT', `rate limited (429)`, res.status);
-    }
-    throw new PlannerLLMError('BAD_RESPONSE', `http ${res.status}`, res.status);
-  }
-  const json = await res.json().catch(() => null);
-  const block = extractToolUse(json, input.toolName);
-  if (!block) throw new PlannerLLMError('NO_TOOL_USE', 'no tool_use block in response');
-  return block;
-}
-
-function extractToolUse(json: unknown, toolName: string): Record<string, unknown> | null {
-  if (!json || typeof json !== 'object') return null;
-  const content = (json as { content?: unknown }).content;
-  if (!Array.isArray(content)) return null;
-  for (const b of content) {
-    if (!b || typeof b !== 'object') continue;
-    const c = b as { type?: unknown; name?: unknown; input?: unknown };
-    if (c.type === 'tool_use' && c.name === toolName && c.input && typeof c.input === 'object') {
-      return c.input as Record<string, unknown>;
-    }
-  }
-  return null;
 }
