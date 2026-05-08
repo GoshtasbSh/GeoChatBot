@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>GeoChatBot — demo</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        padding: 32px 24px;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        background: #f7f7fb;
+        color: #111;
+        min-height: 100vh;
+      }
+      header.page {
+        max-width: 960px;
+        margin: 0 auto 16px;
+      }
+      header.page h1 { margin: 0 0 4px; font-size: 22px; }
+      header.page p { margin: 0; color: #555; font-size: 14px; }
+      main { max-width: 960px; margin: 0 auto; }
+      footer {
+        max-width: 960px; margin: 32px auto 0; color: #888; font-size: 12px;
+      }
+      .samples { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+      .samples button {
+        font: inherit; font-size: 12px;
+        padding: 6px 10px; border: 1px solid #d4d4d8;
+        background: #fff; border-radius: 6px; cursor: pointer;
+      }
+      .samples button:hover { background: #eef2ff; border-color: #4338ca; color: #4338ca; }
+      .log {
+        margin-top: 16px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        background: #111;
+        color: #d1d5db;
+        padding: 10px 12px;
+        border-radius: 6px;
+        max-height: 160px;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="page">
+      <h1>GeoChatBot demo</h1>
+      <p>Drop a CSV (with lat/lon), GeoJSON, Shapefile zip, Excel, or Parquet file. Or click a sample below.</p>
+      <div class="samples">
+        <button data-sample="/samples/points.csv">points.csv</button>
+        <button data-sample="/samples/no_geo.csv">no_geo.csv</button>
+        <button data-sample="/samples/points.geojson">points.geojson</button>
+      </div>
+    </header>
+
+    <main>
+      <geo-chatbot id="bot"></geo-chatbot>
+      <div class="log" id="log">events:\n</div>
+    </main>
+
+    <footer>
+      Built with Lit · Apache Arrow · Loaders.gl · DuckDB-WASM · deck.gl · MapLibre
+    </footer>
+
+    <script type="module">
+      import '@geochatbot/widget';
+
+      const bot = document.getElementById('bot');
+      const log = document.getElementById('log');
+
+      bot.addEventListener('geochatbot:layer-loaded', (e) => {
+        const d = e.detail;
+        const p = d.profile;
+        const line =
+          `✓ ${d.name} [${d.source}] — ${p.rowCount} rows × ${p.columns.length} cols` +
+          (p.geometry ? ` · geom=${p.geometry.encoding}/${p.geometry.crsGuess}` : '') +
+          ` · engine=${d.engineRegistered ? 'registered' : 'skipped'}\n`;
+        log.textContent += line;
+        log.scrollTop = log.scrollHeight;
+      });
+
+      // Sample-file buttons: fetch the file, wrap as File, hand to widget.
+      document.querySelectorAll('.samples button').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const url = btn.dataset.sample;
+          const res = await fetch(url);
+          if (!res.ok) {
+            log.textContent += `✗ fetch ${url} failed: ${res.status}\n`;
+            return;
+          }
+          const blob = await res.blob();
+          const name = url.split('/').pop();
+          const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          bot.dispatchEvent(new DragEvent('drop', {
+            bubbles: true,
+            cancelable: true,
+            dataTransfer: dt,
+          }));
+        });
+      });
+    </script>
+  </body>
+</html>

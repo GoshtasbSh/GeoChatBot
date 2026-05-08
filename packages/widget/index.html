@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GeoChatBot — dev</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+        margin: 0;
+        background: #f7f7f9;
+        padding: 24px;
+      }
+      .wrap { max-width: 880px; margin: 0 auto; }
+      h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+      .hint { font-size: 13px; color: #555; margin: 0 0 16px; }
+      .row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+      button {
+        font: inherit; padding: 6px 10px; border-radius: 6px;
+        border: 1px solid #d1d5db; background: white; cursor: pointer;
+      }
+      button:hover { background: #f3f4f6; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>GeoChatBot — Phase 1 dev harness</h1>
+      <p class="hint">Drop a CSV or GeoJSON below, or click a fixture to load it.</p>
+      <div class="row">
+        <button id="fix-points">Load fixture: 5 cities (GeoJSON points)</button>
+        <button id="fix-polys">Load fixture: 3 polygons</button>
+      </div>
+      <geo-chatbot id="bot"></geo-chatbot>
+    </div>
+
+    <script type="module">
+      import './src/index.ts';
+
+      const points = {
+        type: 'FeatureCollection',
+        features: [
+          ['New York', -74.006, 40.7128, 8_336_000],
+          ['London', -0.1276, 51.5074, 8_982_000],
+          ['Tokyo', 139.6917, 35.6895, 13_960_000],
+          ['Sydney', 151.2093, -33.8688, 5_312_000],
+          ['Sao Paulo', -46.6333, -23.5505, 12_330_000],
+        ].map(([name, lon, lat, pop]) => ({
+          type: 'Feature',
+          properties: { name, population: pop },
+          geometry: { type: 'Point', coordinates: [lon, lat] },
+        })),
+      };
+
+      const polys = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: { name: 'A' },
+            geometry: { type: 'Polygon', coordinates: [[[-10,-10],[-10,10],[10,10],[10,-10],[-10,-10]]] },
+          },
+          {
+            type: 'Feature',
+            properties: { name: 'B' },
+            geometry: { type: 'Polygon', coordinates: [[[20,20],[20,40],[40,40],[40,20],[20,20]]] },
+          },
+          {
+            type: 'Feature',
+            properties: { name: 'C' },
+            geometry: { type: 'Polygon', coordinates: [[[-60,30],[-60,50],[-30,50],[-30,30],[-60,30]]] },
+          },
+        ],
+      };
+
+      function dropFixture(obj, filename) {
+        const file = new File([JSON.stringify(obj)], filename, { type: 'application/geo+json' });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        const bot = document.getElementById('bot');
+        const dropZone = bot.shadowRoot.querySelector('.drop');
+        const evt = new DragEvent('drop', { dataTransfer: dt, bubbles: true });
+        dropZone.dispatchEvent(evt);
+      }
+
+      document.getElementById('fix-points').addEventListener('click', () => dropFixture(points, 'cities.geojson'));
+      document.getElementById('fix-polys').addEventListener('click', () => dropFixture(polys, 'polys.geojson'));
+    </script>
+  </body>
+</html>
