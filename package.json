@@ -18,7 +18,7 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "biome ci .",
     "format": "biome format --write .",
-    "e2e": "npm test --workspace=@geochatbot/e2e",
+    "e2e": "npm run test:e2e --workspace=@geochatbot/e2e",
     "e2e:install": "npm run test:install --workspace=@geochatbot/e2e",
     "hello": "echo \"GeoChatBot widget v0.0.0\""
   },

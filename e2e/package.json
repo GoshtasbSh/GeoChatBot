@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Playwright end-to-end tests for the GeoChatBot widget.",
   "scripts": {
-    "test": "playwright test",
+    "test:e2e": "playwright test",
     "test:install": "playwright install chromium"
   },
   "devDependencies": {
