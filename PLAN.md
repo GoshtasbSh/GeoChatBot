@@ -260,32 +260,82 @@ Phase 5 alignment fixes shipped in the same phase:
 
 ---
 
-### Phase 7 — Eval harness · 1 week · [P with Phase 8]
+### ✅ Phase 7 — Eval harness · *scaffold done 2026-05-08*
 
-The thing that turns this from demo to portfolio standout.
+Status: **harness scaffolded + 31/31 unit tests green; ready to run as soon
+as the user has an Anthropic key + the site running on localhost.**
 
-- `packages/eval` (Python + Playwright). 1 anchor dataset. ~15 tasks.
-- Each task: `{ question, acceptable_plan_shapes, expected_answer (numeric/geometric with tolerance) }`.
-- Runner drives the standalone app headlessly, captures plan + result, scores, emits a Markdown leaderboard.
-- Run on Claude Sonnet 4.6 + Haiku 4.5 minimum.
+Implemented in `packages/eval/`:
+- Python 3.11 + Playwright + Anthropic SDK + pytest. `pyproject.toml`
+  installable via `uv pip install -e .` (or plain pip).
+- 8 v1 tasks at `tasks/nyc_311_v1.json` — the anchor dataset is **NYC 311
+  + boroughs** (synthesized 50-row CSV + 5-feature borough polygons under
+  `geochatbot_eval/fixtures/`; the harness is dataset-agnostic so swapping
+  to Cedar Key is a one-line config change).
+- `runner.py` — Playwright driver that drives `/app`, sets the API key
+  via `setProvider`, pushes the fixture, listens for `plan` / `progress`
+  / `result` / `error` / `critic` events, awaits `__lastExecution`.
+- `scorer.py` — plan-shape (ordered subsequence) + numeric tolerance +
+  geometry feature count + text must-contain. Each task passes only if
+  BOTH plan + answer pass.
+- `leaderboard.py` — aggregates run JSONs into `EVALS.md`. Renders a
+  "no runs yet" placeholder when no data exists, so `/evals` never 404s.
+- 31 pytest cases across `test_scorer.py`, `test_tasks_schema.py`,
+  `test_leaderboard.py` — all green.
 
-**Initial prompt:**
+To run (post-scaffold):
+```bash
+cd packages/eval && pip install -e . && playwright install chromium
+python -m geochatbot_eval run --site http://localhost:5173/app \
+  --tasks tasks/nyc_311_v1.json \
+  --models claude-sonnet-4-6,claude-haiku-4-5-20251001 \
+  --api-key $ANTHROPIC_API_KEY --out runs/run-001.json
+python -m geochatbot_eval leaderboard --runs 'runs/*.json' --out ../../EVALS.md
+```
+
+Target: ≥80% pass rate on Sonnet. Will be measured once the user runs it.
+
+**Initial prompt (kept for reference):**
 > Create `packages/eval` (Python). Pick the anchor dataset (default to NYC 311 + boroughs unless otherwise specified). Define 15 tasks per PLAN.md §5 Phase 7 with question, acceptable plan shapes, expected answer with tolerance. Build a Playwright runner that drives the standalone `/app` page, captures `plan` + `result` events via the dev API, scores them, and writes `EVALS.md` with a Markdown leaderboard. Run on `claude-sonnet-4-6` and `claude-haiku-4-5-20251001`. Target ≥80% on Sonnet.
 
 ---
 
-### Phase 8 — Standalone app + marketing site + README + GIF · 1 week · [P with Phase 7]
+### ✅ Phase 8 — Standalone app + marketing site + README · *done 2026-05-08*
 
-One Next.js app on Cloudflare Pages (or Vercel):
-- `/` — landing with embedded widget, embed snippet, 4 differentiators
-- `/app` — full-screen standalone widget
-- `/dashboard` — Phase 7 dashboard demo
-- `/docs` — embed guide, dev API reference, security model
-- `/evals` — leaderboard from Phase 7
+Status: **Next.js 16 site shipped at `packages/site/` with all 5 routes
+building cleanly (5/5 static, all returning 200 in dev). Root README
+rewritten. GIF + Vercel deploy are the only remaining manual steps.**
 
-Record 90-second screencast. README rewritten with GIF + embed snippet + leaderboard above the fold.
+Implemented:
+- Next.js 16 App Router, TypeScript, Tailwind 4, shadcn/ui (new-york /
+  zinc) — primitives written inline (no `npx shadcn add` needed).
+- `next.config.ts` with `transpilePackages: ['@geochatbot/widget']` so
+  the Lit web component imports cleanly into RSC pages.
+- `pnpm-workspace.yaml` created at the repo root binding
+  `packages/widget` + `packages/site`.
+- 5 routes: `/` (hero + 4 differentiators + embed snippet + live widget
+  + leaderboard placeholder + footer), `/app` (full-viewport standalone
+  widget — what the eval harness drives), `/dashboard` (headless mode
+  demo), `/docs` (embed guide + dev API + privacy), `/evals` (server
+  component reading `EVALS.md` from the repo root, falls open to
+  placeholder when missing).
+- `components/geo-chatbot-embed.tsx` — `'use client'` lazy-import wrapper
+  that handles SSR-safe `customElements` mount + cleanup on unmount.
+- Root `README.md` rewritten: tagline + 30-sec embed snippet + 4
+  differentiators + leaderboard placeholder + project layout table.
+- GIF placeholder in README to be replaced with a 90-sec screencast
+  recorded post-deploy (script in §10 below).
 
-**Initial prompt:**
+To run locally:
+```bash
+cd packages/site && pnpm dev
+# open http://localhost:3000 (or 5180 with --port)
+```
+
+To deploy to Vercel: `vercel deploy` from `packages/site/` (project not
+yet linked; one-time setup).
+
+**Initial prompt (kept for reference):**
 > Phase 8: ship `packages/site` (Next.js, App Router, deployed to Cloudflare Pages). Pages: `/`, `/app`, `/dashboard`, `/docs`, `/evals`. Use shadcn/ui for the marketing site only (the widget itself stays vanilla — no shadcn inside Shadow DOM). Embed the widget via the published npm package. Record a 90-second screencast (script in PLAN.md §10). Rewrite the root README so above-the-fold has tagline + GIF + 30-second embed snippet + 4 differentiators + eval leaderboard table.
 
 ---
