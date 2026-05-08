@@ -1189,6 +1189,10 @@ export class GeoChatBotElement extends LitElement {
     });
 
     const pr = document.createElement('plan-review') as PlanReviewEl;
+    // Order intentional: approvePlan/rejectPlan kick off their async work
+    // synchronously (delete _pendingPlan, fire-and-forget _execute or
+    // planner.plan), but neither removes the modal — so `modal.open = false`
+    // on the next line still runs against a live node and dismisses the UI.
     pr.addEventListener('plan:approve', () => {
       this.approvePlan(planId);
       modal.open = false;
