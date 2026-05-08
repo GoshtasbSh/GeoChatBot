@@ -44,11 +44,13 @@ describe('defineGeoChatBot', () => {
 });
 
 describe('GeoChatBotElement shadow DOM', () => {
-  it('renders a .drop zone in its shadow root after first update', async () => {
-    const el = mountElement();
-    await flushUpdates(el);
-    const drop = el.shadowRoot?.querySelector('.drop');
-    expect(drop).toBeTruthy();
+  it('renders a top-right "Add data" button after first update', async () => {
+    const el = document.createElement('geo-chatbot');
+    document.body.appendChild(el);
+    await (el as any).updateComplete;
+    const btn = el.shadowRoot?.querySelector('button[aria-label="Add data"]');
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toMatch(/Add data/);
   });
 });
 
@@ -169,6 +171,7 @@ describe('Phase 2 — mode / ask / exportLayer', () => {
     await flushUpdates(el);
     // No drop zone, no header, no map — headless renders nothing.
     expect(el.shadowRoot?.querySelector('.drop')).toBeNull();
+    expect(el.shadowRoot?.querySelector('gcb-upload-popover')).toBeNull();
     expect(el.shadowRoot?.querySelector('header')).toBeNull();
     // mode reflects to attribute
     expect(el.getAttribute('mode')).toBe('headless');

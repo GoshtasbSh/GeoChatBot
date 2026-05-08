@@ -42,6 +42,7 @@ import {
 import './ui/plan-review.js';
 import type { PlanReview } from './ui/plan-review.js';
 import './ui/modal.js';
+import './ui/upload-popover.js';
 import './ui/result-canvas.js';
 import './ui/settings-drawer.js';
 import type { SettingsValue } from './ui/settings-drawer.js';
@@ -295,7 +296,6 @@ export class GeoChatBotElement extends LitElement {
   @state() private loaded: LoadResult[] = [];
   @state() private profiles: Record<string, DatasetProfile> = {};
   @state() private error: string | null = null;
-  @state() private dragOver = false;
   @state() private busy = false;
   /** Becomes true once the MapView module has been dynamically imported. */
   @state() private _mapModuleLoaded = false;
@@ -389,6 +389,8 @@ export class GeoChatBotElement extends LitElement {
   /* -------------------------------------------------------------------- */
   /** Whether the settings drawer is open. */
   @state() private _settingsOpen = false;
+  /** Whether the upload popover is open. */
+  @state() private _uploadOpen = false;
   /** True while a plan is being produced or executed; disables the Ask button. */
   @state() private _agentBusy = false;
   /** Mirrors the persisted key for the masked header chip; never the raw bytes. */
@@ -550,11 +552,25 @@ export class GeoChatBotElement extends LitElement {
         <h2>GeoChatBot</h2>
         ${this._maskedKey
           ? html`<span class="status-chip" title="API key configured">
-              <span class="dot"></span>${this._providerLabel()} · ${this._maskedKey}
+              <span class="dot"></span>Anthropic · ${this._maskedKey}
             </span>`
           : html`<span class="status-chip muted" title="No API key set">
               <span class="dot dot-muted"></span>not connected
             </span>`}
+        <span style="position: relative;">
+          <button
+            class="icon-btn"
+            type="button"
+            aria-label="Add data"
+            title="Add data"
+            @click=${(e: MouseEvent) => { e.stopPropagation(); this._uploadOpen = !this._uploadOpen; }}
+          >+ Add data</button>
+          <gcb-upload-popover
+            ?open=${this._uploadOpen}
+            @gcb:files=${this._onFilesFromPopover}
+            @gcb:popover-close=${() => (this._uploadOpen = false)}
+          ></gcb-upload-popover>
+        </span>
         <button
           class="icon-btn"
           type="button"
@@ -563,17 +579,6 @@ export class GeoChatBotElement extends LitElement {
           @click=${this._openSettings}
         >⚙</button>
       </header>
-
-      <div
-        class="drop ${this.dragOver ? 'over' : ''}"
-        @click=${this.openPicker}
-        @dragover=${this.onDragOver}
-        @dragleave=${this.onDragLeave}
-        @drop=${this.onDrop}
-      >
-        <p>${this.busy ? 'Loading…' : 'Drop a file here or click to choose'}</p>
-        <p class="hint">CSV · GeoJSON · Shapefile (.zip) · Excel · Parquet</p>
-      </div>
 
       ${this.error ? html`<div class="err">${this.error}</div>` : null}
 
@@ -1308,7 +1313,6 @@ export class GeoChatBotElement extends LitElement {
     this.loaded = [];
     this.profiles = {};
     this.error = null;
-    this.dragOver = false;
     this.busy = false;
     this._execDatasets = [];
     // Phase 4 / 5 / 6 state — must be wiped to avoid cross-session leaks.
@@ -1453,15 +1457,6 @@ export class GeoChatBotElement extends LitElement {
   /* Drag & drop / picker                                                 */
   /* -------------------------------------------------------------------- */
 
-  private onDragOver = (e: DragEvent) => { e.preventDefault(); this.dragOver = true; };
-  private onDragLeave = () => { this.dragOver = false; };
-  private onDrop = async (e: DragEvent) => {
-    e.preventDefault();
-    this.dragOver = false;
-    const files = e.dataTransfer?.files;
-    if (files && files.length) await this.handleFiles(Array.from(files));
-  };
-
   private openPicker = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -1471,6 +1466,12 @@ export class GeoChatBotElement extends LitElement {
       if (input.files) await this.handleFiles(Array.from(input.files));
     });
     input.click();
+  };
+
+  private _onFilesFromPopover = async (e: Event): Promise<void> => {
+    const files = (e as CustomEvent<File[]>).detail;
+    this._uploadOpen = false;
+    await this.handleFiles(files);
   };
 
   private async handleFiles(files: File[]) {
