@@ -55,11 +55,18 @@
         log.scrollTop = log.scrollHeight;
       };
 
-      // Subscribe via the new on() API (Agent A).
+      // Subscribe via the typed on() API. Phase 2 events:
+      //  - dataset-loaded: emitted on every successful pushData ingest
+      //  - plan / progress / result: emitted by the (Phase 2 stub) ask() flow
+      //  - error: any failure
       try {
-        bot.on?.('result', (e) => append('[result] ' + JSON.stringify(e).slice(0, 200)));
-        bot.on?.('error', (e) => append('[error] ' + (e?.message ?? String(e))));
+        bot.on?.('dataset-loaded', (e) =>
+          append('[dataset-loaded] ' + JSON.stringify({ name: e.name, source: e.source }).slice(0, 200)),
+        );
         bot.on?.('plan', (p) => append('[plan] ' + JSON.stringify(p).slice(0, 200)));
+        bot.on?.('progress', (p) => append('[progress] ' + JSON.stringify(p).slice(0, 200)));
+        bot.on?.('result', (r) => append('[result] ' + JSON.stringify(r).slice(0, 200)));
+        bot.on?.('error', (e) => append('[error] ' + (e?.message ?? String(e))));
       } catch (err) {
         append('on() not available yet: ' + err);
       }

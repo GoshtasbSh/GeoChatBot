@@ -57,4 +57,29 @@ describe('substitute', () => {
     const got = substitute('${n}', refs) as OutputRef;
     expect(got.value).toBe(42);
   });
+
+  describe('prototype pollution safety (M3)', () => {
+    it('ignores a __proto__ key without polluting the returned object', () => {
+      const evil = JSON.parse('{"__proto__": {"polluted": true}, "x": 1}');
+      const out = substitute(evil, refs) as Record<string, unknown>;
+      // The dangerous key must NOT appear on the result.
+      expect(Object.prototype.hasOwnProperty.call(out, '__proto__')).toBe(false);
+      // And the global Object prototype must not have been polluted.
+      const probe: Record<string, unknown> = {};
+      expect((probe as { polluted?: boolean }).polluted).toBeUndefined();
+    });
+
+    it('ignores constructor and prototype keys', () => {
+      const evil = { constructor: { x: 1 }, prototype: { y: 2 }, ok: 'ok' };
+      const out = substitute(evil, refs) as Record<string, unknown>;
+      expect(out.ok).toBe('ok');
+      // Don't pass through the dangerous keys.
+      expect(Object.prototype.hasOwnProperty.call(out, 'prototype')).toBe(false);
+    });
+
+    it('returns a null-prototype object so legitimate constructor checks fail safely', () => {
+      const out = substitute({ a: 1 }, refs) as Record<string, unknown>;
+      expect(Object.getPrototypeOf(out)).toBeNull();
+    });
+  });
 });

@@ -263,7 +263,11 @@ describe('createGemini', () => {
     expect(out.text).toBe('gemini hi');
     const url = calls[0]!.url;
     expect(url).toContain('models/gemini-2.5-flash:generateContent');
-    expect(url).toContain('key=gkey');
+    // Key must travel in the x-goog-api-key header, not the query string
+    // (avoids URL leaks via DevTools, HAR exports, server logs, Referer).
+    expect(url).not.toContain('key=');
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers['x-goog-api-key']).toBe('gkey');
     const body = JSON.parse(calls[0]!.init.body as string);
     expect(body.systemInstruction.parts[0].text).toBe('be brief');
     expect(body.contents).toEqual([
@@ -271,5 +275,215 @@ describe('createGemini', () => {
       { role: 'model', parts: [{ text: 'hi' }] },
       { role: 'user', parts: [{ text: 'again' }] },
     ]);
+  });
+});
+
+describe('error mapping (regressions)', () => {
+  it('openai-compat maps 500 to NETWORK', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('boom', { status: 500 })),
+    );
+    const p = createOpenAICompat({
+      baseUrl: 'https://x.test/v1',
+      apiKey: 'k',
+      model: 'm',
+    });
+    await expect(
+      p.generate({ messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 500 });
+  });
+
+  it('openai-compat maps AbortError to ABORTED', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        const e = new Error('aborted');
+        e.name = 'AbortError';
+        throw e;
+      }),
+    );
+    const p = createOpenAICompat({
+      baseUrl: 'https://x.test/v1',
+      apiKey: 'k',
+      model: 'm',
+    });
+    await expect(
+      p.generate({ messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toMatchObject({ code: 'ABORTED' });
+  });
+
+  it('openai-compat network error message does NOT echo err.message (no URL/header leak)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error(
+          'Failed to fetch https://x.test/v1/chat/completions Authorization=Bearer SECRET',
+        );
+      }),
+    );
+    const p = createOpenAICompat({
+      baseUrl: 'https://x.test/v1',
+      apiKey: 'SECRET',
+      model: 'm',
+    });
+    try {
+      await p.generate({ messages: [{ role: 'user', content: 'hi' }] });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ProviderError);
+      expect((err as ProviderError).message).not.toContain('SECRET');
+      expect((err as ProviderError).message).not.toContain('Authorization');
+      expect((err as ProviderError).message).not.toContain('https://');
+      expect((err as ProviderError).code).toBe('NETWORK');
+    }
+  });
+
+  it('anthropic network error message does NOT echo err.message (no URL/header leak)', async () => {
+    vi.stubGlobal('window', { document: {} });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error(
+          'Failed to fetch https://api.anthropic.com/v1/messages x-api-key=SECRET',
+        );
+      }),
+    );
+    const p = createAnthropic({ apiKey: 'SECRET', dangerouslyAllowBrowser: true });
+    try {
+      await p.generate({ messages: [{ role: 'user', content: 'hi' }] });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ProviderError);
+      expect((err as ProviderError).message).not.toContain('SECRET');
+      expect((err as ProviderError).message).not.toContain('x-api-key');
+      expect((err as ProviderError).code).toBe('NETWORK');
+    }
+  });
+
+  it('openai-compat rejects non-http(s) baseUrl protocols', () => {
+    expect(() =>
+      createOpenAICompat({
+        baseUrl: 'javascript:alert(1)//',
+        apiKey: 'k',
+        model: 'm',
+      }),
+    ).toThrow(/protocol/i);
+    expect(() =>
+      createOpenAICompat({
+        baseUrl: 'data:text/plain,hi',
+        apiKey: 'k',
+        model: 'm',
+      }),
+    ).toThrow(/protocol/i);
+    expect(() =>
+      createOpenAICompat({
+        baseUrl: 'not a url',
+        apiKey: 'k',
+        model: 'm',
+      }),
+    ).toThrow(/url/i);
+  });
+
+  it('gemini network error message does NOT include the URL/key', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error(
+          'Failed to fetch https://generativelanguage.googleapis.com/...?key=SECRET',
+        );
+      }),
+    );
+    const p = createGemini({ apiKey: 'SECRET' });
+    try {
+      await p.generate({ messages: [{ role: 'user', content: 'hi' }] });
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ProviderError);
+      expect((err as ProviderError).message).not.toContain('SECRET');
+      expect((err as ProviderError).message).not.toContain('key=');
+      expect((err as ProviderError).code).toBe('NETWORK');
+    }
+  });
+
+  it('gemini maps 503 to NETWORK', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 503 })),
+    );
+    const p = createGemini({ apiKey: 'k' });
+    await expect(
+      p.generate({ messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 503 });
+  });
+
+  it('anthropic maps 502 to NETWORK', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 502 })),
+    );
+    const p = createAnthropic({ apiKey: 'k', dangerouslyAllowBrowser: true });
+    await expect(
+      p.generate({ messages: [{ role: 'user', content: 'hi' }] } as {
+        messages: ChatMessage[];
+      }),
+    ).rejects.toMatchObject({ code: 'NETWORK', status: 502 });
+  });
+});
+
+describe('anthropic content extraction', () => {
+  it('concatenates multiple text blocks and skips tool_use blocks', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          content: [
+            { type: 'tool_use', id: 't1', name: 'foo', input: {} },
+            { type: 'text', text: 'hello ' },
+            { type: 'text', text: 'world' },
+          ],
+        }),
+      ),
+    );
+    const p = createAnthropic({ apiKey: 'k', dangerouslyAllowBrowser: true });
+    const out = await p.generate({
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(out.text).toBe('hello world');
+  });
+
+  it('throws BAD_RESPONSE when there are no text blocks', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          content: [{ type: 'tool_use', id: 't1', name: 'foo', input: {} }],
+        }),
+      ),
+    );
+    const p = createAnthropic({ apiKey: 'k', dangerouslyAllowBrowser: true });
+    await expect(
+      p.generate({ messages: [{ role: 'user', content: 'hi' }] }),
+    ).rejects.toMatchObject({ code: 'BAD_RESPONSE' });
+  });
+
+  it('browser guard is evaluated at generate-time (lazy)', async () => {
+    // Construct without window…
+    const originalWindow = (globalThis as { window?: unknown }).window;
+    delete (globalThis as { window?: unknown }).window;
+    const p = createAnthropic({ apiKey: 'k' });
+    // …then simulate hydration: window appears before generate() runs.
+    (globalThis as { window?: unknown }).window = {} as unknown;
+    try {
+      await expect(
+        p.generate({ messages: [{ role: 'user', content: 'hi' }] }),
+      ).rejects.toMatchObject({ code: 'UNSUPPORTED' });
+    } finally {
+      if (originalWindow === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        (globalThis as { window?: unknown }).window = originalWindow;
+      }
+    }
   });
 });

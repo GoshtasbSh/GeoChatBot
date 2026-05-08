@@ -32,27 +32,21 @@ const VERSION = '2023-06-01';
 
 export function createAnthropic(opts: AnthropicOptions): ChatProvider {
   const model = opts.model ?? 'claude-haiku-4-5-20251001';
-  const inBrowser = typeof window !== 'undefined';
-  if (inBrowser && opts.dangerouslyAllowBrowser !== true) {
-    return {
-      id: ID,
-      label: 'Anthropic',
-      free: false,
-      async generate(): Promise<GenerateOutput> {
-        throw new ProviderError(
-          'UNSUPPORTED',
-          'Direct-from-browser Anthropic calls leak the API key. Pass dangerouslyAllowBrowser:true to acknowledge, or proxy through your own server.',
-          ID,
-        );
-      },
-    };
-  }
 
   return {
     id: ID,
     label: 'Anthropic',
     free: false,
     async generate(input: GenerateInput): Promise<GenerateOutput> {
+      // Evaluate browser presence at call time (covers SSR → hydration).
+      const inBrowser = typeof window !== 'undefined';
+      if (inBrowser && opts.dangerouslyAllowBrowser !== true) {
+        throw new ProviderError(
+          'UNSUPPORTED',
+          'Direct-from-browser Anthropic calls leak the API key. Pass dangerouslyAllowBrowser:true to acknowledge, or proxy through your own server.',
+          ID,
+        );
+      }
       const { system, messages } = splitSystem(input.messages);
       const body: Record<string, unknown> = {
         model,
@@ -82,11 +76,10 @@ export function createAnthropic(opts: AnthropicOptions): ChatProvider {
         if (err instanceof Error && err.name === 'AbortError') {
           throw new ProviderError('ABORTED', 'Request aborted', ID);
         }
-        throw new ProviderError(
-          'NETWORK',
-          `Network error: ${(err as Error).message ?? 'unknown'}`,
-          ID,
-        );
+        // Do NOT include err.message — fetch failure messages on some
+        // runtimes echo the request URL or headers (which would leak the
+        // API key carried in `x-api-key`).
+        throw new ProviderError('NETWORK', 'Network error (fetch failed)', ID);
       }
 
       if (!res.ok) {
@@ -95,6 +88,9 @@ export function createAnthropic(opts: AnthropicOptions): ChatProvider {
         }
         if (res.status === 429) {
           throw new ProviderError('RATE_LIMIT', `Rate limited (429)`, ID, res.status);
+        }
+        if (res.status >= 500) {
+          throw new ProviderError('NETWORK', `Server error (${res.status})`, ID, res.status);
         }
         throw new ProviderError('BAD_RESPONSE', `HTTP ${res.status}`, ID, res.status);
       }
@@ -107,7 +103,7 @@ export function createAnthropic(opts: AnthropicOptions): ChatProvider {
       }
       const text = extractText(json);
       if (text === undefined) {
-        throw new ProviderError('BAD_RESPONSE', 'Missing content[0].text', ID);
+        throw new ProviderError('BAD_RESPONSE', 'Response had no text blocks', ID);
       }
       const out: GenerateOutput = { text, model };
       const usage = extractUsage(json);
@@ -133,10 +129,14 @@ function extractText(json: unknown): string | undefined {
   if (!json || typeof json !== 'object') return undefined;
   const content = (json as { content?: unknown }).content;
   if (!Array.isArray(content) || content.length === 0) return undefined;
-  const first = content[0];
-  if (!first || typeof first !== 'object') return undefined;
-  const t = (first as { text?: unknown }).text;
-  return typeof t === 'string' ? t : undefined;
+  // Concatenate all text blocks; tool_use / other blocks are ignored.
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue;
+    const cast = block as { type?: unknown; text?: unknown };
+    if (cast.type === 'text' && typeof cast.text === 'string') parts.push(cast.text);
+  }
+  return parts.length ? parts.join('') : undefined;
 }
 
 function extractUsage(

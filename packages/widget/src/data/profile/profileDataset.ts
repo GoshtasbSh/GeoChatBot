@@ -294,6 +294,23 @@ export function profileDataset(result: LoadResult, options: ProfileOptions = {})
         continue;
       }
 
+      // String-encoded null sentinels common in user CSVs / TSVs:
+      // empty cell after the string-typed column was inferred, plus
+      // explicit literal "NA" / "NULL" / "N/A" / "NaN" / "-" markers.
+      // Counted as nulls so the planner sees a realistic missingness
+      // figure (otherwise the LLM thinks every row has data).
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (
+          trimmed === '' ||
+          trimmed === '-' ||
+          /^(?:n\/?a|null|nan|none)$/i.test(trimmed)
+        ) {
+          state.nullCount++;
+          continue;
+        }
+      }
+
       switch (kind) {
         case 'integer':
         case 'float': {
@@ -428,6 +445,21 @@ function computeGeometryProfile(
       }
     }
     const hasBox = acc.count > 0 && Number.isFinite(acc.minX);
+    // Same CRS heuristic the geojson-string path uses: a caller can
+    // override lat/lon column auto-detection (LoaderOptions.{lat,lon}Column)
+    // and point at columns holding projected meters — in which case the
+    // bbox is well outside [-180,180]/[-90,90]. Default to 'unknown' and
+    // upgrade to 'wgs84' / 'projected' only if the sampled bbox supports
+    // it. This prevents the planner from picking up a confidently-wrong
+    // 'wgs84' tag for projected datasets.
+    let crsGuess: GeometryProfile['crsGuess'] = 'unknown';
+    if (hasBox) {
+      if (isClearlyProjected(acc.minX, acc.minY, acc.maxX, acc.maxY)) {
+        crsGuess = 'projected';
+      } else if (isWgs84Range(acc.minX, acc.minY, acc.maxX, acc.maxY)) {
+        crsGuess = 'wgs84';
+      }
+    }
     return {
       column: `${geometry.lonColumn},${geometry.latColumn}`,
       encoding: 'lonlat',
@@ -435,7 +467,7 @@ function computeGeometryProfile(
         ? { bbox: [acc.minX, acc.minY, acc.maxX, acc.maxY] as [number, number, number, number] }
         : {}),
       sampledCount: acc.count,
-      crsGuess: 'wgs84',
+      crsGuess,
     };
   }
 

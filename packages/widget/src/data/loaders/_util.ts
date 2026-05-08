@@ -44,8 +44,36 @@ export function assertNonEmpty(buffer: ArrayBuffer, filename: string): void {
   }
 }
 
-const LAT_NAMES = ['latitude', 'lat', 'y'];
-const LON_NAMES = ['longitude', 'lon', 'lng', 'long', 'x'];
+// Lower-cased column-name variants we'll auto-detect as latitude / longitude.
+// Includes the obvious aliases plus the underscore-suffixed forms common in
+// USGS, Census, and ArcGIS exports (latitude_dd, point_x, y_coord, etc.).
+// All comparisons happen case-insensitively in findColumn.
+const LAT_NAMES = [
+  'latitude',
+  'lat',
+  'y',
+  'latitude_dd',
+  'lat_dd',
+  'y_coord',
+  'point_y',
+  'ycoord',
+  'y_lat',
+];
+const LON_NAMES = [
+  'longitude',
+  'lon',
+  'lng',
+  'long',
+  'x',
+  'longitude_dd',
+  'lon_dd',
+  'long_dd',
+  'lng_dd',
+  'x_coord',
+  'point_x',
+  'xcoord',
+  'x_lon',
+];
 
 function findColumn(columns: string[], candidates: string[]): string | undefined {
   const lower = columns.map((c) => ({ orig: c, lc: c.toLowerCase() }));
@@ -80,13 +108,16 @@ export function detectLatLon(
   if (!latColumn || !lonColumn) return undefined;
   if (!columns.includes(latColumn) || !columns.includes(lonColumn)) return undefined;
 
-  // Sample first 50 non-null rows; require all to be numeric and in range.
+  // Sample first 50 rows where BOTH lat and lon are populated; rows with
+  // either side null are skipped (a footer row with `lat=null, lon=42`
+  // used to push a `null` lat into the sample, which then failed the
+  // numeric check and rejected the entire dataset's geometry detection).
   const sample: Array<{ lat: unknown; lon: unknown }> = [];
   for (const row of rows) {
     if (sample.length >= 50) break;
     const lat = row[latColumn];
     const lon = row[lonColumn];
-    if (lat == null && lon == null) continue;
+    if (lat == null || lon == null) continue;
     sample.push({ lat, lon });
   }
   if (sample.length === 0) return undefined;

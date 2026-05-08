@@ -95,4 +95,18 @@ describe('validatePlan', () => {
       steps: [baseStep({ id: 's1' }), baseStep({ id: 's1' })],
     } as any, ['x'])).toThrow(/duplicate/i);
   });
+
+  it('rejects duplicate output_var across steps', () => {
+    // Two steps emitting the same output_var would silently shadow each
+    // other in the executor's output map; downstream `${dup}` resolves
+    // to whichever ran last. Must be caught before execution.
+    expect(() => validatePlan({
+      goal: 'g', dataset_refs: ['x'],
+      steps: [
+        { id: 's1', tool: 'sql', args: { query: 'SELECT 1' }, why: 'a', output_var: 'dup' },
+        { id: 's2', tool: 'sql', args: { query: 'SELECT 2' }, why: 'b', output_var: 'dup' },
+        { id: 's3', tool: 'render.summary', args: { text: 'done' }, why: 'show' },
+      ],
+    } as any, ['x'])).toThrow(/duplicate output_var/i);
+  });
 });

@@ -64,11 +64,13 @@ describeIfCanBoot('DuckDBEngine — real engine (requires Worker)', () => {
   });
 
   it('init() is idempotent', async () => {
-    await eng.init();
-    await eng.init();
-    await Promise.all([eng.init(), eng.init()]);
-    // If we reach here, no throw.
-    expect(true).toBe(true);
+    await expect(eng.init()).resolves.toBeUndefined();
+    await expect(eng.init()).resolves.toBeUndefined();
+    await expect(
+      Promise.all([eng.init(), eng.init()]),
+    ).resolves.toEqual([undefined, undefined]);
+    // After repeated init, the engine must still be functional.
+    expect(typeof eng.hasSpatial).toBe('boolean');
   });
 
   it('registers an Arrow table and counts rows', async () => {

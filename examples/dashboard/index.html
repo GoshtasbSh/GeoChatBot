@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>GeoChatBot — headless dashboard injection demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 0;
+        background: #0b1020;
+        color: #e5e7eb;
+      }
+      header {
+        padding: 16px 20px;
+        border-bottom: 1px solid #1f2937;
+        background: #0f172a;
+      }
+      header h1 { margin: 0; font-size: 18px; }
+      header p { margin: 4px 0 0; color: #94a3b8; font-size: 13px; }
+      main {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        height: calc(100vh - 70px);
+      }
+      aside {
+        padding: 16px;
+        border-right: 1px solid #1f2937;
+        overflow-y: auto;
+      }
+      aside h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; color: #94a3b8; margin: 0 0 8px; }
+      aside .controls { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+      aside button, aside input {
+        font: inherit;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid #334155;
+        background: #1e293b;
+        color: inherit;
+        cursor: pointer;
+      }
+      aside button:hover { background: #334155; }
+      aside pre {
+        background: #020617;
+        color: #cbd5e1;
+        padding: 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        max-height: 50vh;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      #map { width: 100%; height: 100%; background: #0f172a; }
+      /* The widget itself is hidden in headless mode — the host owns the UI. */
+      geo-chatbot { display: none; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>GeoChatBot — headless dashboard injection</h1>
+      <p>
+        The widget runs in <code>mode="headless"</code> and emits typed events. The
+        host page owns its own MapLibre map and listens for <code>dataset-loaded</code>,
+        <code>plan</code>, <code>progress</code>, and <code>result</code>.
+      </p>
+    </header>
+
+    <main>
+      <aside>
+        <h2>Controls</h2>
+        <div class="controls">
+          <button id="loadFixture">pushData(points.geojson)</button>
+          <input id="question" placeholder="Type a question (Phase 2 stub)" />
+          <button id="askBtn">ask()</button>
+          <button id="exportBtn">exportLayer('points')</button>
+          <button id="clearBtn">clear()</button>
+        </div>
+
+        <h2>Event log</h2>
+        <pre id="log"></pre>
+      </aside>
+
+      <div id="map"></div>
+    </main>
+
+    <!--
+      Headless widget. Built bundle from packages/widget/dist must exist.
+      Build with:  npm run build --workspace=@geochatbot/widget
+      Serve with:  npx serve .  (from the repo root)
+    -->
+    <geo-chatbot id="bot" mode="headless"></geo-chatbot>
+
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <script type="module">
+      import * as GeoChatBot from '../../packages/widget/dist/geochatbot.js';
+
+      const log = document.getElementById('log');
+      const append = (label, payload) => {
+        const line = `[${label}] ${typeof payload === 'string' ? payload : JSON.stringify(payload).slice(0, 220)}`;
+        log.textContent += line + '\n';
+        log.scrollTop = log.scrollHeight;
+      };
+
+      // Host owns the map.
+      const map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://demotiles.maplibre.org/style.json',
+        center: [-83, 29.6],
+        zoom: 4,
+      });
+
+      const bot = document.getElementById('bot');
+
+      // --- Wire all four Phase 2 events into the host UI ---
+      bot.on('dataset-loaded', (d) => {
+        append('dataset-loaded', { name: d.name, source: d.source, rows: d.profile?.rowCount });
+      });
+      bot.on('plan', (p) => append('plan', p));
+      bot.on('progress', (p) => append('progress', p));
+      bot.on('result', (r) => {
+        append('result', r);
+        // In headless mode, a 'layer' result is meant to be added to the host map.
+        if (r.kind === 'layer' && r.geojson) {
+          const sourceId = `gcb-${Date.now()}`;
+          map.addSource(sourceId, { type: 'geojson', data: r.geojson });
+          map.addLayer({
+            id: `${sourceId}-pts`,
+            type: 'circle',
+            source: sourceId,
+            paint: { 'circle-radius': 5, 'circle-color': '#a855f7' },
+          });
+        }
+      });
+      bot.on('error', (e) => append('error', e.message));
+
+      document.getElementById('loadFixture').addEventListener('click', async () => {
+        try {
+          const res = await fetch('../../packages/widget/test/fixtures/points.geojson');
+          const buf = new Uint8Array(await res.arrayBuffer());
+          await bot.pushData({ name: 'points.geojson', bytes: buf });
+        } catch (err) {
+          append('error', String(err));
+        }
+      });
+
+      document.getElementById('askBtn').addEventListener('click', async () => {
+        const q = document.getElementById('question').value || 'how many points?';
+        try {
+          // ask() resolves to void; the planId arrives via the 'plan'
+          // event (see the bot.on('plan', ...) listener above), which
+          // is the supported way to correlate downstream 'progress' /
+          // 'result' / 'error' events back to a question.
+          await bot.ask(q);
+          append('ask()', 'plan requested — see plan event for planId');
+        } catch (err) {
+          append('ask() error', String(err));
+        }
+      });
+
+      document.getElementById('exportBtn').addEventListener('click', () => {
+        const layer = bot.exportLayer('points');
+        append('exportLayer', layer ?? 'undefined');
+      });
+
+      document.getElementById('clearBtn').addEventListener('click', () => {
+        bot.clear();
+        append('clear()', 'ok');
+      });
+
+      // Optional: surface that the bundle re-exports createEcho etc.
+      append('bundle-exports', Object.keys(GeoChatBot).join(','));
+    </script>
+  </body>
+</html>

@@ -1,9 +1,17 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state, property } from 'lit/decorators.js';
+import { tableFromJSON } from 'apache-arrow';
 import { loadFile } from './data/loaders';
 import { getEngine } from './data/engine';
+import type { DuckDBEngine } from './data/engine/DuckDBEngine.js';
 import { profileDataset } from './data/profile';
-import type { BinaryInput, LoadResult, DatasetProfile, SourceFormat } from './data/contracts';
+import type {
+  BinaryInput,
+  GeometryEncoding,
+  LoadResult,
+  DatasetProfile,
+  SourceFormat,
+} from './data/contracts';
 import {
   type ChatProvider,
   setProvider as setActiveProvider,
@@ -12,65 +20,112 @@ import { Planner } from './agent/index.js';
 import type { Plan, DatasetProfile as PlannerDatasetProfile } from './agent/index.js';
 import type { PlannerLLMInput } from './agent/llm.js';
 import { validateSql } from './agent/validate-sql.js';
+import { validatePlan, PlanValidationError } from './agent/validate-plan.js';
+import {
+  Executor,
+  type DatasetEntry as ExecDatasetEntry,
+  type ExecutorEngine,
+  type ResultEvent as ExecResultEvent,
+  type ProgressEvent as ExecProgressEvent,
+} from './agent/executor/index.js';
 import './ui/plan-review.js';
+import './ui/result-canvas.js';
 // MapView (MapLibre GL + deck.gl) is lazy-loaded on first geometry ingest
 // so the initial bundle stays lean (PLAN §3 hard rule: ≤ 100 KB gzipped).
+
+/**
+ * Map an ingest-side {@link DatasetProfile} (from data/contracts) into the
+ * Planner-side profile shape. Sample rows are not extracted here — the
+ * planner gets schema + row count but not raw values, so prompt injection
+ * via dataset content cannot piggyback on a regular file drop.
+ */
+function toPlannerDatasetProfile(
+  name: string,
+  profile: DatasetProfile,
+): PlannerDatasetProfile {
+  const kind: 'table' | 'layer' = profile.geometry ? 'layer' : 'table';
+  const columns = profile.columns.map((c) => ({
+    name: c.name,
+    type: c.arrowType,
+    nulls: c.nullCount,
+  }));
+  const planner: PlannerDatasetProfile = {
+    name,
+    kind,
+    rows: profile.rowCount,
+    columns,
+    sample: [],
+  };
+  if (profile.geometry) {
+    // The ingest profile carries an `encoding` discriminator
+    // (`lonlat` | `geojson-string` | `wkb`), not the planner's `kind`
+    // (point/line/polygon/multi). We can't reliably infer feature
+    // dimensionality from encoding alone, so default to `point` for
+    // lonlat (which always represents points) and `multi` otherwise.
+    const geomKind: 'point' | 'line' | 'polygon' | 'multi' =
+      profile.geometry.encoding === 'lonlat' ? 'point' : 'multi';
+    planner.geometry = {
+      kind: geomKind,
+      column: profile.geometry.column,
+      ...(profile.geometry.crsGuess ? { crs: profile.geometry.crsGuess } : {}),
+      ...(profile.geometry.bbox ? { bbox: profile.geometry.bbox } : {}),
+    };
+  }
+  return planner;
+}
+
+/**
+ * Adapter: produce an {@link ExecutorEngine} view over a {@link DuckDBEngine}.
+ *
+ * `hasSpatial` is exposed as a getter so the executor sees the up-to-date
+ * value at call time (the engine flips this from `false` to `true` after
+ * `LOAD spatial` succeeds during init). A flat property snapshot taken at
+ * adapter construction would freeze the value pre-init.
+ */
+function toExecutorEngine(eng: DuckDBEngine): ExecutorEngine {
+  return {
+    query: (sql) => eng.query(sql),
+    get hasSpatial() {
+      return eng.hasSpatial;
+    },
+  };
+}
+
+/** Stable error code for an arbitrary thrown value, never the raw object. */
+function errCode(err: unknown): string {
+  if (err && typeof err === 'object' && 'name' in err && typeof err.name === 'string') {
+    return err.name;
+  }
+  return 'UNKNOWN';
+}
+
+/** Best-effort message extraction; never throws, never leaks Error.cause. */
+function errMessage(err: unknown, fallback = 'unknown error'): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'string' && err) return err;
+  return fallback;
+}
 
 /** Operating modes — see {@link GeoChatBotElement.setMode}. */
 export type GeoChatBotMode = 'full' | 'headless';
 
 /**
- * A single step in an agent plan. Phase 2 emits stub plans; Phase 4 fills
- * `tool` and `args` from the real Planner.
- */
-export interface PlanStep {
-  id: string;
-  /** Human-readable description for the plan UI. */
-  description: string;
-  /** Tool the executor will call (Phase 5). Optional in stub plans. */
-  tool?: string;
-  /** Tool arguments. Validated via zod in Phase 5. */
-  args?: Record<string, unknown>;
-  /** One-line rationale for this step. */
-  why?: string;
-}
-
-/** A single agent result emitted via the `result` event in headless mode. */
-export type AgentResult =
-  | {
-      kind: 'layer';
-      /** GeoJSON FeatureCollection. */
-      geojson: unknown;
-      /** Optional layer name for the host map. */
-      name?: string;
-    }
-  | {
-      kind: 'chart';
-      /** ECharts option spec (Phase 5). Free-form for now. */
-      spec: Record<string, unknown>;
-    }
-  | {
-      kind: 'table';
-      rows: ReadonlyArray<Record<string, unknown>>;
-      columns?: ReadonlyArray<string>;
-    }
-  | {
-      kind: 'summary';
-      text: string;
-    };
-
-/**
  * Typed event map dispatched by {@link GeoChatBotElement}.
  *
- * The string event names are namespaced as `geochatbot:<key>`.
+ * Every event is dispatched twice on the host: once with the unprefixed
+ * key (e.g. `plan`) and once with the namespaced form
+ * `geochatbot:<key>`. Hosts may listen on either; the typed `on()` helper
+ * uses the namespaced form.
  *
  * - `dataset-loaded` — fires when ingest completes for a file/blob.
- * - `plan`           — agent has produced a plan (Phase 4 emits real ones).
- * - `result`         — agent has produced a result for a step (Phase 5 emits real ones).
- * - `progress`       — agent execution progress beat (Phase 5+).
- * - `error`          — any ingest or agent failure. `cause` is intentionally
- *                      a string (provider error code or message) so we never
- *                      leak raw Error objects that might carry secrets.
+ * - `plan`           — Planner produced a Plan; awaiting approve/reject.
+ * - `progress`       — per-step status during plan execution. `'rejected'`
+ *                      is emitted at plan-level when the user rejects.
+ * - `result`         — render.* step produced a payload (one per render step).
+ * - `error`          — any ingest, planner, validator, or executor failure.
+ *                      We never include raw Error objects; only `message`
+ *                      and `code` strings (prevents leaking request URLs /
+ *                      Authorization headers via Error.cause).
  */
 export type GeoChatBotEvents = {
   'dataset-loaded': {
@@ -79,29 +134,25 @@ export type GeoChatBotEvents = {
     profile: DatasetProfile;
     engineRegistered: boolean;
   };
-  result: AgentResult;
   plan: {
-    /** Stable plan id; lets host UIs correlate `result` events to a plan. */
-    id: string;
-    steps: PlanStep[];
-    rationale?: string;
-    /** Names of datasets this plan operates on. */
-    datasetRefs?: ReadonlyArray<string>;
+    planId: string;
+    plan: Plan;
+    datasets: ReadonlyArray<PlannerDatasetProfile>;
   };
   progress: {
-    /** Plan id this progress beat belongs to. */
     planId: string;
-    /** 0-based index of the step that is now running, or `'done'`. */
-    step: number | 'done';
-    /** Status word for UI. */
-    status: 'started' | 'running' | 'completed' | 'failed';
-    /** Optional human-readable message. */
-    message?: string;
+    /** Step id from the plan, or undefined for plan-level beats (e.g. `'rejected'`). */
+    stepId?: string;
+    status: 'running' | 'success' | 'fail' | 'rejected';
+    durationMs?: number;
+    error?: string;
   };
+  result: ExecResultEvent;
   error: {
     message: string;
-    /** Stable error code (e.g. `UNSUPPORTED_FORMAT`, `NETWORK`, `BAD_RESPONSE`). */
     code?: string;
+    planId?: string;
+    stepId?: string;
   };
 };
 
@@ -224,6 +275,18 @@ export class GeoChatBotElement extends LitElement {
   @property({ reflect: true })
   mode: GeoChatBotMode = 'full';
 
+  /**
+   * Explicit acknowledgement that the host accepts the API-key exposure
+   * inherent in calling Anthropic directly from the browser. Defaults to
+   * `false`, in which case `ask()` emits an `error` event instead of
+   * issuing the LLM call. Production deployments should keep this `false`
+   * and proxy through a server-side endpoint that injects the key.
+   *
+   * Settable from HTML as `<geo-chatbot dangerously-allow-browser>`.
+   */
+  @property({ type: Boolean, attribute: 'dangerously-allow-browser', reflect: true })
+  dangerouslyAllowBrowser = false;
+
   /** Active LLM provider, set via {@link setProvider}. Survives {@link clear}. */
   private provider: ChatProvider | undefined = undefined;
 
@@ -246,6 +309,14 @@ export class GeoChatBotElement extends LitElement {
   private _datasets: PlannerDatasetProfile[] = [];
   private _apiKey?: string;
   private _model = 'claude-sonnet-4-6';
+
+  /* -------------------------------------------------------------------- */
+  /* Phase 5 executor state                                               */
+  /* -------------------------------------------------------------------- */
+  /** DuckDB view names registered per logical dataset name. */
+  private _execDatasets: ExecDatasetEntry[] = [];
+  /** Test-only override; otherwise the executor uses the main-thread DuckDB singleton. */
+  private _executorEngine?: ExecutorEngine;
 
   render() {
     // In headless mode the widget renders nothing — the host owns the UI
@@ -288,19 +359,63 @@ export class GeoChatBotElement extends LitElement {
   /* -------------------------------------------------------------------- */
 
   /**
-   * Ingest a single file or in-memory binary blob through the same pipeline
-   * used by drag-drop and the picker. Always resolves; ingest failures are
-   * surfaced via the `error` event and the component's error banner rather
-   * than thrown.
+   * Inline-rows ingest payload for the headless contract (PLAN.md §2):
+   *
+   *   bot.pushData({ name: 'sales', rows: [...], geometry: {...} })
+   *
+   * Builds an Apache Arrow table from `rows` and runs the full ingest
+   * path (DuckDB registration, profiling, `dataset-loaded` event, and
+   * — most importantly — `_execDatasets` binding so subsequent `ask()`
+   * calls have a real DuckDB view to query against).
+   */
+  // public for typedoc + tests; not exported from index.
+  // (No JSDoc on the type — kept inline so a single grep finds the contract.)
+
+  /**
+   * Ingest data through the same pipeline used by drag-drop / picker.
+   *
+   * Accepts four shapes:
+   *  - {@link File} — browser file
+   *  - `{ name, bytes }` — pre-loaded binary
+   *  - `{ name, rows, geometry?, source? }` — inline JS rows (headless dashboards)
+   *  - {@link PlannerDatasetProfile} — planner-side metadata only (tests, stubs)
+   *
+   * Always resolves; ingest failures are surfaced via the `error` event
+   * and the component's error banner rather than thrown.
    */
   async pushData(
     input:
       | File
       | { name: string; bytes: Uint8Array | ArrayBuffer }
+      | {
+          name: string;
+          rows: ReadonlyArray<Record<string, unknown>>;
+          geometry?: GeometryEncoding;
+          source?: SourceFormat;
+        }
       | PlannerDatasetProfile,
   ): Promise<void> {
-    // Phase 4: a DatasetProfile object (has kind + columns + rows fields and no bytes)
-    // is a planner-only profile — do NOT ingest binary.
+    // (1) Inline-rows ingest — must come BEFORE the profile-shape check
+    // because both shapes have a `rows` field. The discriminator is
+    // Array.isArray(rows): planner profile uses rows: number, this path
+    // uses rows: array.
+    if (
+      input &&
+      typeof input === 'object' &&
+      !('bytes' in input) &&
+      'rows' in (input as object) &&
+      Array.isArray((input as { rows: unknown }).rows)
+    ) {
+      const rowsInput = input as {
+        name: string;
+        rows: ReadonlyArray<Record<string, unknown>>;
+        geometry?: GeometryEncoding;
+        source?: SourceFormat;
+      };
+      await this._ingestRows(rowsInput);
+      return;
+    }
+    // (2) Planner-only profile shape (tests, post-ingest re-pushes).
     if (
       input &&
       typeof input === 'object' &&
@@ -309,9 +424,18 @@ export class GeoChatBotElement extends LitElement {
       'columns' in input &&
       'rows' in input
     ) {
-      this._datasets.push(input as PlannerDatasetProfile);
+      // Defensive copy + drop the `sample` field. Caller-supplied sample
+      // rows are concatenated verbatim into the planner system prompt by
+      // `renderDatasetsBlock` and would let a hostile dataset inject text
+      // shaped like new tool definitions or instructions ("ignore previous
+      // …"). The internal file-drop path already sets sample: [] via
+      // toPlannerDatasetProfile; this branch is the remaining ingress and
+      // we treat caller `sample` as untrusted.
+      const incoming = input as PlannerDatasetProfile;
+      this._datasets.push({ ...incoming, sample: [] });
       return;
     }
+    // (3) Binary input — File or { bytes }.
     const binary: BinaryInput =
       typeof File !== 'undefined' && input instanceof File
         ? input
@@ -319,13 +443,110 @@ export class GeoChatBotElement extends LitElement {
     await this.ingest(binary);
   }
 
+  /**
+   * Build an Arrow table from inline JS rows and run it through the full
+   * ingest pipeline. Used by the headless `pushData({ rows })` overload
+   * so a host page can hand us in-memory data without serialising to a
+   * binary format first.
+   *
+   * Engine registration is best-effort just like the binary path: if the
+   * DuckDB-WASM Worker is not available (test envs, hardened CSP), we
+   * still publish the dataset to the planner side so `ask()` works
+   * against a stubbed engine.
+   */
+  private async _ingestRows(input: {
+    name: string;
+    rows: ReadonlyArray<Record<string, unknown>>;
+    geometry?: GeometryEncoding;
+    source?: SourceFormat;
+  }): Promise<void> {
+    const gen = this.generation;
+    this.busy = true;
+    this.error = null;
+    try {
+      if (!input.rows.length) {
+        throw new Error('pushData({ rows }): rows array is empty');
+      }
+      const table = tableFromJSON(input.rows as Array<Record<string, unknown>>);
+      const result: LoadResult = {
+        name: input.name,
+        table,
+        source: input.source ?? 'csv',
+        filename: `${input.name}.json`,
+        ...(input.geometry ? { geometry: input.geometry } : {}),
+      };
+      if (gen !== this.generation) return;
+
+      const profile = profileDataset(result);
+      this.profiles = { ...this.profiles, [result.name]: profile };
+
+      let engineRegistered = false;
+      try {
+        const engine = getEngine();
+        await engine.init();
+        const reg = await engine.registerArrow(result);
+        engineRegistered = true;
+        // Critical: bind the DuckDB view to the executor's dataset map
+        // so the agent loop can resolve `${dataset}` references. This
+        // closes the headless-mode gap where pushData({rows}) used to
+        // create only a planner-side stub and the executor would throw
+        // "unknown dataset" for any step that touched the data.
+        this._execDatasets = [
+          ...this._execDatasets.filter((d) => d.name !== result.name),
+          {
+            name: result.name,
+            tableName: reg.tableName,
+            ...(reg.geomView ? { geomView: reg.geomView } : {}),
+            hasGeometry: !!reg.geomView,
+          },
+        ];
+      } catch (err) {
+        // Pass only the error code — never the raw Error object, whose
+        // `message` / `cause` may carry the request URL or auth header
+        // for any provider/network failure that bubbled into engine init.
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[geochatbot] engine registration failed for inline rows; planner-only mode',
+          errCode(err),
+        );
+      }
+
+      if (gen !== this.generation) return;
+
+      // Mirror to the planner-side dataset map so the LLM sees this dataset.
+      const plannerProfile = toPlannerDatasetProfile(result.name, profile);
+      this._datasets = [
+        ...this._datasets.filter((d) => d.name !== result.name),
+        plannerProfile,
+      ];
+
+      this.loaded = [...this.loaded, result];
+      this.dispatch('dataset-loaded', {
+        name: result.name,
+        source: result.source,
+        profile,
+        engineRegistered,
+      });
+    } catch (err) {
+      const message = errMessage(err);
+      this.error = message;
+      this.dispatch('error', { message, code: errCode(err) });
+    } finally {
+      if (gen === this.generation) this.busy = false;
+    }
+  }
+
   /** Set the active LLM provider used by future agent turns. */
   setProvider(provider: ChatProvider): void {
     this.provider = provider;
     setActiveProvider(provider);
-    // Phase 4: stash key+model for the Planner. ChatProvider has optional apiKey/model.
-    if ((provider as any).apiKey) this._apiKey = (provider as any).apiKey as string;
-    if ((provider as any).model) this._model = (provider as any).model as string;
+    // Phase 4: stash key+model for the Planner. The base ChatProvider type
+    // does not carry these fields, but the concrete Anthropic/Gemini/OpenAI
+    // option objects do — read them through a structural narrowing rather
+    // than `as any`.
+    const opts = provider as { apiKey?: unknown; model?: unknown };
+    if (typeof opts.apiKey === 'string' && opts.apiKey) this._apiKey = opts.apiKey;
+    if (typeof opts.model === 'string' && opts.model) this._model = opts.model;
     // Reset planner so the next ask() rebuilds with the new key.
     delete this._planner;
   }
@@ -357,14 +578,41 @@ export class GeoChatBotElement extends LitElement {
    */
   async ask(question: string): Promise<void> {
     if (!this._apiKey) {
-      this._emit('error', { code: 'NO_KEY', message: 'No provider configured' });
+      this.dispatch('error', { code: 'NO_KEY', message: 'No provider configured' });
+      return;
+    }
+    // H4: Refuse to plan over a still-pending plan. Without this guard a
+    // second `ask()` silently overwrites `_pendingPlan`, the user loses
+    // the ability to approve plan #1, and any progress/result events
+    // that did fire become orphaned. Hosts must explicitly resolve the
+    // first plan (approve / reject) before calling ask() again.
+    if (this._pendingPlan) {
+      this.dispatch('error', {
+        planId: this._pendingPlan.id,
+        code: 'PLAN_PENDING',
+        message:
+          'A plan is awaiting approval; call approvePlan/rejectPlan before ask() again.',
+      });
+      return;
+    }
+    // The browser-direct guard in agent/llm.ts is intentional. The widget
+    // honors it by routing the host's explicit opt-in via the
+    // `dangerouslyAllowBrowser` property (default false). When the test-only
+    // llmCall is installed, the guard does not apply because the call never
+    // reaches `callPlannerLLM`.
+    if (!this._llmCall && !this.dangerouslyAllowBrowser) {
+      this.dispatch('error', {
+        code: 'BROWSER_KEY_GUARD',
+        message:
+          'Direct-from-browser Anthropic calls leak the API key. Set the `dangerously-allow-browser` attribute (or .dangerouslyAllowBrowser=true) to acknowledge, or proxy through your own server.',
+      });
       return;
     }
     if (!this._planner) {
       this._planner = new Planner({
         apiKey: this._apiKey,
         model: this._model,
-        dangerouslyAllowBrowser: true,
+        dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
         ...(this._llmCall ? { llmCall: this._llmCall } : {}),
       });
     }
@@ -372,12 +620,12 @@ export class GeoChatBotElement extends LitElement {
       const plan = await this._planner.plan({ question, datasets: this._datasets });
       const id = `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       this._pendingPlan = { id, plan };
-      this._emit('plan', { planId: id, plan, datasets: this._datasets });
+      this.dispatch('plan', { planId: id, plan, datasets: this._datasets });
       this._renderPlanIfFull();
     } catch (err) {
-      this._emit('error', {
-        code: (err as any)?.name ?? 'UNKNOWN',
-        message: (err as Error)?.message ?? 'plan failed',
+      this.dispatch('error', {
+        code: errCode(err),
+        message: errMessage(err, 'plan failed'),
       });
     }
   }
@@ -387,88 +635,205 @@ export class GeoChatBotElement extends LitElement {
     if (id !== undefined && id !== this._pendingPlan.id) return;
     const { plan, id: planId } = this._pendingPlan;
     delete this._pendingPlan;
-    this._executeStub(planId, plan);
+    // Capture the execution promise so test code can deterministically
+    // await completion. Intentional fire-and-forget at runtime — the
+    // host doesn't await approvePlan; events are the public contract.
+    this.__lastExecution = this._execute(planId, plan);
+    void this.__lastExecution;
   }
+
+  /**
+   * Test-only: the promise of the most recent `_execute` invocation, or
+   * undefined before any plan has been approved. Lets tests
+   * `await el.__lastExecution` instead of busy-polling on event order.
+   */
+  __lastExecution: Promise<void> | undefined;
 
   rejectPlan(opts?: { id?: string; feedback?: string }): void {
     if (!this._pendingPlan) return;
     if (opts?.id !== undefined && opts.id !== this._pendingPlan.id) return;
-    const { plan } = this._pendingPlan;
+    const { id: planId, plan } = this._pendingPlan;
     delete this._pendingPlan;
-    this._emit('progress', { planId: '_rejected', status: 'rejected' });
-    void this._planner?.plan({
+    this.dispatch('progress', { planId, status: 'rejected' });
+    if (!this._planner) {
+      this.dispatch('error', {
+        planId,
+        code: 'NO_PLANNER',
+        message: 'rejectPlan called with no active planner',
+      });
+      return;
+    }
+    void this._planner.plan({
       question: plan.goal,
       datasets: this._datasets,
       feedback: opts?.feedback ?? 'rejected by user',
     }).then((newPlan) => {
       const id = `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
       this._pendingPlan = { id, plan: newPlan };
-      this._emit('plan', { planId: id, plan: newPlan, datasets: this._datasets });
+      this.dispatch('plan', { planId: id, plan: newPlan, datasets: this._datasets });
       this._renderPlanIfFull();
     }).catch((err) => {
-      this._emit('error', { code: (err as any)?.name ?? 'UNKNOWN', message: (err as Error)?.message });
+      this.dispatch('error', { code: errCode(err), message: errMessage(err) });
     });
   }
 
-  private _executeStub(planId: string, plan: Plan): void {
-    // Phase 5 will replace this with a real Comlink Worker. Phase 4 stub
-    // emits progress + a final render result.
+  /**
+   * Phase 5: real executor. Pre-validates every `sql` step at the §4
+   * boundary (defense-in-depth — the runner re-validates too), then
+   * runs the plan via a main-thread Executor against the existing
+   * DuckDB-WASM engine. Worker-via-Comlink is wired in
+   * `agent/executor/client.ts` and ships in Phase 5 expansion when
+   * the engine is moved off the main thread.
+   */
+  private async _execute(planId: string, plan: Plan): Promise<void> {
+    // Pre-validate every `sql` step at the §4 boundary. This is an
+    // early-rejection convenience for fast UI feedback only — the
+    // canonical gate is `runners/sql.ts`, which validates every SQL
+    // body on each call (including critic-patched steps that re-enter
+    // the executor mid-flight in Phase 6).
     for (const step of plan.steps) {
       if (step.tool === 'sql') {
         try {
-          validateSql((step.args as any).query);
+          validateSql((step.args as { query?: unknown })?.query as string);
         } catch (err) {
-          this._emit('error', {
-            planId,
-            stepId: step.id,
-            code: 'SQL',
-            message: (err as Error).message,
-          });
+          const message = errMessage(err);
+          this.dispatch('error', { planId, stepId: step.id, code: 'SQL', message });
+          this.dispatch('progress', { planId, stepId: step.id, status: 'fail', error: message });
           return;
         }
       }
     }
-    for (const step of plan.steps) {
-      this._emit('progress', { planId, stepId: step.id, status: 'running' });
-      this._emit('progress', { planId, stepId: step.id, status: 'success', durationMs: 0 });
+
+    const engine = this._resolveExecutorEngine();
+    if (!engine) {
+      this.dispatch('error', {
+        planId,
+        code: 'NO_ENGINE',
+        message: 'DuckDB engine unavailable in this environment.',
+      });
+      return;
     }
-    const last = plan.steps[plan.steps.length - 1]!;
-    const kind = last.tool === 'render.map' ? 'layer'
-      : last.tool === 'render.chart' ? 'chart'
-      : last.tool === 'render.table' ? 'table'
-      : 'summary';
-    this._emit('result', { planId, stepId: last.id, kind, payload: last.args });
+
+    // H1: Clear stale renderer panels before every execution. Without
+    // this, run #2 visually inherits run #1's chart/table/map/summary
+    // panels for any kind it does not re-emit. The canvas may not
+    // exist yet (full mode lazily mounts; headless never mounts) — a
+    // null-safe call on the optional `clear` keeps both paths working.
+    if (this.mode !== 'headless' && this.shadowRoot) {
+      const canvas = this.shadowRoot.querySelector('result-canvas') as
+        | (HTMLElement & { clear?: () => void })
+        | null;
+      canvas?.clear?.();
+    }
+
+    const exec = new Executor({ engine, datasets: this._execDatasets });
+    await exec.execute(plan, planId, {
+      onProgress: (e: ExecProgressEvent) => this.dispatch('progress', e),
+      onResult: (e: ExecResultEvent) => {
+        this.dispatch('result', e);
+        if (this.mode !== 'headless') this._mountResult(e);
+      },
+      onError: (e) => this.dispatch('error', e),
+    });
+  }
+
+  /** Resolve the engine handle: test override → main-thread DuckDB → null. */
+  private _resolveExecutorEngine(): ExecutorEngine | null {
+    if (this._executorEngine) return this._executorEngine;
+    try {
+      return toExecutorEngine(getEngine());
+    } catch {
+      return null;
+    }
+  }
+
+  /** Test-only: substitute the executor engine for deterministic tests. */
+  __setExecutorEngine(engine: ExecutorEngine): void {
+    this._executorEngine = engine;
+  }
+
+  /** Mount a result payload into <result-canvas> in full mode. */
+  private _mountResult(e: ExecResultEvent): void {
+    interface CanvasEl extends HTMLElement {
+      setResult(p: { kind: string; [k: string]: unknown }): void;
+      clear(): void;
+    }
+    let canvas = this.shadowRoot!.querySelector('result-canvas') as CanvasEl | null;
+    if (!canvas) {
+      canvas = document.createElement('result-canvas') as CanvasEl;
+      this.shadowRoot!.appendChild(canvas);
+    }
+    // Strip planId/stepId before handing to the canvas — it only cares
+    // about the payload shape.
+    const { planId: _p, stepId: _s, ...payload } = e;
+    void _p; void _s;
+    canvas.setResult(payload as { kind: string; [k: string]: unknown });
   }
 
   private _renderPlanIfFull(): void {
-    if (this.getAttribute('mode') === 'headless') return;
+    // Read the property, not the attribute. `setMode('headless')` writes
+    // `this.mode` synchronously; the attribute only mirrors back via
+    // Lit's `reflect` _after_ the next update, so calling this method
+    // before the element has rendered (or before connection in tests)
+    // would otherwise miss the headless guard and append a plan-review
+    // into a widget that is supposed to be event-only.
+    if (this.mode === 'headless') return;
     if (!this._pendingPlan) return;
-    let pr = this.shadowRoot!.querySelector('plan-review') as any;
-    if (!pr) {
-      pr = document.createElement('plan-review');
-      pr.addEventListener('plan:approve', () => this.approvePlan(this._pendingPlan?.id));
-      pr.addEventListener('plan:reject', () => {
-        const id = this._pendingPlan?.id;
-        this.rejectPlan(id !== undefined ? { id } : {});
-      });
-      pr.addEventListener('step:edit', (e: any) => {
-        if (!this._pendingPlan) return;
-        const idx = this._pendingPlan.plan.steps.findIndex((s) => s.id === e.detail.stepId);
-        if (idx === -1) return;
-        this._pendingPlan.plan.steps[idx]!.args = e.detail.args;
-        pr.plan = { ...this._pendingPlan.plan };
-      });
-      this.shadowRoot!.appendChild(pr);
+    // Always reattach listeners against the current plan id. Re-using the
+    // same `<plan-review>` instance with stale closures would let a click
+    // on an older render approve a newer plan, or vice-versa.
+    const planId = this._pendingPlan.id;
+    const oldPr = this.shadowRoot!.querySelector('plan-review');
+    if (oldPr) oldPr.remove();
+    interface PlanReviewEl extends HTMLElement {
+      plan?: Plan;
+      mode?: 'plan' | 'running';
     }
+    const pr = document.createElement('plan-review') as PlanReviewEl;
+    pr.addEventListener('plan:approve', () => this.approvePlan(planId));
+    pr.addEventListener('plan:reject', () => this.rejectPlan({ id: planId }));
+    pr.addEventListener('step:edit', (ev: Event) => {
+      const detail = (ev as CustomEvent<{ stepId: string; args: Record<string, unknown> }>).detail;
+      this._handleStepEdit(planId, detail, pr);
+    });
+    this.shadowRoot!.appendChild(pr);
     pr.plan = this._pendingPlan.plan;
     pr.mode = 'plan';
   }
 
-  private _emit(name: string, detail: unknown): void {
-    this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
-    if (name in EVENT_NAME) {
-      const prefixed = EVENT_NAME[name as keyof GeoChatBotEvents];
-      this.dispatchEvent(new CustomEvent(prefixed, { detail, bubbles: true, composed: true }));
+  /**
+   * Apply a step edit from `<plan-review>`. Re-runs the full Plan validator
+   * against the proposed mutation; on failure the edit is rejected and an
+   * `error` event is dispatched. On success the pending plan is replaced
+   * with a freshly-cloned Plan so Lit re-renders cleanly and the original
+   * (validated) Plan is not mutated in place.
+   */
+  private _handleStepEdit(
+    planId: string,
+    detail: { stepId: string; args: Record<string, unknown> },
+    pr: HTMLElement & { plan?: Plan },
+  ): void {
+    if (!this._pendingPlan || this._pendingPlan.id !== planId) return;
+    const current = this._pendingPlan.plan;
+    const idx = current.steps.findIndex((s) => s.id === detail.stepId);
+    if (idx === -1) return;
+    const candidate: Plan = {
+      ...current,
+      steps: current.steps.map((s, i) => (i === idx ? { ...s, args: detail.args } : s)),
+    };
+    const datasetNames = this._datasets.map((d) => d.name);
+    try {
+      const revalidated = validatePlan(candidate, datasetNames);
+      this._pendingPlan = { id: planId, plan: revalidated };
+      pr.plan = revalidated;
+    } catch (err) {
+      const code = err instanceof PlanValidationError ? 'EDIT_INVALID' : errCode(err);
+      this.dispatch('error', {
+        planId,
+        stepId: detail.stepId,
+        code,
+        message: errMessage(err, 'edit failed validation'),
+      });
     }
   }
 
@@ -518,8 +883,12 @@ export class GeoChatBotElement extends LitElement {
   }
 
   /**
-   * Reset loaded datasets, profiles, errors, and drag state. Does not
-   * remove the active provider or change the operating mode.
+   * Reset loaded datasets, profiles, errors, and drag state. Also wipes
+   * planner state (pending plans, planner-side dataset profiles, cached
+   * Planner instance, and the active API key) so a `clear()` between
+   * users / tenants does not leak prior session state into the next
+   * `setProvider()` + `ask()` round-trip. The operating mode and the
+   * `dangerouslyAllowBrowser` opt-in are preserved.
    */
   clear(): void {
     this.generation++;
@@ -529,24 +898,40 @@ export class GeoChatBotElement extends LitElement {
     this.error = null;
     this.dragOver = false;
     this.busy = false;
+    this._execDatasets = [];
+    // Phase 4 / 5 state — must be wiped to avoid cross-session leaks.
+    this._datasets = [];
+    delete this._pendingPlan;
+    delete this._planner;
+    delete this._apiKey;
+    this.provider = undefined;
+    if (this.shadowRoot) {
+      const canvas = this.shadowRoot.querySelector('result-canvas') as
+        | (HTMLElement & { clear(): void })
+        | null;
+      canvas?.clear();
+      const planReview = this.shadowRoot.querySelector('plan-review');
+      planReview?.remove();
+    }
   }
 
   /**
-   * Internal: dispatch a typed CustomEvent. Centralized so we never leak
-   * raw error / detail objects, and the event-name → detail mapping
-   * stays in one place.
+   * Internal: dispatch a typed CustomEvent on both the namespaced
+   * (`geochatbot:<key>`) and unprefixed (`<key>`) names. The typed `on()`
+   * helper subscribes to the namespaced form; raw `addEventListener` calls
+   * commonly target the unprefixed form, so we cover both.
    */
   private dispatch<K extends keyof GeoChatBotEvents>(
     event: K,
     detail: GeoChatBotEvents[K],
   ): void {
-    this.dispatchEvent(
-      new CustomEvent<GeoChatBotEvents[K]>(EVENT_NAME[event], {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    const init: CustomEventInit<GeoChatBotEvents[K]> = {
+      detail,
+      bubbles: true,
+      composed: true,
+    };
+    this.dispatchEvent(new CustomEvent<GeoChatBotEvents[K]>(EVENT_NAME[event], init));
+    this.dispatchEvent(new CustomEvent<GeoChatBotEvents[K]>(event, init));
   }
 
   /** Public read-only view of the currently loaded results (for tests). */
@@ -665,12 +1050,26 @@ export class GeoChatBotElement extends LitElement {
       try {
         const engine = getEngine();
         await engine.init();
-        await engine.registerArrow(result);
+        const reg = await engine.registerArrow(result);
         engineRegistered = true;
+        // Phase 5: record the executor-facing entry so the agent loop
+        // can resolve `${dataset}` references to DuckDB views.
+        this._execDatasets = [
+          ...this._execDatasets.filter((d) => d.name !== result.name),
+          {
+            name: result.name,
+            tableName: reg.tableName,
+            ...(reg.geomView ? { geomView: reg.geomView } : {}),
+            hasGeometry: !!reg.geomView,
+          },
+        ];
       } catch (err) {
+        // Same redaction as the inline-rows path above: log code only,
+        // never the raw err — keeps any request URL / auth header out
+        // of the DevTools console and any console-intercepting telemetry.
         console.warn(
           '[geochatbot] engine registration failed; continuing in JS-only mode',
-          err,
+          errCode(err),
         );
       }
 
@@ -685,6 +1084,18 @@ export class GeoChatBotElement extends LitElement {
       }
 
       this.loaded = [...this.loaded, result];
+
+      // Phase 4 sync: every ingested file must also become a planner-side
+      // DatasetProfile so the Planner can reference it by name from a user
+      // question. Without this, ask() after a drop produces an empty
+      // dataset_refs check failure. The mapping is intentionally lossy —
+      // sample rows are not extracted here (kept empty) to avoid
+      // round-tripping potentially sensitive content through the agent
+      // unless the host explicitly opts in via pushData(profile).
+      this._datasets = [
+        ...this._datasets.filter((d) => d.name !== result.name),
+        toPlannerDatasetProfile(result.name, profile),
+      ];
 
       this.dispatch('dataset-loaded', {
         name: result.name,

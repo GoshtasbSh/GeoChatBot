@@ -26,7 +26,13 @@ export interface PlannerLLMInput {
 }
 
 export class PlannerLLMError extends Error {
-  readonly code: 'AUTH' | 'RATE_LIMIT' | 'NETWORK' | 'BAD_RESPONSE' | 'NO_TOOL_USE';
+  readonly code:
+    | 'AUTH'
+    | 'RATE_LIMIT'
+    | 'NETWORK'
+    | 'BAD_RESPONSE'
+    | 'NO_TOOL_USE'
+    | 'ABORTED';
   readonly status?: number;
   constructor(code: PlannerLLMError['code'], message: string, status?: number) {
     super(message);
@@ -80,7 +86,7 @@ export async function callPlannerLLM(input: PlannerLLMInput): Promise<Record<str
     res = await fetch(ENDPOINT, init);
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new PlannerLLMError('NETWORK', 'aborted');
+      throw new PlannerLLMError('ABORTED', 'aborted');
     }
     throw new PlannerLLMError('NETWORK', 'fetch failed');
   }

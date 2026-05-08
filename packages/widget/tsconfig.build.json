@@ -11,6 +11,7 @@
     "src/index.ts",
     "src/element.ts",
     "src/data/contracts.ts",
-    "src/providers/**/*.ts"
+    "src/providers/**/*.ts",
+    "src/vite-env.d.ts"
   ]
 }

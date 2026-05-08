@@ -38,6 +38,26 @@ export interface OpenAICompatOptions {
 export function createOpenAICompat(opts: OpenAICompatOptions): ChatProvider {
   const id = opts.id ?? 'openai-compat';
   const label = opts.label ?? 'OpenAI-Compatible';
+  // Reject baseUrls that aren't http/https. Without this, a caller that
+  // surfaces baseUrl in a settings UI could let a user paste e.g.
+  // `javascript:` or `data:` URLs and ship the bearer token there.
+  let parsed: URL;
+  try {
+    parsed = new URL(opts.baseUrl);
+  } catch {
+    throw new ProviderError(
+      'UNSUPPORTED',
+      'baseUrl is not a valid URL',
+      id,
+    );
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ProviderError(
+      'UNSUPPORTED',
+      `baseUrl protocol must be http: or https:, got ${parsed.protocol}`,
+      id,
+    );
+  }
   const provider: ChatProvider = {
     id,
     label,
@@ -71,11 +91,10 @@ export function createOpenAICompat(opts: OpenAICompatOptions): ChatProvider {
         if (isAbortError(err)) {
           throw new ProviderError('ABORTED', 'Request aborted', id);
         }
-        throw new ProviderError(
-          'NETWORK',
-          `Network error: ${(err as Error).message ?? 'unknown'}`,
-          id,
-        );
+        // Do NOT include err.message — fetch failure messages on some
+        // runtimes echo the request URL or headers (which would leak the
+        // bearer token carried in `Authorization`).
+        throw new ProviderError('NETWORK', 'Network error (fetch failed)', id);
       }
 
       if (!res.ok) {
@@ -84,6 +103,9 @@ export function createOpenAICompat(opts: OpenAICompatOptions): ChatProvider {
         }
         if (res.status === 429) {
           throw new ProviderError('RATE_LIMIT', `Rate limited (429)`, id, res.status);
+        }
+        if (res.status >= 500) {
+          throw new ProviderError('NETWORK', `Server error (${res.status})`, id, res.status);
         }
         throw new ProviderError(
           'BAD_RESPONSE',

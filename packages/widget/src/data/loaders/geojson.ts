@@ -63,6 +63,18 @@ interface FeatureLike {
   geometry?: unknown;
 }
 
+// Per RFC 7946, a GeoJSON document may be a FeatureCollection, a Feature,
+// a Geometry, or a GeometryCollection. We accept all four shapes.
+const GEOMETRY_TYPES = new Set([
+  'Point',
+  'MultiPoint',
+  'LineString',
+  'MultiLineString',
+  'Polygon',
+  'MultiPolygon',
+  'GeometryCollection',
+]);
+
 function collectFeatures(parsed: unknown): FeatureLike[] | null {
   if (!parsed || typeof parsed !== 'object') return null;
   const obj = parsed as { type?: unknown; features?: unknown; geometry?: unknown };
@@ -71,6 +83,11 @@ function collectFeatures(parsed: unknown): FeatureLike[] | null {
   }
   if (obj.type === 'Feature') {
     return [obj as FeatureLike];
+  }
+  // Bare geometry: wrap it in a synthetic Feature so the rest of the
+  // pipeline doesn't have to care about the wrapper level.
+  if (typeof obj.type === 'string' && GEOMETRY_TYPES.has(obj.type)) {
+    return [{ type: 'Feature', properties: {}, geometry: obj }];
   }
   return null;
 }

@@ -58,4 +58,40 @@ describe('geojsonLoader', () => {
     const result = await geojsonLoader.load(fixture('points.geojson'), { tableName: 'my-points' });
     expect(result.name).toBe('my_points');
   });
+
+  it('accepts a bare GeoJSON geometry (RFC 7946 §2)', async () => {
+    // RFC 7946 allows a top-level GeoJSON document to be a Geometry,
+    // not just a Feature/FeatureCollection. The loader wraps it in a
+    // synthetic Feature so downstream rendering still works.
+    const bare = JSON.stringify({
+      type: 'Polygon',
+      coordinates: [
+        [
+          [-82.4, 29.6],
+          [-82.2, 29.6],
+          [-82.2, 29.8],
+          [-82.4, 29.8],
+          [-82.4, 29.6],
+        ],
+      ],
+    });
+    const result = await geojsonLoader.load({
+      name: 'bare.geojson',
+      bytes: new TextEncoder().encode(bare),
+    });
+    expect(result.table.numRows).toBe(1);
+    expect(result.geometry).toEqual({ kind: 'geojson-string', column: 'geometry' });
+    const first = result.table.getChild('geometry')?.get(0);
+    expect(typeof first).toBe('string');
+    expect(JSON.parse(first as string).type).toBe('Polygon');
+  });
+
+  it('accepts a bare Point geometry', async () => {
+    const bare = JSON.stringify({ type: 'Point', coordinates: [0, 0] });
+    const result = await geojsonLoader.load({
+      name: 'bare-point.geojson',
+      bytes: new TextEncoder().encode(bare),
+    });
+    expect(result.table.numRows).toBe(1);
+  });
 });

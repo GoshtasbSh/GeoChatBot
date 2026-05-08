@@ -2,13 +2,19 @@ import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 
 /**
- * Builds two self-contained artifacts from a single entry:
- *   - dist/geochatbot.js      (ESM, importable via <script type="module">)
- *   - dist/geochatbot.umd.cjs (UMD, exposes window.GeoChatBot)
+ * Builds two artifacts from a single entry point:
  *
- * Every npm dep (lit, deck.gl, maplibre-gl, loaders.gl, apache-arrow, jszip)
- * is bundled in. Only @duckdb/duckdb-wasm worker/wasm chunks are emitted
- * as siblings (via dynamic imports) — they load on demand at runtime.
+ *   dist/geochatbot.js        — ESM with code-split lazy chunks.
+ *                               Heavy deps (MapLibre, deck.gl, loaders) are
+ *                               loaded on demand; the entry chunk stays lean.
+ *
+ *   dist/geochatbot.umd.cjs   — UMD, fully monolithic (inlined). UMD cannot
+ *                               emit sibling chunks, so all deps are bundled
+ *                               in. Use this for simple <script> CDN drops.
+ *
+ * Lit, apache-arrow, and the DuckDB-WASM JS bindings are bundled in both
+ * artifacts. The duckdb-wasm worker/WASM blobs are always fetched at runtime
+ * (they're emitted as sibling files by the DuckDB package itself).
  */
 export default defineConfig({
   build: {
@@ -16,17 +22,33 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
       name: 'GeoChatBot',
-      fileName: (format) => (format === 'es' ? 'geochatbot.js' : `geochatbot.${format}.cjs`),
+      // formats is overridden by rollupOptions.output below; keep in sync.
       formats: ['es', 'umd'],
+      fileName: (format) => (format === 'es' ? 'geochatbot.js' : `geochatbot.${format}.cjs`),
     },
     sourcemap: true,
     rollupOptions: {
-      // Bundle all deps. Empty externals list -> single-file artifact.
+      // Bundle all deps; empty externals = single self-contained artifact.
       external: [],
-      output: {
-        // Keep DuckDB-WASM dynamic worker/wasm chunks as siblings.
-        inlineDynamicImports: false,
-      },
+      output: [
+        {
+          // ESM — code splitting enabled so lazy-imported chunks land as
+          // sibling files (MapView, each loader, etc.).
+          format: 'es',
+          entryFileNames: 'geochatbot.js',
+          chunkFileNames: '[name]-[hash].js',
+          inlineDynamicImports: false,
+        },
+        {
+          // UMD — Rollup forbids multi-chunk UMD output, so all dynamic
+          // imports are inlined here. This bundle is larger but self-contained
+          // and works with a plain <script> tag and window.GeoChatBot.
+          format: 'umd',
+          name: 'GeoChatBot',
+          entryFileNames: 'geochatbot.umd.cjs',
+          inlineDynamicImports: true,
+        },
+      ],
     },
   },
   worker: {

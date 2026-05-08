@@ -17,10 +17,5 @@
     "verbatimModuleSyntax": false,
     "noEmit": true
   },
-  "include": ["src"],
-  "exclude": [
-    "src/types.ts",
-    "src/data/duckdb.ts",
-    "src/data/catalog.ts"
-  ]
+  "include": ["src"]
 }

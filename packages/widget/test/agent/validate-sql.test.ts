@@ -49,6 +49,79 @@ describe('validateSql — blocked keywords', () => {
   }
 });
 
+describe('validateSql — blocked DuckDB table-valued read functions', () => {
+  // SELECT-prefixed queries that would otherwise pass the leading-token
+  // check but invoke filesystem / network read functions. All must be
+  // rejected — these are the SQL bypasses surfaced by the Phase 4
+  // security review.
+  for (const q of [
+    "SELECT * FROM read_csv_auto('http://attacker.com/data.csv')",
+    "SELECT * FROM read_csv('s3://bucket/key', AUTO_DETECT=true)",
+    "SELECT * FROM read_parquet('http://x/y.parquet')",
+    "SELECT * FROM read_json_auto('http://x/y.json')",
+    "SELECT * FROM read_ndjson('http://x/y.ndjson')",
+    "SELECT * FROM read_text('/etc/passwd')",
+    "SELECT * FROM read_blob('/foo/bar')",
+    "SELECT * FROM glob('/**/*.csv')",
+    "SELECT * FROM query_table('foo')",
+    'WITH x AS (SELECT * FROM read_parquet(\'h\')) SELECT * FROM x',
+    "SELECT count(*) FROM read_csv_auto('http://x')",
+  ]) {
+    it(`rejects: ${q.slice(0, 60)}`, () => {
+      expect(() => validateSql(q)).toThrow(SqlValidationError);
+    });
+  }
+
+  // Mixed-case must still be caught (tokenizer upper-cases).
+  it('rejects mixed-case Read_Csv_Auto', () => {
+    expect(() => validateSql("SELECT * FROM Read_Csv_Auto('h')")).toThrow();
+  });
+
+  // Comment-stripped variant.
+  it('rejects read_csv hidden after a leading line comment', () => {
+    expect(() => validateSql("-- harmless\nSELECT * FROM read_csv('h')")).toThrow();
+  });
+});
+
+describe('validateSql — extended SSRF / catalog blocklist', () => {
+  // Functions and aliases not covered by the original blocklist that
+  // would otherwise pass the leading-token check. Each must be rejected.
+  for (const q of [
+    // Parquet alias for read_parquet.
+    "SELECT * FROM parquet_scan('http://x/y.parquet')",
+    // Newer lakehouse readers.
+    "SELECT * FROM delta_scan('s3://b/k')",
+    "SELECT * FROM iceberg_scan('s3://b/k')",
+    // Foreign-database scanners.
+    "SELECT * FROM sqlite_scan('/tmp/x.db', 't')",
+    "SELECT * FROM postgres_scan('host=x', 'public', 't')",
+    "SELECT postgres_query('host=x', 'SELECT 1')",
+    "SELECT * FROM mysql_scan('host=x', 'db', 't')",
+    "SELECT mysql_query('host=x', 'SELECT 1')",
+    // Engine catalog metadata.
+    'SELECT * FROM duckdb_extensions()',
+    'SELECT * FROM duckdb_settings()',
+    'SELECT * FROM duckdb_tables()',
+    'SELECT * FROM duckdb_functions()',
+    'SELECT * FROM duckdb_databases()',
+    'SELECT * FROM duckdb_views()',
+    'SELECT * FROM information_schema.tables',
+    'SELECT table_name FROM information_schema.columns',
+    // Environment variable read.
+    "SELECT getenv('HOME')",
+    // SELECT ... INTO is DuckDB's CTAS shorthand — DDL via SELECT.
+    'SELECT * INTO sink FROM t',
+    'SELECT 1 AS a INTO TEMP tmp',
+    // Mixed-case must still trip the upper-cased token check.
+    "SELECT * FROM Parquet_Scan('h')",
+    "SELECT * FROM SQLite_Scan('x', 't')",
+  ]) {
+    it(`rejects: ${q.slice(0, 60)}`, () => {
+      expect(() => validateSql(q)).toThrow(SqlValidationError);
+    });
+  }
+});
+
 describe('validateSql — anti-injection', () => {
   it('rejects multiple statements', () => {
     expect(() => validateSql('SELECT 1; SELECT 2')).toThrow(/single/i);

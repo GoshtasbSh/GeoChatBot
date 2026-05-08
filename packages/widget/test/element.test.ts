@@ -118,7 +118,20 @@ describe('setProvider / clear', () => {
     generate: async () => ({ text: '' }),
   };
 
-  it('setProvider stores the provider and clear does not remove it', async () => {
+  it('setProvider stores the provider', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+
+    el.setProvider(stubProvider);
+    expect(el.getProvider()).toBe(stubProvider);
+  });
+
+  it('clear() wipes the provider as a multi-tenant safety boundary', async () => {
+    // Phase 4 security review: clear() must zero session state so a
+    // multi-tenant SPA reusing the widget across users does not leak
+    // provider/api-key/dataset state into the next user's first ask().
+    // Hosts that want a single shared provider should re-call
+    // setProvider() after clear().
     const el = mountElement();
     await flushUpdates(el);
 
@@ -126,7 +139,7 @@ describe('setProvider / clear', () => {
     expect(el.getProvider()).toBe(stubProvider);
 
     el.clear();
-    expect(el.getProvider()).toBe(stubProvider);
+    expect(el.getProvider()).toBeUndefined();
   });
 
   it('clear empties internal loaded state — no .table-card rendered after clear', async () => {
@@ -188,6 +201,240 @@ describe('Phase 2 — mode / ask / exportLayer', () => {
     expect(layer!.meta.name).toBe('points');
     // Phase 2 stub — explicit warning so callers know features are not real.
     expect(layer!.meta.warning).toBeDefined();
+  });
+});
+
+describe('Phase 4 — review-driven fixes', () => {
+  // Minimal stub provider that carries apiKey/model so setProvider stashes
+  // them onto the host. This is the same shape the real Anthropic options
+  // adapter exposes.
+  const planProvider = {
+    id: 'p',
+    label: 'P',
+    apiKey: 'sk-ant-test',
+    model: 'claude-sonnet-4-6',
+    generate: async () => ({ text: '' }),
+  } as unknown as ChatProvider;
+
+  function makePlan(steps: unknown[] = [
+    { id: 's1', tool: 'render.summary', args: { text: 'ok' }, why: 'final' },
+  ]): Record<string, unknown> {
+    return {
+      goal: 'Test',
+      assumptions: [],
+      dataset_refs: ['sales'],
+      steps,
+    };
+  }
+
+  it('B3 — ask() emits BROWSER_KEY_GUARD error when neither stub nor opt-in is set', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.setProvider(planProvider);
+    const errs: GeoChatBotEvents['error'][] = [];
+    el.on('error', (d) => errs.push(d));
+    await el.ask('q');
+    expect(errs.length).toBe(1);
+    expect(errs[0]!.code).toBe('BROWSER_KEY_GUARD');
+  });
+
+  it('B3 — opting in via property allows the planner path', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.dangerouslyAllowBrowser = true;
+    el.setProvider(planProvider);
+    await el.pushData({
+      name: 'sales', kind: 'table', rows: 1, columns: [], sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+
+    const planEvents: Array<unknown> = [];
+    el.on('plan', (d) => planEvents.push(d));
+
+    el.__setLlmCall(async () => makePlan());
+    await el.ask('how many rows?');
+    expect(planEvents.length).toBe(1);
+  });
+
+  it('B3 — installing __setLlmCall bypasses the BROWSER_KEY_GUARD (test path)', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.setProvider(planProvider);
+    await el.pushData({
+      name: 'sales', kind: 'table', rows: 1, columns: [], sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+    el.__setLlmCall(async () => makePlan());
+
+    const errs: GeoChatBotEvents['error'][] = [];
+    const planEvents: Array<unknown> = [];
+    el.on('error', (d) => errs.push(d));
+    el.on('plan', (d) => planEvents.push(d));
+
+    await el.ask('q');
+    expect(errs.filter((e) => e.code === 'BROWSER_KEY_GUARD').length).toBe(0);
+    expect(planEvents.length).toBe(1);
+  });
+
+  it('H1 — plan event detail carries { planId, plan, datasets } shape', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.dangerouslyAllowBrowser = true;
+    el.setProvider(planProvider);
+    await el.pushData({
+      name: 'sales', kind: 'table', rows: 1, columns: [], sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+    el.__setLlmCall(async () => makePlan());
+
+    let received: GeoChatBotEvents['plan'] | undefined;
+    el.on('plan', (d) => { received = d; });
+    await el.ask('q');
+
+    expect(received).toBeDefined();
+    expect(typeof received!.planId).toBe('string');
+    expect(received!.planId).toMatch(/^plan_/);
+    expect(received!.plan.steps.length).toBe(1);
+    expect(Array.isArray(received!.datasets)).toBe(true);
+  });
+
+  it('H1/dual-dispatch — both prefixed and unprefixed event names fire', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.dangerouslyAllowBrowser = true;
+    el.setProvider(planProvider);
+    await el.pushData({
+      name: 'sales', kind: 'table', rows: 1, columns: [], sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+    el.__setLlmCall(async () => makePlan());
+
+    let unprefixed = 0;
+    let prefixed = 0;
+    el.addEventListener('plan', () => unprefixed++);
+    el.addEventListener('geochatbot:plan', () => prefixed++);
+    await el.ask('q');
+    expect(unprefixed).toBe(1);
+    expect(prefixed).toBe(1);
+  });
+
+  it('H4 — invalid step:edit dispatches an EDIT_INVALID error and does not mutate the pending plan', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.dangerouslyAllowBrowser = true;
+    el.setProvider(planProvider);
+    await el.pushData({
+      name: 'sales', kind: 'table', rows: 1, columns: [], sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+    el.__setLlmCall(async () =>
+      makePlan([
+        { id: 's1', tool: 'sql', args: { query: 'SELECT 1' }, output_var: 'r', why: 'pull' },
+        { id: 's2', tool: 'render.summary', args: { text: 'done' }, why: 'final' },
+      ]),
+    );
+
+    const errs: GeoChatBotEvents['error'][] = [];
+    el.on('error', (d) => errs.push(d));
+    await el.ask('q');
+    await flushUpdates(el);
+
+    const pr = el.shadowRoot!.querySelector('plan-review') as HTMLElement;
+    expect(pr).toBeTruthy();
+
+    // Dispatch a step:edit event with args that fail SqlArgs (empty string).
+    pr.dispatchEvent(
+      new CustomEvent('step:edit', {
+        detail: { stepId: 's1', args: { query: '' } },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+
+    expect(errs.some((e) => e.code === 'EDIT_INVALID')).toBe(true);
+  });
+
+  it('H4 — valid step:edit replaces the pending plan with the validated update', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.dangerouslyAllowBrowser = true;
+    el.setProvider(planProvider);
+    await el.pushData({
+      name: 'sales', kind: 'table', rows: 1, columns: [], sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+    el.__setLlmCall(async () =>
+      makePlan([
+        { id: 's1', tool: 'sql', args: { query: 'SELECT 1' }, output_var: 'r', why: 'pull' },
+        { id: 's2', tool: 'render.summary', args: { text: 'done' }, why: 'final' },
+      ]),
+    );
+
+    await el.ask('q');
+    await flushUpdates(el);
+    const pr = el.shadowRoot!.querySelector('plan-review') as HTMLElement & {
+      plan?: { steps: Array<{ id: string; args: Record<string, unknown> }> };
+    };
+
+    pr.dispatchEvent(
+      new CustomEvent('step:edit', {
+        detail: { stepId: 's1', args: { query: 'SELECT 2' } },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+
+    expect(pr.plan!.steps[0]!.args.query).toBe('SELECT 2');
+  });
+
+  it('H7 — clear() wipes _datasets / _pendingPlan / _planner / _apiKey', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.dangerouslyAllowBrowser = true;
+    el.setProvider(planProvider);
+    await el.pushData({
+      name: 'sales', kind: 'table', rows: 1, columns: [], sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+    el.__setLlmCall(async () => makePlan());
+    await el.ask('q');
+    await flushUpdates(el);
+    expect(el.shadowRoot!.querySelector('plan-review')).toBeTruthy();
+
+    el.clear();
+    await flushUpdates(el);
+
+    // After clear, plan-review is removed, provider is gone, and a fresh
+    // ask() with no setProvider should emit NO_KEY (the wipe was real).
+    expect(el.shadowRoot!.querySelector('plan-review')).toBeNull();
+    expect(el.getProvider()).toBeUndefined();
+
+    const errs: GeoChatBotEvents['error'][] = [];
+    el.on('error', (d) => errs.push(d));
+    await el.ask('q again');
+    expect(errs.some((e) => e.code === 'NO_KEY')).toBe(true);
+  });
+
+  it('rejectPlan — emits progress(rejected) carrying the real planId, not "_rejected"', async () => {
+    const el = mountElement();
+    await flushUpdates(el);
+    el.dangerouslyAllowBrowser = true;
+    el.setProvider(planProvider);
+    await el.pushData({
+      name: 'sales', kind: 'table', rows: 1, columns: [], sample: [],
+    } as Parameters<typeof el.pushData>[0]);
+    el.__setLlmCall(async () => makePlan());
+
+    let receivedPlanId: string | undefined;
+    el.on('plan', (d) => { receivedPlanId = d.planId; });
+    const progressEvents: GeoChatBotEvents['progress'][] = [];
+    el.on('progress', (d) => progressEvents.push(d));
+
+    await el.ask('q');
+    expect(receivedPlanId).toBeDefined();
+
+    // Swap the llm-call so the second-attempt plan call doesn't blow up;
+    // we only care about the synchronous rejected-progress emission.
+    el.__setLlmCall(async () => makePlan());
+    el.rejectPlan({ id: receivedPlanId, feedback: 'no thanks' });
+
+    const rejected = progressEvents.find((e) => e.status === 'rejected');
+    expect(rejected).toBeDefined();
+    expect(rejected!.planId).toBe(receivedPlanId);
+    expect(rejected!.planId).not.toBe('_rejected');
   });
 });
 

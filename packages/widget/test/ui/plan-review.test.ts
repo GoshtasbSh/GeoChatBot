@@ -94,9 +94,13 @@ describe('<plan-review> inline edit', () => {
   it('save is disabled while args fail tool zod parse', async () => {
     const el = mount(plan);
     await el.updateComplete;
+    // After M16 the per-step actions row contains a single 'edit'
+    // iconbtn — the redundant non-interactive 'why?' button was removed.
+    // Each step contributes exactly one iconbtn, so index N targets the
+    // edit button of step N. Step 1 (s2 / render.summary) is the second.
     const editBtns = el.shadowRoot!.querySelectorAll('button.iconbtn');
-    // The 3rd iconbtn (index 2) is the first iconbtn of step s2 (render.summary)
-    (editBtns[2] as HTMLButtonElement).click();
+    expect(editBtns.length).toBe(2);
+    (editBtns[1] as HTMLButtonElement).click();
     await el.updateComplete;
     const textInput = el.shadowRoot!.querySelector('input[name="text"]') as HTMLInputElement;
     textInput.value = '';

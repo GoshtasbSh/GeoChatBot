@@ -50,7 +50,11 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
   }
 
   // Layer 3: reference integrity (forward-only)
+  // Duplicate output_var would silently shadow an earlier step's output
+  // because the executor stores results in a single Map keyed by var name
+  // — any `${dup}` resolves to whichever step ran last. Reject up front.
   const definedSoFar = new Set<string>();
+  const seenOutputVars = new Set<string>();
   for (const step of plan.steps) {
     const refs = collectVarRefs(step.args);
     for (const r of refs) {
@@ -64,12 +68,22 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
         );
       }
     }
-    if (step.output_var !== undefined) definedSoFar.add(step.output_var);
+    if (step.output_var !== undefined) {
+      if (seenOutputVars.has(step.output_var)) {
+        throw new PlanValidationError(
+          `duplicate output_var: ${step.output_var}`,
+          step.id,
+        );
+      }
+      seenOutputVars.add(step.output_var);
+      definedSoFar.add(step.output_var);
+    }
   }
 
-  // Last step must be render.* or render.summary
+  // Last step must be a render.* tool. (`render.summary` matches the prefix
+  // — it does not need a separate clause.)
   const last = plan.steps[plan.steps.length - 1]!;
-  if (!last.tool.startsWith('render.') && last.tool !== 'render.summary') {
+  if (!last.tool.startsWith('render.')) {
     throw new PlanValidationError(
       `last step must be a render.* tool (got ${last.tool})`,
       last.id,

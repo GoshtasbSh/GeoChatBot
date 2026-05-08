@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { listTools } from '../tools/registry.js';
 import type { ToolDef } from '../tools/types.js';
 import templateRaw from './planner.system.md?raw';
@@ -75,9 +76,10 @@ export function renderToolsBlock(): string {
 }
 
 function argSignature(t: ToolDef): string {
-  const shape = (t.args as any)?._def?.shape?.();
-  if (!shape || typeof shape !== 'object') return '';
-  return Object.keys(shape).join(', ');
+  // Use Zod's public `shape` accessor; tools registered with non-object
+  // schemas (unions, intersections) intentionally render as `tool()`.
+  if (!(t.args instanceof z.ZodObject)) return '';
+  return Object.keys(t.args.shape).join(', ');
 }
 
 export function renderPrompt(parts: { datasets: string; tools: string; examples: string }): string {

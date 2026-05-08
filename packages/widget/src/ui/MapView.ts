@@ -154,13 +154,35 @@ export class GcbMap extends LitElement {
       Number.isFinite(bbox[2]) &&
       Number.isFinite(bbox[3])
     ) {
-      this.map.fitBounds(
-        [
-          [bbox[0], bbox[1]],
-          [bbox[2], bbox[3]],
-        ] as LngLatBoundsLike,
-        { padding: 28, maxZoom: 14, duration: 600 },
-      );
+      // Antimeridian guard: a dataset spanning the Pacific (e.g.
+      // points clustered near +170° and -170°) accumulates a bbox like
+      // [-170, ..., 170, ...] which describes the *long* way around the
+      // world, causing fitBounds to zoom to the Atlantic. We can't
+      // reliably distinguish a genuine cross-meridian dataset from a
+      // global one without per-row analysis, so we conservatively skip
+      // the fit when the implied longitudinal span is > 270° and let
+      // the map keep its previous viewport (or initial world view).
+      // Most legitimate datasets fit in <= 180° of longitude.
+      const lonSpan = bbox[2] - bbox[0];
+      if (lonSpan <= 270) {
+        this.map.fitBounds(
+          [
+            [bbox[0], bbox[1]],
+            [bbox[2], bbox[3]],
+          ] as LngLatBoundsLike,
+          { padding: 28, maxZoom: 14, duration: 600 },
+        );
+      } else {
+        // Fall back to a global view so the user still sees something
+        // rather than the wrong hemisphere.
+        this.map.fitBounds(
+          [
+            [-180, Math.max(bbox[1], -85)],
+            [180, Math.min(bbox[3], 85)],
+          ] as LngLatBoundsLike,
+          { padding: 28, maxZoom: 14, duration: 600 },
+        );
+      }
     }
   }
 }

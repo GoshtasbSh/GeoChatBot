@@ -39,7 +39,21 @@ registerTool({
 registerTool({
   id: 'render.summary',
   description: 'Render a plain-English markdown summary. Always the last step when the answer is a sentence/paragraph.',
-  args: z.object({ text: z.string().min(1) }),
+  // `text` must be a literal sentence the LLM authored — not a whole-
+  // string `${var}` reference. Substituting `"${foo}"` resolves to the
+  // OutputRef object (not a string), which the renderer would coerce to
+  // `[object Object]`. Partial interpolation like `"Found ${count}"` is
+  // intentionally NOT substituted (see substitute.ts WHOLE_STRING_VAR);
+  // it stays literal, which is fine.
+  args: z.object({
+    text: z
+      .string()
+      .min(1)
+      .refine(
+        (s) => !/^\$\{\w+\}$/.test(s),
+        'render.summary.text must be a literal sentence, not a whole-string ${var} reference',
+      ),
+  }),
   output_kind: 'rendered',
   examples: [{ when: 'Tell the user what was found', args: { text: 'Brooklyn led with $X in sales.' } }],
 });

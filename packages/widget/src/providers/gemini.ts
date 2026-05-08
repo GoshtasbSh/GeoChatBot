@@ -5,11 +5,14 @@
  * `gemini-2.5-flash` and similar models. Sign up at
  * https://aistudio.google.com to get a key.
  *
- * Auth: API key passed as the `?key=` query param (per Google's
- * Generative Language API). No bearer token.
+ * Auth: API key passed in the `x-goog-api-key` request header. The
+ * Generative Language API also accepts the legacy `?key=` query
+ * parameter, but headers keep the key out of browser DevTools URL
+ * displays, HAR exports, server access logs, and Referer leakage on
+ * any redirect.
  *
  * Browser safety: hosted endpoint — running directly from the browser
- * leaks the key. Use a server proxy in production.
+ * exposes the key over the wire. Use a server proxy in production.
  */
 
 import {
@@ -36,7 +39,7 @@ export function createGemini(opts: GeminiOptions): ChatProvider {
     async generate(input: GenerateInput): Promise<GenerateOutput> {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
         model,
-      )}:generateContent?key=${encodeURIComponent(opts.apiKey)}`;
+      )}:generateContent`;
 
       const { systemText, contents } = mapMessages(input.messages);
       const generationConfig: Record<string, unknown> = {};
@@ -55,7 +58,10 @@ export function createGemini(opts: GeminiOptions): ChatProvider {
       try {
         const init: RequestInit = {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': opts.apiKey,
+          },
           body: JSON.stringify(body),
         };
         if (input.signal) init.signal = input.signal;
@@ -64,11 +70,9 @@ export function createGemini(opts: GeminiOptions): ChatProvider {
         if (err instanceof Error && err.name === 'AbortError') {
           throw new ProviderError('ABORTED', 'Request aborted', ID);
         }
-        throw new ProviderError(
-          'NETWORK',
-          `Network error: ${(err as Error).message ?? 'unknown'}`,
-          ID,
-        );
+        // Do NOT include err.message — some browsers echo the full URL
+        // (which contains the API key) in fetch failure messages.
+        throw new ProviderError('NETWORK', 'Network error (fetch failed)', ID);
       }
 
       if (!res.ok) {
@@ -77,6 +81,9 @@ export function createGemini(opts: GeminiOptions): ChatProvider {
         }
         if (res.status === 429) {
           throw new ProviderError('RATE_LIMIT', `Rate limited (429)`, ID, res.status);
+        }
+        if (res.status >= 500) {
+          throw new ProviderError('NETWORK', `Server error (${res.status})`, ID, res.status);
         }
         throw new ProviderError('BAD_RESPONSE', `HTTP ${res.status}`, ID, res.status);
       }

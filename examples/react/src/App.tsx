@@ -11,15 +11,13 @@ export function App() {
     setLog((prev) => (prev + line + '\n').slice(-4000));
   }, []);
 
-  const onResult = useCallback(
-    (payload: unknown) => append('[result] ' + JSON.stringify(payload).slice(0, 240)),
+  const onDatasetLoaded = useCallback(
+    (payload: { name: string; source: string }) =>
+      append('[dataset-loaded] ' + JSON.stringify({ name: payload.name, source: payload.source })),
     [append],
   );
   const onError = useCallback(
-    (payload: unknown) => {
-      const msg = payload instanceof Error ? payload.message : JSON.stringify(payload);
-      append('[error] ' + msg);
-    },
+    (payload: { message: string }) => append('[error] ' + payload.message),
     [append],
   );
 
@@ -49,7 +47,7 @@ export function App() {
       <GeoChatBotReact
         ref={ref}
         theme={theme}
-        onResult={onResult}
+        onDatasetLoaded={onDatasetLoaded}
         onError={onError}
         style={{ display: 'block', height: 560, border: '1px solid #e5e7eb', borderRadius: 8 }}
       />

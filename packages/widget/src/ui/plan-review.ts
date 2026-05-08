@@ -1,8 +1,62 @@
 import { LitElement, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { z } from 'zod';
 import type { Plan, Step } from '../agent/types.js';
 import { getTool } from '../agent/index.js';
 import { planReviewStyles } from './plan-review.styles.js';
+
+/**
+ * Best-effort extraction of the per-key Zod schema map for an object
+ * schema. Uses Zod's public `shape` accessor; returns null for non-object
+ * schemas (which the edit form cannot render anyway). Keeps the brittle
+ * `_def.shape()` private-API access out of the component code.
+ */
+function getZodObjectShape(
+  schema: z.ZodTypeAny,
+): Record<string, z.ZodTypeAny> | null {
+  if (schema instanceof z.ZodObject) {
+    return schema.shape as Record<string, z.ZodTypeAny>;
+  }
+  return null;
+}
+
+/**
+ * Pull the literal values out of a `z.enum([...])` schema. Returns null
+ * if the schema is not a ZodEnum (after stripping wrappers).
+ */
+function getZodEnumValues(schema: z.ZodTypeAny): readonly string[] | null {
+  const inner = unwrapZod(schema);
+  if (inner instanceof z.ZodEnum) {
+    return inner.options as readonly string[];
+  }
+  return null;
+}
+
+/**
+ * Peel off `.optional()` / `.default(...)` / `.nullable()` wrappers so
+ * downstream `instanceof` checks see the actual primitive schema. Many
+ * tool args use these wrappers (e.g. `Units.default('meters')`); without
+ * unwrapping, the inline editor falls back to a free-text input instead
+ * of a select / number-spinner.
+ */
+function unwrapZod(schema: z.ZodTypeAny): z.ZodTypeAny {
+  let s: z.ZodTypeAny = schema;
+  // Bounded loop: handles e.g. `.optional().default(...)` chains without
+  // any chance of infinite recursion if a future Zod version adds new
+  // wrappers we don't unwrap.
+  for (let i = 0; i < 4; i++) {
+    if (s instanceof z.ZodOptional || s instanceof z.ZodNullable) {
+      s = s.unwrap();
+      continue;
+    }
+    if (s instanceof z.ZodDefault) {
+      s = s.removeDefault();
+      continue;
+    }
+    break;
+  }
+  return s;
+}
 
 export type StepStatus = 'pending' | 'running' | 'success' | 'retry' | 'fail';
 export type PlanReviewMode = 'plan' | 'running';
@@ -24,7 +78,7 @@ export class PlanReview extends LitElement {
   override render() {
     if (!this.plan) return nothing;
     return html`
-      <article class="glass">
+      <article class="glass" role="region" aria-label="Agent plan review">
         <header class="head">
           <h2 class="title">${this.plan.goal}</h2>
           <div class="meta">
@@ -38,15 +92,25 @@ export class PlanReview extends LitElement {
             <ul>${this.plan.assumptions.map((a) => html`<li>${a}</li>`)}</ul>
           </div>` : nothing}
 
-        <div class="steps">
+        <div class="steps" role="list" aria-label="Plan steps">
           ${this.plan.steps.map((s, i) => this._renderStep(s, i + 1))}
         </div>
 
         ${this.mode === 'plan' ? html`
           <footer class="foot">
-            <button class="btn ghost reject" @click=${this._onReject}>↺ Reject &amp; rephrase</button>
+            <button
+              class="btn ghost reject"
+              type="button"
+              aria-label="Reject this plan and ask the agent to rephrase"
+              @click=${this._onReject}
+            >↺ Reject &amp; rephrase</button>
             <div style="display:flex; gap: 8px;">
-              <button class="btn run" @click=${this._onApprove}>Approve &amp; run →</button>
+              <button
+                class="btn run"
+                type="button"
+                aria-label="Approve this plan and run all steps"
+                @click=${this._onApprove}
+              >Approve &amp; run →</button>
             </div>
           </footer>` : nothing}
       </article>
@@ -59,9 +123,10 @@ export class PlanReview extends LitElement {
     const patch = this.criticPatches.get(s.id);
     const orbClass = status === 'pending' ? '' : status;
     const isEditing = this._editingStepId === s.id;
+    const stepLabel = `Step ${n}: ${s.tool}`;
     return html`
-      <article class="step">
-        <div class="orb ${orbClass}">${this._orbContent(status, n)}</div>
+      <article class="step" role="listitem" aria-label=${stepLabel}>
+        <div class="orb ${orbClass}" aria-hidden="true">${this._orbContent(status, n)}</div>
         <div>
           <div class="tool">${s.tool}</div>
           <div class="why">${s.why}</div>
@@ -72,8 +137,13 @@ export class PlanReview extends LitElement {
         </div>
         <div class="step-actions">
           ${this.mode === 'plan' && !isEditing ? html`
-            <button class="iconbtn" @click=${() => this._enterEdit(s)}>edit</button>
-            <button class="iconbtn">why?</button>` : nothing}
+            <button
+              class="iconbtn"
+              type="button"
+              aria-label="Edit step ${n} (${s.tool})"
+              title=${`Edit ${s.tool}`}
+              @click=${() => this._enterEdit(s)}
+            >edit</button>` : nothing}
         </div>
       </article>
     `;
@@ -120,38 +190,62 @@ export class PlanReview extends LitElement {
   private _renderEditingArgs(step: Step) {
     const t = getTool(step.tool);
     if (!t) return nothing;
-    const shape = (t.args as any)?._def?.shape?.() ?? {};
+    const shape = getZodObjectShape(t.args);
+    if (!shape) return nothing;
     return html`
-      <div class="args">
-        ${Object.entries(shape).map(([k, schema]: any) => html`
+      <div class="args" role="group" aria-label="Edit step arguments">
+        ${Object.entries(shape).map(([k, schema]) => html`
           <div class="row">
-            <span class="k">${k}</span>
+            <label class="k" for=${`edit-${step.id}-${k}`}>${k}</label>
             <span class="v">
-              ${this._renderEditInput(step.tool, k, schema)}
+              ${this._renderEditInput(step.tool, step.id, k, schema)}
             </span>
           </div>
         `)}
       </div>
       <div style="margin-top:8px; display:flex; gap:8px;">
-        <button class="btn save" ?disabled=${!this._editValid} @click=${() => this._saveEdit(step)}>save</button>
-        <button class="btn ghost" @click=${this._exitEdit}>cancel</button>
+        <button
+          class="btn save"
+          type="button"
+          ?disabled=${!this._editValid}
+          aria-label="Save edits to this step"
+          @click=${() => this._saveEdit(step)}
+        >save</button>
+        <button
+          class="btn ghost"
+          type="button"
+          aria-label="Cancel editing this step"
+          @click=${this._exitEdit}
+        >cancel</button>
       </div>
     `;
   }
 
-  private _renderEditInput(toolId: string, key: string, schema: any) {
-    // Detect z.enum via _def.values
-    const enumValues = schema?._def?.values;
-    if (Array.isArray(enumValues)) {
-      return html`<select name=${key} @input=${(e: Event) => this._onEditInput(toolId, key, e)}>
-        ${enumValues.map((v: string) => html`<option value=${v} ?selected=${this._editArgs[key] === v}>${v}</option>`)}
+  private _renderEditInput(
+    toolId: string,
+    stepId: string,
+    key: string,
+    schema: z.ZodTypeAny,
+  ) {
+    const inputId = `edit-${stepId}-${key}`;
+    const enumValues = getZodEnumValues(schema);
+    if (enumValues) {
+      return html`<select
+        id=${inputId}
+        name=${key}
+        @input=${(e: Event) => this._onEditInput(toolId, key, e)}
+      >
+        ${enumValues.map((v) => html`<option value=${v} ?selected=${this._editArgs[key] === v}>${v}</option>`)}
       </select>`;
     }
-    const isNumber = schema?._def?.typeName === 'ZodNumber';
-    return html`<input name=${key}
+    const isNumber = unwrapZod(schema) instanceof z.ZodNumber;
+    return html`<input
+      id=${inputId}
+      name=${key}
       .value=${String(this._editArgs[key] ?? '')}
       @input=${(e: Event) => this._onEditInput(toolId, key, e)}
-      type=${isNumber ? 'number' : 'text'} />`;
+      type=${isNumber ? 'number' : 'text'}
+    />`;
   }
 
   private _orbContent(status: StepStatus, n: number) {

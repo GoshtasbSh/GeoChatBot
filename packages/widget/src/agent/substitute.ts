@@ -20,8 +20,15 @@ export function substitute(value: unknown, refs: Map<string, OutputRef>): unknow
     return value.map((v) => substitute(v, refs));
   }
   if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) out[k] = substitute(v, refs);
+    // Object.create(null) so a crafted `__proto__` key in the input cannot
+    // mutate this object's prototype. We also skip `__proto__` /
+    // `constructor` / `prototype` keys defensively — these are never valid
+    // tool args and an LLM that emits them is suspicious.
+    const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(value)) {
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+      out[k] = substitute(v, refs);
+    }
     return out;
   }
   return value;

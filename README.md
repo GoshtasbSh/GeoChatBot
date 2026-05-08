@@ -4,6 +4,14 @@ Embeddable chatbot widget for **in-browser** spatial and tabular data analysis. 
 
 **Zero data server.** Files never leave the user's browser. The only network call is to the LLM provider, using the user's own API key (BYO).
 
+> **What ships today (Phase 2):** ingest of CSV / GeoJSON / Shapefile / Excel /
+> Parquet, Apache-Arrow profiling, DuckDB-WASM registration, MapLibre rendering,
+> a typed event API (`dataset-loaded`, `plan`, `progress`, `result`, `error`),
+> headless mode, and provider adapters for Anthropic / Gemini / Groq /
+> OpenAI-compatible. The LLM agent loop, SELECT-only SQL gate, zod tool-arg
+> validation, and Web-Worker executor sandbox are **planned** for Phase 3+ —
+> see [PLAN.md](./PLAN.md) §4 / §5.
+
 ## Differentiators
 
 1. **Pure browser data plane** — uploaded files never leave the device.
@@ -16,8 +24,8 @@ Embeddable chatbot widget for **in-browser** spatial and tabular data analysis. 
 | Phase | State |
 |---|---|
 | 0 — workspace | done |
-| 1 — data + engine + map | in progress (drop GeoJSON → see map ✅) |
-| 2 — public dev API + headless mode | next |
+| 1 — data + engine + map | done (drop CSV/GeoJSON → see map ✅) |
+| 2 — public dev API + headless mode | done (`pushData`, `setMode`, `ask` stub, `exportLayer`, typed `dataset-loaded`/`plan`/`progress`/`result`/`error` events, `examples/dashboard/` ✅) |
 | 3 — LLM provider + BYO key UI | done |
 | 4 — planner + plan UI + approval gate | done ([plan](./docs/superpowers/plans/2026-05-08-phase-4-planner.md)) |
 | 5 — executors + renderers | next |
@@ -31,8 +39,8 @@ See [PLAN.md](./PLAN.md) for the full phased roadmap, initial prompts per phase,
 
 ```bash
 npm install
-npm run dev --workspace=@geochatbot/widget
-# open http://localhost:5173 — drop a GeoJSON or click a fixture
+npm run demo
+# open http://localhost:5174 — drop a GeoJSON or click a fixture
 ```
 
 ## Build the embed bundle
@@ -58,7 +66,8 @@ npm run build:size --workspace=@geochatbot/widget
 <geo-chatbot theme="light"></geo-chatbot>
 <script>
   const bot = document.querySelector('geo-chatbot');
-  bot.on('result', (r) => console.log(r));
+  bot.on('dataset-loaded', (d) => console.log('loaded', d.name, d.profile.rowCount));
+  bot.on('result', (r) => console.log('agent result', r));
   bot.setProvider(GeoChatBot.createEcho());
 </script>
 ```
@@ -75,7 +84,7 @@ import { createEcho } from '@geochatbot/widget';
 
 const bot = document.querySelector('geo-chatbot')!;
 bot.setProvider(createEcho());
-const off = bot.on('result', (r) => console.log(r));
+const off = bot.on('dataset-loaded', (d) => console.log(d.name, d.profile.rowCount));
 // off() to unsubscribe
 ```
 
@@ -101,8 +110,10 @@ export function MyView() {
 }
 ```
 
-A working wrapper with refs and typed `on('result' | 'error' | 'plan')`
-subscriptions lives in `examples/react/`.
+A working wrapper with refs and typed
+`on('dataset-loaded' | 'plan' | 'progress' | 'result' | 'error')`
+subscriptions lives in `examples/react/`. A headless dashboard injection
+example lives in `examples/dashboard/`.
 
 ### Theming
 
@@ -130,6 +141,7 @@ examples/
   standalone/         ESM-form embed example
   standalone-cdn/     <script src> (UMD) embed example
   react/              React + Vite example
+  dashboard/          Headless mode → host MapLibre injection demo
 e2e/                  Playwright end-to-end tests
 PLAN.md               Phased roadmap (read this before adding features)
 ```

@@ -3,7 +3,13 @@ dist/
 .DS_Store
 .env
 .env.local
+.env.*.local
 .wrangler/
 *.log
 .vite/
 coverage/
+.claude/
+graphify-out/
+PLAN.md
+docs/superpowers/plans/
+

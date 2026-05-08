@@ -74,7 +74,12 @@
         function wire(bot, label) {
           try {
             if (typeof bot.on === 'function') {
-              bot.on('result', function (e) { append('[' + label + '][result] ' + JSON.stringify(e).slice(0, 160)); });
+              bot.on('dataset-loaded', function (e) {
+                append('[' + label + '][dataset-loaded] ' + JSON.stringify({ name: e.name, source: e.source }).slice(0, 160));
+              });
+              bot.on('plan', function (p) { append('[' + label + '][plan] ' + JSON.stringify(p).slice(0, 160)); });
+              bot.on('progress', function (p) { append('[' + label + '][progress] ' + JSON.stringify(p).slice(0, 160)); });
+              bot.on('result', function (r) { append('[' + label + '][result] ' + JSON.stringify(r).slice(0, 160)); });
               bot.on('error', function (e) { append('[' + label + '][error] ' + (e && e.message ? e.message : String(e))); });
             }
           } catch (err) { append('on() wiring failed: ' + err); }

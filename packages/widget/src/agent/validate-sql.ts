@@ -15,11 +15,45 @@ export class SqlValidationError extends Error {
 }
 
 const BLOCKED = new Set([
+  // DDL / DML / session statements
   'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'RENAME',
   'ATTACH', 'DETACH', 'COPY', 'EXPORT', 'IMPORT',
   'INSTALL', 'LOAD', 'PRAGMA', 'SET', 'RESET',
   'TRUNCATE', 'GRANT', 'REVOKE', 'VACUUM',
   'CALL', 'EXEC', 'EXECUTE', 'REPLACE',
+  // SELECT ... INTO new_table is a DuckDB CTAS-style side effect that
+  // creates a persistent table. Block the INTO keyword outright; pure
+  // SELECT/WITH queries never need it. (INSERT INTO is already blocked
+  // by INSERT.)
+  'INTO',
+  // DuckDB table-valued read functions — usable inside SELECT FROM and would
+  // allow an LLM to fetch arbitrary URLs (with httpfs) or virtual-FS paths,
+  // bypassing dataset-only access. Block the function names regardless of
+  // statement position.
+  'READ_CSV', 'READ_CSV_AUTO',
+  'READ_PARQUET', 'PARQUET_SCAN',
+  'READ_JSON', 'READ_JSON_AUTO', 'READ_NDJSON', 'READ_NDJSON_AUTO',
+  'READ_TEXT', 'READ_BLOB',
+  'GLOB', 'QUERY_TABLE',
+  // Newer DuckDB lakehouse table functions with the same network-read
+  // capability as parquet_scan.
+  'DELTA_SCAN', 'ICEBERG_SCAN',
+  // Foreign-database scanners and query-pushdown functions shipped by
+  // DuckDB's sqlite/postgres/mysql extensions.
+  'SQLITE_SCAN', 'SQLITE_ATTACH',
+  'POSTGRES_SCAN', 'POSTGRES_QUERY', 'POSTGRES_ATTACH',
+  'MYSQL_SCAN', 'MYSQL_QUERY', 'MYSQL_ATTACH',
+  // DuckDB metadata catalog tables — their function-form names. Reveal
+  // attached databases, loaded extensions, and engine settings; a hostile
+  // plan could exfiltrate state via these. The information_schema
+  // namespace is also blocked at the token level.
+  'DUCKDB_EXTENSIONS', 'DUCKDB_SETTINGS', 'DUCKDB_TABLES',
+  'DUCKDB_FUNCTIONS', 'DUCKDB_DATABASES', 'DUCKDB_VIEWS',
+  'INFORMATION_SCHEMA',
+  // Process-environment access.
+  'GETENV',
+  // External catalog / extension surface that could pull side effects
+  'HTTPFS', 'S3', 'AZURE',
 ]);
 
 const ALLOWED_LEADING = new Set(['SELECT', 'WITH']);
