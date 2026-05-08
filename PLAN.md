@@ -188,24 +188,72 @@ This is the heart and the differentiator.
 
 ---
 
-### Phase 5 — Executors + Renderers · 1.5 weeks · [P]
+### ✅ Phase 5 — Executors + Renderers · *core landed 2026-05-08*
 
-Implement each tool. Run them in a Web Worker via Comlink. Wire renderers.
+Status: **core complete.** Tool executors registered via runtime registry,
+Comlink worker scaffold + main-thread fallback, four renderers wired in
+both `mode="full"` (Shadow DOM `<result-canvas>`) and `mode="headless"`
+(events). Strict SQL validation per §4 enforced both pre-approval and
+inside the runner. 4-step plan integration test green against the Phase 1
+fixture flow.
 
-Subtasks parallelizable after Phase 4 freezes signatures:
-- 5a [P] SQL + spatial executors via DuckDB-WASM (with strict SQL validation per §4)
-- 5b [P] Turf-based executors (buffer / distance) where SQL is awkward
-- 5c [P] Renderers: map (MapLibre layer), chart (ECharts), table (virtualized grid), summary (markdown)
-- 5d [P] Headless equivalents that emit events instead of rendering
+Implemented in v1 (`src/agent/executor/`):
+- 5a SQL + spatial via DuckDB: `sql`, `geometry.{buffer, centroid, intersect, union, difference, dissolve, simplify, convex_hull}`,
+  `joins.{spatial_join, point_in_polygon, nearest_neighbor}`,
+  `stats.{aggregate, summary_stats, distance_matrix}`
+- 5c Renderers: `render.{map, chart, table, summary}` + `<result-canvas>` Lit component
+- 5d Headless equivalents emit `result` events with the same payload
+
+Deferred to Phase 5 expansion (explicit "not yet implemented" stubs):
+- `geometry.voronoi` (Turf voronoi/concaveman ~10 KB lazy)
+- `geometry.reproject` (proj4js ~50 KB lazy)
+- `stats.{hex_bin, density_grid, morans_i, getis_ord_gi}` (h3-js + custom JS)
+- ECharts mounting in full-mode chart panel (spec emitted; placeholder rendered)
+
+Worker-via-Comlink: `src/agent/executor/{worker,client}.ts` ship the boundary;
+production currently runs the executor in-process against the main-thread
+DuckDB engine (Phase 1 contract). Switching to a worker-owned engine is
+Phase 5 expansion.
 
 **Initial prompt:**
 > Phase 5: implement the tool executors registered in Phase 4. Run them inside a dedicated Web Worker using Comlink. SQL/spatial tools go through `DuckDBEngine`; pure geometry ops go through Turf.js where simpler. Each step's output is stored under `output_var` and is referenceable by later steps via `${var}` substitution in args. Implement the four renderers (map / chart / table / summary) — in `mode="full"` they mount inside Shadow DOM; in `mode="headless"` they emit `result` events with the equivalent payload. Strict SQL validation per PLAN.md §4: only SELECT/WITH allowed. Add integration tests running a 4-step plan end-to-end against the Phase 1 fixture.
 
 ---
 
-### Phase 6 — Critic / error-recovery loop · 3 days · [S]
+### ✅ Phase 6 — Critic / error-recovery loop · *done 2026-05-08*
 
-On step failure: capture context, ask LLM to either patch the step or declare unrecoverable. Max 2 retries. Show a transparent timeline.
+Status: **complete.** Critic loop landed end-to-end; integration tests engineer
+real-shaped DuckDB failures (bad column name, missing CRS, persistent failure,
+abort) and assert recovery within 2 retries.
+
+Implemented in v1:
+- 6a `agent/critic-llm.ts` — Anthropic Messages caller forced to `submit_diagnosis`,
+  with prompt caching on the static prefix and the same browser-direct guard
+  the planner uses.
+- 6b `agent/prompts/critic.system.md` + `agent/prompts/critic-builders.ts` —
+  system prompt with rules + tool catalogue, user-message builder that wraps
+  both the DuckDB error message AND the dataset profile in `<<<UNTRUSTED…>>>`
+  fences (blocks prompt-injection-via-error-text). Prior outputs are listed
+  by name+kind+ref only — scalar `value` is never emitted.
+- 6c `agent/critic.ts` — `Critic.diagnose(StepErrorContext)` returns a
+  `CriticDecision` (patch / retry / abort). Any LLM error or schema mismatch
+  is coerced to abort so the executor always makes progress.
+- 6d Host wiring — `<geo-chatbot>` builds a Critic per plan run, passes
+  `onStepError` to the Executor, and emits a typed `critic` event with
+  `{planId, stepId, attempt, maxAttempts, decision, errorMessage, beforeArgs, afterArgs?}`.
+- 6e Timeline UI — `<plan-review>` renders per-step attempt badges
+  (`attempt N of M — <decision>`) plus a truncated error preview. Footer
+  hides automatically once `mode='running'`.
+
+Phase 5 alignment fixes shipped in the same phase:
+- Per-tool zod-args validation on critic-patched steps (matches what
+  `validate-plan.ts` does for planner output; emits `CRITIC_PATCH_INVALID`).
+- Comlink worker bridge forwards `onStepError` (was silently dropped),
+  via a wire-form `WireStepErrorContext` so Map serialization is robust
+  across runtime variants.
+- `MissingRunnerError.code` exposed so a hallucinated tool name is now
+  routed through the critic loop instead of hard-halting (the executor
+  looks up the runner inside the try/catch).
 
 **Initial prompt:**
 > Phase 6: implement the Critic. When an executor throws, capture `{ step, args, error_msg, dataset_profile, prior_outputs_summary }` and send it to Anthropic with a "diagnose and emit a corrected step OR declare unrecoverable" prompt. Retry the patched step up to 2 times. Show a transparent timeline of attempts in the UI (and as a `progress` event in headless mode). Add tests where a step is engineered to fail (bad column name, missing CRS) and assert recovery succeeds within 2 retries.
