@@ -36,6 +36,7 @@ export type {
   DatasetProfile,
 } from './data/contracts';
 export { LoaderError } from './data/contracts';
+export type { Plan, Step, DatasetProfile as PlannerDatasetProfile } from './agent/index.js';
 
 import { GeoChatBotElement } from './element';
 import './element';

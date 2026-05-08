@@ -1,5 +1,5 @@
 import { LitElement, html, css } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { customElement, state, property } from 'lit/decorators.js';
 import { loadFile } from './data/loaders';
 import { getEngine } from './data/engine';
 import { profileDataset } from './data/profile';
@@ -8,32 +8,108 @@ import {
   type ChatProvider,
   setProvider as setActiveProvider,
 } from './providers/index';
-import './ui/MapView';
+import { Planner } from './agent/index.js';
+import type { Plan, DatasetProfile as PlannerDatasetProfile } from './agent/index.js';
+import type { PlannerLLMInput } from './agent/llm.js';
+import { validateSql } from './agent/validate-sql.js';
+import './ui/plan-review.js';
+// MapView (MapLibre GL + deck.gl) is lazy-loaded on first geometry ingest
+// so the initial bundle stays lean (PLAN §3 hard rule: ≤ 100 KB gzipped).
+
+/** Operating modes — see {@link GeoChatBotElement.setMode}. */
+export type GeoChatBotMode = 'full' | 'headless';
+
+/**
+ * A single step in an agent plan. Phase 2 emits stub plans; Phase 4 fills
+ * `tool` and `args` from the real Planner.
+ */
+export interface PlanStep {
+  id: string;
+  /** Human-readable description for the plan UI. */
+  description: string;
+  /** Tool the executor will call (Phase 5). Optional in stub plans. */
+  tool?: string;
+  /** Tool arguments. Validated via zod in Phase 5. */
+  args?: Record<string, unknown>;
+  /** One-line rationale for this step. */
+  why?: string;
+}
+
+/** A single agent result emitted via the `result` event in headless mode. */
+export type AgentResult =
+  | {
+      kind: 'layer';
+      /** GeoJSON FeatureCollection. */
+      geojson: unknown;
+      /** Optional layer name for the host map. */
+      name?: string;
+    }
+  | {
+      kind: 'chart';
+      /** ECharts option spec (Phase 5). Free-form for now. */
+      spec: Record<string, unknown>;
+    }
+  | {
+      kind: 'table';
+      rows: ReadonlyArray<Record<string, unknown>>;
+      columns?: ReadonlyArray<string>;
+    }
+  | {
+      kind: 'summary';
+      text: string;
+    };
 
 /**
  * Typed event map dispatched by {@link GeoChatBotElement}.
  *
- * The string event names are namespaced as `geochatbot:<key>`. The `plan`
- * event is reserved for phase 3 and is not emitted yet, but the type is
- * exported so consumers can wire handlers ahead of time.
+ * The string event names are namespaced as `geochatbot:<key>`.
+ *
+ * - `dataset-loaded` — fires when ingest completes for a file/blob.
+ * - `plan`           — agent has produced a plan (Phase 4 emits real ones).
+ * - `result`         — agent has produced a result for a step (Phase 5 emits real ones).
+ * - `progress`       — agent execution progress beat (Phase 5+).
+ * - `error`          — any ingest or agent failure. `cause` is intentionally
+ *                      a string (provider error code or message) so we never
+ *                      leak raw Error objects that might carry secrets.
  */
 export type GeoChatBotEvents = {
-  result: {
+  'dataset-loaded': {
     name: string;
     source: SourceFormat;
     profile: DatasetProfile;
     engineRegistered: boolean;
   };
+  result: AgentResult;
   plan: {
-    steps: Array<{ id: string; description: string }>;
+    /** Stable plan id; lets host UIs correlate `result` events to a plan. */
+    id: string;
+    steps: PlanStep[];
     rationale?: string;
+    /** Names of datasets this plan operates on. */
+    datasetRefs?: ReadonlyArray<string>;
   };
-  error: { message: string; code?: string; cause?: unknown };
+  progress: {
+    /** Plan id this progress beat belongs to. */
+    planId: string;
+    /** 0-based index of the step that is now running, or `'done'`. */
+    step: number | 'done';
+    /** Status word for UI. */
+    status: 'started' | 'running' | 'completed' | 'failed';
+    /** Optional human-readable message. */
+    message?: string;
+  };
+  error: {
+    message: string;
+    /** Stable error code (e.g. `UNSUPPORTED_FORMAT`, `NETWORK`, `BAD_RESPONSE`). */
+    code?: string;
+  };
 };
 
 const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
+  'dataset-loaded': 'geochatbot:dataset-loaded',
   result: 'geochatbot:result',
   plan: 'geochatbot:plan',
+  progress: 'geochatbot:progress',
   error: 'geochatbot:error',
 };
 
@@ -136,11 +212,48 @@ export class GeoChatBotElement extends LitElement {
   @state() private error: string | null = null;
   @state() private dragOver = false;
   @state() private busy = false;
+  /** Becomes true once the MapView module has been dynamically imported. */
+  @state() private _mapModuleLoaded = false;
+
+  /**
+   * Operating mode. In `'headless'`, the widget does NOT render the map /
+   * tables / drop zone — it only emits typed CustomEvents so a host page
+   * can wire the agent's output into its own UI. Reflects to the `mode`
+   * attribute so it is settable from HTML markup.
+   */
+  @property({ reflect: true })
+  mode: GeoChatBotMode = 'full';
 
   /** Active LLM provider, set via {@link setProvider}. Survives {@link clear}. */
   private provider: ChatProvider | undefined = undefined;
 
+  /**
+   * Monotonic ingest generation. Bumped by {@link clear}; an in-flight
+   * ingest checks this before publishing results so a clear() mid-load
+   * does not produce a ghost result after the reset.
+   */
+  private generation = 0;
+
+  /** Counter for stub plan ids; reset by {@link clear}. */
+  private planCounter = 0;
+
+  /* -------------------------------------------------------------------- */
+  /* Phase 4 planner state                                                */
+  /* -------------------------------------------------------------------- */
+  private _planner?: Planner;
+  private _llmCall?: (input: PlannerLLMInput) => Promise<Record<string, unknown>>;
+  private _pendingPlan?: { id: string; plan: Plan };
+  private _datasets: PlannerDatasetProfile[] = [];
+  private _apiKey?: string;
+  private _model = 'claude-sonnet-4-6';
+
   render() {
+    // In headless mode the widget renders nothing — the host owns the UI
+    // and listens for typed events. We still render an invisible host so
+    // CSS-targeted host queries do not break.
+    if (this.mode === 'headless') {
+      return html``;
+    }
     return html`
       <header>
         <h2>GeoChatBot</h2>
@@ -160,7 +273,7 @@ export class GeoChatBotElement extends LitElement {
 
       ${this.error ? html`<div class="err">${this.error}</div>` : null}
 
-      ${this.geometryLayers().length
+      ${this._mapModuleLoaded && this.geometryLayers().length
         ? html`<gcb-map .layers=${this.geometryLayers()}></gcb-map>`
         : null}
 
@@ -181,8 +294,24 @@ export class GeoChatBotElement extends LitElement {
    * than thrown.
    */
   async pushData(
-    input: File | { name: string; bytes: Uint8Array | ArrayBuffer },
+    input:
+      | File
+      | { name: string; bytes: Uint8Array | ArrayBuffer }
+      | PlannerDatasetProfile,
   ): Promise<void> {
+    // Phase 4: a DatasetProfile object (has kind + columns + rows fields and no bytes)
+    // is a planner-only profile — do NOT ingest binary.
+    if (
+      input &&
+      typeof input === 'object' &&
+      !('bytes' in input) &&
+      'kind' in input &&
+      'columns' in input &&
+      'rows' in input
+    ) {
+      this._datasets.push(input as PlannerDatasetProfile);
+      return;
+    }
     const binary: BinaryInput =
       typeof File !== 'undefined' && input instanceof File
         ? input
@@ -194,11 +323,158 @@ export class GeoChatBotElement extends LitElement {
   setProvider(provider: ChatProvider): void {
     this.provider = provider;
     setActiveProvider(provider);
+    // Phase 4: stash key+model for the Planner. ChatProvider has optional apiKey/model.
+    if ((provider as any).apiKey) this._apiKey = (provider as any).apiKey as string;
+    if ((provider as any).model) this._model = (provider as any).model as string;
+    // Reset planner so the next ask() rebuilds with the new key.
+    delete this._planner;
+  }
+
+  /** Test-only: substitute the LLM call for deterministic tests. */
+  __setLlmCall(fn: (input: PlannerLLMInput) => Promise<Record<string, unknown>>): void {
+    this._llmCall = fn;
+    delete this._planner; // force rebuild with stub on next ask()
   }
 
   /** Currently active provider, if any. Exposed for tests / introspection. */
   getProvider(): ChatProvider | undefined {
     return this.provider;
+  }
+
+  /**
+   * Switch between full UI and headless (events-only) rendering. Equivalent
+   * to setting the `mode` attribute / property; provided as a method so
+   * imperative consumers can toggle without touching attributes.
+   */
+  setMode(mode: GeoChatBotMode): void {
+    this.mode = mode;
+  }
+
+  /**
+   * Phase 4: Ask the agent a question. Builds (or reuses) a Planner, calls
+   * the LLM, validates the returned Plan, and dispatches a `plan` event.
+   * The plan is held pending until {@link approvePlan} or {@link rejectPlan}.
+   */
+  async ask(question: string): Promise<void> {
+    if (!this._apiKey) {
+      this._emit('error', { code: 'NO_KEY', message: 'No provider configured' });
+      return;
+    }
+    if (!this._planner) {
+      this._planner = new Planner({
+        apiKey: this._apiKey,
+        model: this._model,
+        dangerouslyAllowBrowser: true,
+        ...(this._llmCall ? { llmCall: this._llmCall } : {}),
+      });
+    }
+    try {
+      const plan = await this._planner.plan({ question, datasets: this._datasets });
+      const id = `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      this._pendingPlan = { id, plan };
+      this._emit('plan', { planId: id, plan, datasets: this._datasets });
+      this._renderPlanIfFull();
+    } catch (err) {
+      this._emit('error', {
+        code: (err as any)?.name ?? 'UNKNOWN',
+        message: (err as Error)?.message ?? 'plan failed',
+      });
+    }
+  }
+
+  approvePlan(id?: string): void {
+    if (!this._pendingPlan) return;
+    if (id !== undefined && id !== this._pendingPlan.id) return;
+    const { plan, id: planId } = this._pendingPlan;
+    delete this._pendingPlan;
+    this._executeStub(planId, plan);
+  }
+
+  rejectPlan(opts?: { id?: string; feedback?: string }): void {
+    if (!this._pendingPlan) return;
+    if (opts?.id !== undefined && opts.id !== this._pendingPlan.id) return;
+    const { plan } = this._pendingPlan;
+    delete this._pendingPlan;
+    this._emit('progress', { planId: '_rejected', status: 'rejected' });
+    void this._planner?.plan({
+      question: plan.goal,
+      datasets: this._datasets,
+      feedback: opts?.feedback ?? 'rejected by user',
+    }).then((newPlan) => {
+      const id = `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      this._pendingPlan = { id, plan: newPlan };
+      this._emit('plan', { planId: id, plan: newPlan, datasets: this._datasets });
+      this._renderPlanIfFull();
+    }).catch((err) => {
+      this._emit('error', { code: (err as any)?.name ?? 'UNKNOWN', message: (err as Error)?.message });
+    });
+  }
+
+  private _executeStub(planId: string, plan: Plan): void {
+    // Phase 5 will replace this with a real Comlink Worker. Phase 4 stub
+    // emits progress + a final render result.
+    for (const step of plan.steps) {
+      if (step.tool === 'sql') {
+        try {
+          validateSql((step.args as any).query);
+        } catch (err) {
+          this._emit('error', {
+            planId,
+            stepId: step.id,
+            code: 'SQL',
+            message: (err as Error).message,
+          });
+          return;
+        }
+      }
+    }
+    for (const step of plan.steps) {
+      this._emit('progress', { planId, stepId: step.id, status: 'running' });
+      this._emit('progress', { planId, stepId: step.id, status: 'success', durationMs: 0 });
+    }
+    const last = plan.steps[plan.steps.length - 1]!;
+    const kind = last.tool === 'render.map' ? 'layer'
+      : last.tool === 'render.chart' ? 'chart'
+      : last.tool === 'render.table' ? 'table'
+      : 'summary';
+    this._emit('result', { planId, stepId: last.id, kind, payload: last.args });
+  }
+
+  private _renderPlanIfFull(): void {
+    // In Task 16 this is filled in. Headless mode never renders.
+    if (this.getAttribute('mode') === 'headless') return;
+    // Defer to Task 16 — not yet wired in Task 15.
+  }
+
+  private _emit(name: string, detail: unknown): void {
+    this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
+  }
+
+  /**
+   * Export a loaded dataset as GeoJSON, suitable for pushing into a host
+   * map. Phase 2 stub: returns a `FeatureCollection` skeleton with no
+   * features, plus a `meta.warning` field. Phase 5 will populate features
+   * from the Arrow table via DuckDB-WASM.
+   *
+   * Returns `undefined` for unknown table names so callers can branch
+   * without try/catch.
+   */
+  exportLayer(name: string): {
+    type: 'FeatureCollection';
+    features: ReadonlyArray<unknown>;
+    meta: { name: string; warning?: string };
+  } | undefined {
+    const result = this.loaded.find((r) => r.name === name);
+    if (!result) return undefined;
+    return {
+      type: 'FeatureCollection',
+      features: [],
+      meta: {
+        name,
+        warning:
+          'Phase 2 stub: features are not yet materialized. Wired up in Phase 5.',
+      },
+    };
   }
 
   /**
@@ -221,14 +497,34 @@ export class GeoChatBotElement extends LitElement {
 
   /**
    * Reset loaded datasets, profiles, errors, and drag state. Does not
-   * remove the active provider.
+   * remove the active provider or change the operating mode.
    */
   clear(): void {
+    this.generation++;
+    this.planCounter = 0;
     this.loaded = [];
     this.profiles = {};
     this.error = null;
     this.dragOver = false;
     this.busy = false;
+  }
+
+  /**
+   * Internal: dispatch a typed CustomEvent. Centralized so we never leak
+   * raw error / detail objects, and the event-name → detail mapping
+   * stays in one place.
+   */
+  private dispatch<K extends keyof GeoChatBotEvents>(
+    event: K,
+    detail: GeoChatBotEvents[K],
+  ): void {
+    this.dispatchEvent(
+      new CustomEvent<GeoChatBotEvents[K]>(EVENT_NAME[event], {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   /** Public read-only view of the currently loaded results (for tests). */
@@ -242,9 +538,18 @@ export class GeoChatBotElement extends LitElement {
 
   private renderTable(result: LoadResult) {
     const profile = this.profiles[result.name];
-    const geomCol = result.geometry?.kind === 'lonlat'
-      ? `${result.geometry.lonColumn},${result.geometry.latColumn}`
-      : result.geometry?.column;
+    // Build a Set of geometry-bearing column names so the lonlat case
+    // (which has TWO columns) highlights both correctly. The previous
+    // implementation joined them with a comma, which never matched.
+    const geomCols = new Set<string>();
+    if (result.geometry) {
+      if (result.geometry.kind === 'lonlat') {
+        geomCols.add(result.geometry.lonColumn);
+        geomCols.add(result.geometry.latColumn);
+      } else {
+        geomCols.add(result.geometry.column);
+      }
+    }
     const cols = profile
       ? profile.columns
       : result.table.schema.fields.map((f) => ({
@@ -270,7 +575,7 @@ export class GeoChatBotElement extends LitElement {
           <tbody>
             ${cols.map(
               (c) => html`<tr>
-                <td class=${c.name === geomCol ? 'geom' : ''}>${c.name}</td>
+                <td class=${geomCols.has(c.name) ? 'geom' : ''}>${c.name}</td>
                 <td>${'kind' in c ? c.kind : ''}</td>
                 <td>${c.arrowType}</td>
                 <td>${c.nullCount ?? ''}</td>
@@ -323,10 +628,12 @@ export class GeoChatBotElement extends LitElement {
   /* -------------------------------------------------------------------- */
 
   private async ingest(input: BinaryInput): Promise<void> {
+    const gen = this.generation;
     this.busy = true;
     this.error = null;
     try {
       const result = await loadFile(input);
+      if (gen !== this.generation) return; // clear() ran while loading — drop result
       const profile = profileDataset(result);
       this.profiles = { ...this.profiles, [result.name]: profile };
 
@@ -345,37 +652,24 @@ export class GeoChatBotElement extends LitElement {
         );
       }
 
+      if (gen !== this.generation) return; // clear() ran during engine init
+
+      // Lazy-load the MapView module the first time we see geometry. This
+      // keeps MapLibre GL + deck.gl out of the initial bundle (PLAN §3).
+      if (result.geometry && !this._mapModuleLoaded) {
+        await import('./ui/MapView.js');
+        if (gen !== this.generation) return;
+        this._mapModuleLoaded = true;
+      }
+
       this.loaded = [...this.loaded, result];
 
-      const detail: GeoChatBotEvents['result'] = {
+      this.dispatch('dataset-loaded', {
         name: result.name,
         source: result.source,
         profile,
         engineRegistered,
-      };
-      this.dispatchEvent(
-        new CustomEvent<GeoChatBotEvents['result']>(EVENT_NAME.result, {
-          detail,
-          bubbles: true,
-          composed: true,
-        }),
-      );
-
-      // Legacy event — kept for one more phase. Will be removed in phase 3.
-      // @deprecated Use the `result` event (`geochatbot:result`) instead.
-      this.dispatchEvent(
-        new CustomEvent('geochatbot:layer-loaded', {
-          detail: {
-            name: result.name,
-            source: result.source,
-            hasGeometry: !!result.geometry,
-            profile,
-            engineRegistered,
-          },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const code =
@@ -383,18 +677,19 @@ export class GeoChatBotElement extends LitElement {
           ? String((err as { code: unknown }).code)
           : undefined;
       this.error = message;
+      // Important: never include `cause: err` — provider/network errors can
+      // carry the request URL / Authorization header in their message, and
+      // dispatching the raw Error object would surface that to any DOM
+      // listener (including dev-tool hooks). Stick to {message, code?}.
       const errorDetail: GeoChatBotEvents['error'] = code
-        ? { message, code, cause: err }
-        : { message, cause: err };
-      this.dispatchEvent(
-        new CustomEvent<GeoChatBotEvents['error']>(EVENT_NAME.error, {
-          detail: errorDetail,
-          bubbles: true,
-          composed: true,
-        }),
-      );
+        ? { message, code }
+        : { message };
+      this.dispatch('error', errorDetail);
     } finally {
-      this.busy = false;
+      // Only release the busy lock if we still own the current generation.
+      // If clear() ran while we were loading, a re-drop may already be
+      // in flight and we mustn't stomp its busy state.
+      if (gen === this.generation) this.busy = false;
     }
   }
 }
