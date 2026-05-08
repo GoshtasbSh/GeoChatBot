@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GeoChatBot · Terra Bold (Variant D)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,800;1,9..144,400;1,9..144,600&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  :root {
+    --bg: #f5efe1;        /* warm cream */
+    --bg-2: #fffaef;
+    --bg-3: #ece4d2;
+    --line: #d6cdb6;
+    --line-strong: #221c14;
+    --ink: #1c160d;
+    --ink-soft: #4a3f2a;
+    --ink-muted: #7a6b4f;
+    --ink-dim: #a99a7a;
+    --accent: #c84b1f;     /* terracotta */
+    --accent-hot: #ea580c;
+    --accent-fg: #fffaef;
+    --good: #2f5d2c;
+    --info: #2a4a8c;
+    --shadow-1: 4px 4px 0 var(--ink);
+    --shadow-2: 8px 8px 0 var(--ink);
+    --font-sans: "Manrope", system-ui, sans-serif;
+    --font-display: "Fraunces", "Georgia", serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--font-sans);
+    color: var(--ink); background: var(--bg);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      repeating-linear-gradient(0deg, transparent 0, transparent 39px, rgba(34,28,20,0.04) 39px, rgba(34,28,20,0.04) 40px),
+      repeating-linear-gradient(90deg, transparent 0, transparent 39px, rgba(34,28,20,0.04) 39px, rgba(34,28,20,0.04) 40px);
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    grid-template-rows: 64px 1fr 88px;
+    grid-template-areas:
+      "topbar topbar"
+      "rail   main"
+      "rail   dock";
+    height: 100vh;
+  }
+
+  /* ───── Topbar ───── */
+  .topbar {
+    grid-area: topbar; display: flex; align-items: center; gap: 14px;
+    padding: 0 22px; background: var(--bg-2);
+    border-bottom: 2.5px solid var(--ink);
+  }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand-mark {
+    width: 32px; height: 32px; border-radius: 0;
+    background: var(--ink); color: var(--bg);
+    display: grid; place-items: center;
+    font-family: var(--font-display); font-style: italic; font-size: 20px; font-weight: 600;
+    align-self: center;
+    border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--accent);
+  }
+  .brand-name {
+    font-family: var(--font-display);
+    font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1;
+  }
+  .brand-name em { font-style: italic; color: var(--accent); font-weight: 400; }
+
+  .top-sep { width: 2px; height: 28px; background: var(--ink); }
+  .crumb { color: var(--ink-soft); font-size: 13px; font-family: var(--font-mono); }
+  .crumb b { color: var(--ink); font-weight: 500; }
+  .crumb .sep { color: var(--ink-dim); margin: 0 8px; }
+
+  .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .btn {
+    height: 36px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px;
+    background: var(--bg-2); color: var(--ink);
+    border: 2px solid var(--ink); border-radius: 0;
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: transform 100ms ease, box-shadow 100ms ease;
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .btn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+  .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .btn .kbd { font-family: var(--font-mono); font-size: 11px; color: var(--ink-muted); }
+  .btn-primary {
+    background: var(--accent); color: var(--accent-fg); border-color: var(--ink);
+  }
+  .btn-primary:hover { background: var(--accent-hot); }
+  .icon { width: 14px; height: 14px; flex: 0 0 auto; }
+  .iconbtn {
+    width: 36px; height: 36px; padding: 0; display: grid; place-items: center;
+    background: var(--bg-2); color: var(--ink); border: 2px solid var(--ink);
+    cursor: pointer; box-shadow: 3px 3px 0 var(--ink);
+    transition: transform 100ms ease, box-shadow 100ms ease;
+  }
+  .iconbtn:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+
+  /* ───── Left rail ───── */
+  .rail {
+    grid-area: rail; background: var(--bg-2);
+    border-right: 2.5px solid var(--ink);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .rail-section { padding: 18px; border-bottom: 1px dashed var(--line-strong); }
+  .rail-section:last-child { border-bottom: 0; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .rail-section h4 {
+    font-family: var(--font-display);
+    font-size: 18px; color: var(--ink); margin: 0 0 12px;
+    font-weight: 600; font-style: italic; line-height: 1;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .rail-section h4 .count {
+    font-family: var(--font-mono); font-style: normal; font-size: 11px;
+    color: var(--ink-soft); padding: 1px 6px;
+    background: var(--bg-3); border: 1px solid var(--line); font-weight: 400;
+  }
+
+  .ds {
+    display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center;
+    gap: 10px; padding: 8px 10px;
+    font-size: 13px; cursor: pointer; font-weight: 500;
+    border: 1.5px solid transparent; transition: border-color 120ms ease;
+  }
+  .ds:hover { border-color: var(--ink); background: var(--bg-3); }
+  .ds .swatch { width: 12px; height: 12px; border: 1.5px solid var(--ink); }
+  .ds .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ds .rows { font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted); font-weight: 400; }
+  .ds .eye { width: 14px; height: 14px; color: var(--ink-soft); }
+
+  .saved { display: flex; flex-direction: column; gap: 6px; flex: 1; overflow: auto; }
+  .saved-item {
+    display: grid; grid-template-columns: 36px 1fr; gap: 12px;
+    padding: 10px 12px; cursor: pointer;
+    border: 2px solid var(--ink); background: var(--bg-2);
+    box-shadow: 3px 3px 0 var(--ink);
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  .saved-item:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+  .saved-item.active { background: var(--accent); color: var(--accent-fg); }
+  .saved-item.active .sub { color: rgba(255,250,239,0.8); }
+  .saved-item .ico {
+    width: 36px; height: 36px;
+    background: var(--bg-3); border: 1.5px solid var(--ink);
+    display: grid; place-items: center; color: var(--ink);
+  }
+  .saved-item.active .ico { background: var(--ink); color: var(--accent); border-color: var(--ink); }
+  .saved-item .meta { min-width: 0; }
+  .saved-item .title { font-family: var(--font-display); font-size: 16px; font-weight: 600; line-height: 1.15; letter-spacing: -0.01em; }
+  .saved-item .sub  { font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted); margin-top: 4px; }
+
+  /* ───── Main ───── */
+  .main { grid-area: main; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+  .tab-strip {
+    height: 50px; display: flex; align-items: center; padding: 0 22px;
+    border-bottom: 2.5px solid var(--ink); background: var(--bg-2);
+  }
+  .tab {
+    height: 36px; padding: 0 14px; display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--font-display);
+    font-size: 17px; font-weight: 500; font-style: italic; color: var(--ink-muted); cursor: pointer;
+    margin-right: 4px;
+    border: 2px solid transparent;
+    line-height: 1;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active {
+    color: var(--ink); background: var(--accent);
+    color: var(--accent-fg);
+    border-color: var(--ink); box-shadow: 3px 3px 0 var(--ink);
+    font-style: normal; font-weight: 600;
+  }
+  .tab .badge {
+    font-family: var(--font-mono); font-style: normal; font-size: 10px; padding: 1px 6px;
+    background: rgba(0,0,0,0.15); color: inherit; font-weight: 500;
+  }
+  .tab.active .badge { background: var(--ink); color: var(--accent); }
+  .tab-strip .tab-actions { margin-left: auto; display: flex; gap: 6px; }
+
+  .canvas { flex: 1; min-height: 0; padding: 28px 22px; overflow: auto; }
+
+  /* Detail page */
+  .detail-head { margin-bottom: 22px; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; }
+  .kicker {
+    display: inline-block; padding: 3px 10px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    background: var(--ink); color: var(--accent);
+  }
+  .detail-title {
+    font-family: var(--font-display); font-size: 56px; font-weight: 600;
+    letter-spacing: -0.03em; line-height: 0.95; color: var(--ink);
+    margin: 12px 0 8px;
+  }
+  .detail-title em { font-style: italic; color: var(--accent); font-weight: 400; }
+  .detail-sub { color: var(--ink-soft); font-size: 14px; max-width: 560px; line-height: 1.5; }
+  .detail-meta {
+    font-family: var(--font-mono); font-size: 11px; color: var(--ink-muted);
+    text-align: right; line-height: 1.7;
+  }
+  .detail-meta b { color: var(--ink); font-weight: 500; }
+
+  .detail-grid {
+    display: grid; grid-template-columns: 2fr 1fr; gap: 22px;
+  }
+  .panel {
+    background: var(--bg-2); border: 2.5px solid var(--ink);
+    box-shadow: var(--shadow-2);
+  }
+  .panel h5 {
+    margin: 0; padding: 12px 16px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    border-bottom: 2px solid var(--ink); color: var(--ink);
+    background: var(--bg-3);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .panel h5 .meta { font-size: 10px; color: var(--ink-muted); letter-spacing: 0; text-transform: none; }
+  .panel-body { padding: 18px; }
+
+  /* big chart */
+  .big-chart { width: 100%; height: 280px; display: block; }
+
+  /* mini map next to chart */
+  .mini-map { width: 100%; height: 220px; display: block; }
+
+  /* facts list */
+  .facts { font-family: var(--font-mono); font-size: 12px; line-height: 1.9; }
+  .facts dt { color: var(--ink-muted); font-weight: 400; }
+  .facts dd { margin: 0 0 8px; color: var(--ink); font-weight: 500; }
+
+  /* SQL view */
+  .sql-block {
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+    color: var(--ink); background: var(--bg-3);
+    padding: 14px 16px; border-top: 2px dashed var(--line-strong);
+  }
+  .sql-block .kw { color: var(--accent); font-weight: 600; }
+
+  /* ───── Bottom dock ───── */
+  .dock {
+    grid-area: dock; background: var(--bg-2); border-top: 2.5px solid var(--ink);
+    padding: 14px 22px; display: flex; align-items: center; gap: 14px;
+  }
+  .dock-prev {
+    flex: 0 0 auto; max-width: 32%; padding: 10px 14px;
+    background: var(--bg-3); border: 1.5px solid var(--ink);
+    color: var(--ink-soft); font-size: 12px; line-height: 1.4;
+  }
+  .dock-prev b { color: var(--ink); font-weight: 600; font-family: var(--font-display); font-style: italic; }
+  .dock-input {
+    flex: 1; min-width: 0;
+    height: 50px; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 16px;
+    background: var(--bg-2); border: 2.5px solid var(--ink);
+    box-shadow: var(--shadow-1);
+  }
+  .dock-input:focus-within { box-shadow: 6px 6px 0 var(--accent); }
+  .dock-input input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 14px; }
+  .dock-input input::placeholder { color: var(--ink-muted); }
+  .send {
+    height: 38px; padding: 0 18px;
+    background: var(--accent); color: var(--accent-fg); border: 2px solid var(--ink);
+    font: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .send:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+
+  /* Variant ribbon */
+  .ribbon {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 6; padding: 6px 14px;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+    background: var(--ink); color: var(--accent); font-weight: 600;
+    border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--accent);
+  }
+</style>
+</head>
+<body>
+
+<div class="ribbon">Variant D · Terra Bold</div>
+
+<div class="app">
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">G</div>
+      <div class="brand-name">GeoChat<em>Bot</em></div>
+    </div>
+    <div class="top-sep"></div>
+    <div class="crumb"><b>cedar-key</b><span class="sep">/</span>session-04</div>
+
+    <div class="top-actions">
+      <button class="btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">⌘K</span></button>
+      <button class="iconbtn" title="Theme"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+      <button class="iconbtn" title="Settings"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8L4.2 7a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 4.6h0A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+      <button class="btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>Share</button>
+      <button class="btn btn-primary">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        Add data
+      </button>
+    </div>
+  </header>
+
+  <!-- Left rail -->
+  <aside class="rail">
+    <div class="rail-section">
+      <h4>Datasets <span class="count">2</span></h4>
+      <div class="ds">
+        <span class="swatch" style="background:#f59e0b"></span>
+        <span class="name">ports.csv</span>
+        <span class="rows">842 r</span>
+        <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <div class="ds">
+        <span class="swatch" style="background:#2a4a8c"></span>
+        <span class="name">coastline.geojson</span>
+        <span class="rows">314 r</span>
+        <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+    </div>
+
+    <div class="rail-section">
+      <h4>Saved <span class="count">3</span></h4>
+      <div class="saved">
+        <div class="saved-item active">
+          <div class="ico">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="11" width="3" height="9"/><rect x="10.5" y="6" width="3" height="14"/><rect x="17" y="14" width="3" height="6"/></svg>
+          </div>
+          <div class="meta">
+            <div class="title">Container throughput by port</div>
+            <div class="sub">bar · 12 rows · 2m ago</div>
+          </div>
+        </div>
+        <div class="saved-item">
+          <div class="ico">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16"/><path d="M3 10h18M9 4v16"/></svg>
+          </div>
+          <div class="meta">
+            <div class="title">Top 10 busiest ports</div>
+            <div class="sub">table · 10 rows · 5m ago</div>
+          </div>
+        </div>
+        <div class="saved-item">
+          <div class="ico">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>
+          </div>
+          <div class="meta">
+            <div class="title">Coastline buffer 50nm</div>
+            <div class="sub">map · GeoJSON · 9m ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <section class="main">
+    <div class="tab-strip">
+      <div class="tab">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>
+        Map
+        <span class="badge">842 + 314</span>
+      </div>
+      <div class="tab">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Results
+        <span class="badge">3</span>
+      </div>
+      <div class="tab active">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/></svg>
+        Detail
+      </div>
+    </div>
+
+    <div class="canvas">
+      <div class="detail-head">
+        <div>
+          <span class="kicker">Saved · #001 · bar</span>
+          <h1 class="detail-title">Container throughput, by <em>port</em></h1>
+          <div class="detail-sub">Top twelve Florida Gulf ports by containerized cargo throughput in 2024. Tampa leads by ~28%; Cedar Key first appears in 2022.</div>
+        </div>
+        <div class="detail-meta">
+          <div><b>SOURCE</b><br/>ports.csv</div>
+          <div><b>RAN</b><br/>2 minutes ago</div>
+          <div><b>RUNTIME</b><br/>184 ms</div>
+        </div>
+      </div>
+
+      <div class="detail-grid">
+        <div class="panel">
+          <h5>Chart <span class="meta">x: name · y: throughput · scale: linear</span></h5>
+          <div class="panel-body">
+            <svg class="big-chart" viewBox="0 0 600 280" preserveAspectRatio="xMidYMid meet">
+              <!-- gridlines -->
+              <g stroke="#d6cdb6" stroke-width="1">
+                <line x1="40" y1="40"  x2="580" y2="40"/>
+                <line x1="40" y1="100" x2="580" y2="100"/>
+                <line x1="40" y1="160" x2="580" y2="160"/>
+                <line x1="40" y1="220" x2="580" y2="220"/>
+              </g>
+              <line x1="40" y1="220" x2="580" y2="220" stroke="#1c160d" stroke-width="2"/>
+              <line x1="40" y1="40"  x2="40"  y2="220" stroke="#1c160d" stroke-width="2"/>
+              <!-- y labels -->
+              <g font-family="JetBrains Mono" font-size="10" fill="#7a6b4f">
+                <text x="34" y="44" text-anchor="end">15k</text>
+                <text x="34" y="104" text-anchor="end">10k</text>
+                <text x="34" y="164" text-anchor="end">5k</text>
+                <text x="34" y="224" text-anchor="end">0</text>
+              </g>
+              <!-- bars -->
+              <g>
+                <rect x="60"  y="60"  width="32" height="160" fill="#c84b1f" stroke="#1c160d" stroke-width="2"/>
+                <rect x="100" y="86"  width="32" height="134" fill="#c84b1f" stroke="#1c160d" stroke-width="2"/>
+                <rect x="140" y="106" width="32" height="114" fill="#c84b1f" stroke="#1c160d" stroke-width="2"/>
+                <rect x="180" y="130" width="32" height="90"  fill="#ea580c" stroke="#1c160d" stroke-width="2"/>
+                <rect x="220" y="142" width="32" height="78"  fill="#ea580c" stroke="#1c160d" stroke-width="2"/>
+                <rect x="260" y="158" width="32" height="62"  fill="#ea580c" stroke="#1c160d" stroke-width="2"/>
+                <rect x="300" y="170" width="32" height="50"  fill="#f59e0b" stroke="#1c160d" stroke-width="2"/>
+                <rect x="340" y="178" width="32" height="42"  fill="#f59e0b" stroke="#1c160d" stroke-width="2"/>
+                <rect x="380" y="184" width="32" height="36"  fill="#f59e0b" stroke="#1c160d" stroke-width="2"/>
+                <rect x="420" y="190" width="32" height="30"  fill="#f59e0b" stroke="#1c160d" stroke-width="2"/>
+                <rect x="460" y="196" width="32" height="24"  fill="#f5efe1" stroke="#1c160d" stroke-width="2"/>
+                <rect x="500" y="202" width="32" height="18"  fill="#f5efe1" stroke="#1c160d" stroke-width="2"/>
+              </g>
+              <!-- value label on largest -->
+              <g font-family="Fraunces" font-size="13" font-weight="600" fill="#1c160d">
+                <text x="76" y="55" text-anchor="middle">12,408</text>
+              </g>
+              <!-- x labels -->
+              <g font-family="Manrope" font-size="10" fill="#4a3f2a" font-weight="500">
+                <text x="76"  y="240" text-anchor="middle">Tampa</text>
+                <text x="116" y="240" text-anchor="middle">Jax</text>
+                <text x="156" y="240" text-anchor="middle">Canav.</text>
+                <text x="196" y="240" text-anchor="middle">Manatee</text>
+                <text x="236" y="240" text-anchor="middle">Pens.</text>
+                <text x="276" y="240" text-anchor="middle">CK</text>
+                <text x="316" y="240" text-anchor="middle">Apal.</text>
+                <text x="356" y="240" text-anchor="middle">St.Pete</text>
+                <text x="396" y="240" text-anchor="middle">Sarasota</text>
+                <text x="436" y="240" text-anchor="middle">Naples</text>
+                <text x="476" y="240" text-anchor="middle">Marco</text>
+                <text x="516" y="240" text-anchor="middle">Steinhatchee</text>
+              </g>
+            </svg>
+          </div>
+          <div class="sql-block">
+            <span class="kw">SELECT</span> name, throughput<br/>
+            <span class="kw">FROM</span> ports<br/>
+            <span class="kw">WHERE</span> state = <span style="color:#2f5d2c">'FL'</span><br/>
+            <span class="kw">ORDER BY</span> throughput <span class="kw">DESC</span><br/>
+            <span class="kw">LIMIT</span> 12;
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 22px;">
+          <div class="panel">
+            <h5>Locations <span class="meta">12 ports</span></h5>
+            <div class="panel-body" style="padding: 0;">
+              <svg class="mini-map" viewBox="0 0 320 220" preserveAspectRatio="none">
+                <rect width="320" height="220" fill="#ece4d2"/>
+                <!-- coastline -->
+                <path d="M0 130 q40 -40 90 -34 q80 10 130 -8 q60 -22 90 6 q40 38 80 -18 L320 0 L320 220 L0 220 Z" fill="#fffaef" stroke="#1c160d" stroke-width="2"/>
+                <!-- buffer ring -->
+                <path d="M-10 110 q50 -60 100 -52 q90 14 130 -10 q60 -36 90 0 q40 50 80 -32 L320 -20 L320 220 L0 220 Z" fill="none" stroke="#c84b1f" stroke-width="1.4" stroke-dasharray="4 4" opacity=".7"/>
+                <!-- ports -->
+                <g fill="#c84b1f" stroke="#1c160d" stroke-width="1.5">
+                  <circle cx="50"  cy="118" r="5"/>
+                  <circle cx="92"  cy="108" r="5"/>
+                  <circle cx="132" cy="100" r="4"/>
+                  <circle cx="170" cy="98"  r="4"/>
+                  <circle cx="206" cy="92"  r="4"/>
+                  <circle cx="240" cy="84"  r="4"/>
+                  <circle cx="280" cy="78"  r="3"/>
+                  <circle cx="60"  cy="138" r="3"/>
+                  <circle cx="118" cy="124" r="3"/>
+                  <circle cx="184" cy="116" r="3"/>
+                  <circle cx="226" cy="108" r="3"/>
+                  <circle cx="262" cy="100" r="3"/>
+                </g>
+                <text x="55" y="112" font-family="JetBrains Mono" font-size="9" fill="#1c160d" font-weight="500">Tampa</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h5>Facts <span class="meta">summary</span></h5>
+            <div class="panel-body">
+              <dl class="facts">
+                <dt>n ports</dt><dd>12</dd>
+                <dt>total TEU</dt><dd>74,128</dd>
+                <dt>median</dt><dd>4,801</dd>
+                <dt>max (Tampa)</dt><dd>12,408</dd>
+                <dt>min (Steinhatchee)</dt><dd>912</dd>
+                <dt>state</dt><dd>FL</dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Bottom dock -->
+  <footer class="dock">
+    <div class="dock-prev">
+      <b>Last:</b> Mapped 842 ports — biggest cluster on the Gulf coast (n=47).
+    </div>
+    <div class="dock-input">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent)"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 12 21 3M21 3v6M21 3h-6"/></svg>
+      <input placeholder="Ask GeoChatBot to query, chart, or map your data…" />
+      <button class="send">
+        Run
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12h16m0 0-5-5m5 5-5 5"/></svg>
+      </button>
+    </div>
+  </footer>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GeoChatBot · Atlas Pro (Variant B)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  :root {
+    --bg: #0c0e12;
+    --bg-2: #14171c;
+    --bg-3: #1b1f25;
+    --line: #25292f;
+    --line-soft: #1d2127;
+    --ink: #e7e9ee;
+    --ink-soft: #b6bbc4;
+    --ink-muted: #767c87;
+    --ink-dim: #525861;
+    --accent: #c4f042;
+    --accent-fg: #0c0e12;
+    --warn: #f97316;
+    --good: #4ade80;
+    --bad: #f87171;
+    --info: #60a5fa;
+    --shadow: 0 1px 0 rgba(255,255,255,.04), 0 18px 36px -16px rgba(0,0,0,.6);
+    --font-sans: "Manrope", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--font-sans);
+    color: var(--ink); background: var(--bg);
+    font-feature-settings: "ss01", "ss02", "cv11";
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 296px 1fr;
+    grid-template-rows: 52px 1fr 84px;
+    grid-template-areas:
+      "topbar topbar"
+      "rail   main"
+      "rail   dock";
+    height: 100vh;
+  }
+
+  /* ───── Topbar ───── */
+  .topbar {
+    grid-area: topbar; display: flex; align-items: center; gap: 12px;
+    padding: 0 16px;
+    background: var(--bg-2); border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.02em; font-size: 15px; }
+  .brand-mark {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: var(--accent);
+    display: grid; place-items: center; color: var(--accent-fg);
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  }
+  .top-sep { width: 1px; height: 22px; background: var(--line); }
+  .crumb { color: var(--ink-soft); font-size: 13px; }
+  .crumb b { color: var(--ink); font-weight: 600; }
+  .crumb .sep { color: var(--ink-dim); margin: 0 8px; }
+
+  .top-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .btn {
+    height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px;
+    background: var(--bg-3); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease;
+  }
+  .btn:hover { background: #232830; border-color: #353a42; }
+  .btn .kbd { font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted); }
+  .btn-primary {
+    background: var(--accent); color: var(--accent-fg); border-color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: #d3ff58; border-color: #d3ff58; }
+  .icon { width: 14px; height: 14px; flex: 0 0 auto; }
+
+  /* ───── Left rail ───── */
+  .rail {
+    grid-area: rail; background: var(--bg-2); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .rail-section { padding: 16px 14px; border-bottom: 1px solid var(--line-soft); }
+  .rail-section:last-child { border-bottom: 0; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .rail-section h4 {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em;
+    color: var(--ink-muted); margin: 0 0 10px; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .rail-section h4 .add {
+    font-family: var(--font-mono); color: var(--ink-muted); cursor: pointer;
+    width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px;
+  }
+  .rail-section h4 .add:hover { background: var(--bg-3); color: var(--ink); }
+
+  /* Datasets */
+  .ds {
+    display: grid; grid-template-columns: 12px 1fr auto auto; align-items: center;
+    gap: 8px; padding: 6px 8px; border-radius: 6px;
+    font-size: 13px; cursor: pointer;
+  }
+  .ds:hover { background: var(--bg-3); }
+  .ds .swatch { width: 10px; height: 10px; border-radius: 2px; }
+  .ds .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ds .rows { font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted); }
+  .ds .eye { color: var(--ink-muted); width: 14px; height: 14px; }
+  .ds.muted .eye { color: var(--ink-dim); }
+  .ds.muted .name, .ds.muted .rows { color: var(--ink-muted); text-decoration: line-through; text-decoration-color: rgba(118,124,135,.4); }
+
+  /* Saved list */
+  .saved { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow: auto; margin: -4px -4px 0; padding: 4px; }
+  .saved-item {
+    display: grid; grid-template-columns: 24px 1fr; gap: 10px;
+    padding: 8px 10px; border-radius: 6px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .saved-item:hover { background: var(--bg-3); }
+  .saved-item.active {
+    background: rgba(196,240,66,0.08);
+    border-color: rgba(196,240,66,0.25);
+  }
+  .saved-item .ico {
+    width: 24px; height: 24px; border-radius: 5px;
+    background: var(--bg-3); border: 1px solid var(--line);
+    display: grid; place-items: center; color: var(--ink-soft);
+  }
+  .saved-item.active .ico { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .saved-item .meta { min-width: 0; }
+  .saved-item .title { font-size: 13px; font-weight: 500; line-height: 1.3; }
+  .saved-item .sub  { font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted); margin-top: 2px;}
+
+  .filter-row {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+    height: 26px; padding: 0 8px; border-radius: 6px;
+    background: var(--bg-3); border: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-muted);
+  }
+  .filter-row input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 12px; }
+
+  /* ───── Main ───── */
+  .main { grid-area: main; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .tab-strip {
+    height: 38px; display: flex; align-items: center; padding: 0 8px;
+    border-bottom: 1px solid var(--line); background: var(--bg-2);
+  }
+  .tab {
+    height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 6px; font-size: 12px; color: var(--ink-soft); cursor: pointer;
+    margin-right: 2px; font-weight: 500;
+  }
+  .tab:hover { background: var(--bg-3); color: var(--ink); }
+  .tab.active { color: var(--ink); background: var(--bg-3); box-shadow: inset 0 -1px 0 var(--accent); border-radius: 6px 6px 0 0; }
+  .tab .badge {
+    font-family: var(--font-mono); font-size: 10px; padding: 1px 6px; border-radius: 4px;
+    background: var(--bg); color: var(--ink-muted); border: 1px solid var(--line);
+  }
+  .tab.active .badge { color: var(--accent); border-color: rgba(196,240,66,.35); }
+  .tab-strip .tab-actions { margin-left: auto; display: flex; gap: 4px; }
+  .iconbtn {
+    width: 28px; height: 28px; display: grid; place-items: center;
+    border-radius: 6px; background: transparent; color: var(--ink-muted); cursor: pointer;
+  }
+  .iconbtn:hover { background: var(--bg-3); color: var(--ink); }
+
+  .canvas {
+    flex: 1; min-height: 0; position: relative; overflow: hidden;
+    background: #0a0c10;
+  }
+  .map-svg { width: 100%; height: 100%; display: block; }
+
+  .floating { position: absolute; }
+  .stats { top: 14px; left: 14px; display: flex; gap: 8px; }
+  .stat {
+    background: rgba(20, 23, 28, 0.85); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 12px; min-width: 100px;
+    backdrop-filter: blur(10px);
+  }
+  .stat .v { font-family: var(--font-mono); font-size: 16px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); }
+  .stat .l { font-size: 10px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.12em; margin-top: 2px; }
+  .stat .v .accent { color: var(--accent); }
+
+  .legend {
+    bottom: 14px; right: 14px;
+    background: rgba(20, 23, 28, 0.90); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 12px; min-width: 200px;
+    backdrop-filter: blur(10px);
+  }
+  .legend h5 { margin: 0 0 6px; font-size: 10px; color: var(--ink-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; color: var(--ink-soft); }
+  .legend-row .sw { width: 10px; height: 10px; border-radius: 2px; }
+
+  .scale {
+    bottom: 14px; left: 14px;
+    background: rgba(20,23,28,0.85); border: 1px solid var(--line);
+    border-radius: 6px; padding: 4px 8px; font-size: 10px; font-family: var(--font-mono); color: var(--ink-soft);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .scale .bar { width: 60px; height: 2px; background: var(--ink-soft); }
+
+  /* ───── Bottom dock ───── */
+  .dock {
+    grid-area: dock; background: var(--bg-2); border-top: 1px solid var(--line);
+    padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+  }
+  .dock-prev {
+    flex: 0 0 auto; max-width: 38%; padding-left: 12px;
+    border-left: 2px solid var(--accent); color: var(--ink-muted); font-size: 12px; line-height: 1.45;
+  }
+  .dock-prev b { color: var(--ink); font-weight: 600; }
+  .dock-input {
+    flex: 1; min-width: 0;
+    height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 14px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .dock-input:focus-within { border-color: var(--accent); }
+  .dock-input input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 14px; }
+  .dock-input input::placeholder { color: var(--ink-muted); }
+  .send {
+    height: 32px; padding: 0 14px; border-radius: 8px;
+    background: var(--accent); color: var(--accent-fg); border: 0;
+    font: inherit; font-weight: 600; font-size: 12px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+
+  /* ───── Upload popover ───── */
+  .pop-anchor { position: relative; }
+  .popover {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 4;
+    width: 360px; padding: 14px;
+    background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow);
+  }
+  .popover::before {
+    content: ""; position: absolute; top: -7px; right: 22px;
+    width: 12px; height: 12px;
+    background: var(--bg-2); border-top: 1px solid var(--line); border-left: 1px solid var(--line);
+    transform: rotate(45deg);
+  }
+  .popover h5 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+  .pop-drop {
+    border: 1.5px dashed var(--line); border-radius: 10px;
+    padding: 22px 14px; text-align: center; color: var(--ink-muted); font-size: 13px;
+    transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+    cursor: pointer;
+  }
+  .pop-drop:hover { border-color: var(--accent); color: var(--ink); background: rgba(196,240,66,0.04); }
+  .pop-drop b { color: var(--ink); font-weight: 600; }
+  .pop-or {
+    display: flex; align-items: center; gap: 10px; margin: 10px 0;
+    color: var(--ink-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em;
+  }
+  .pop-or::before, .pop-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .pop-paste {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    font-size: 12px; color: var(--ink-soft); cursor: pointer;
+  }
+  .pop-paste:hover { border-color: var(--accent); color: var(--ink); }
+  .pop-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 11px; color: var(--ink-muted); }
+  .pop-foot code {
+    font-family: var(--font-mono); font-size: 10px;
+    padding: 1px 5px; border-radius: 3px;
+    background: var(--bg); border: 1px solid var(--line); color: var(--ink-soft);
+  }
+
+  /* Variant ribbon */
+  .ribbon {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 6; padding: 4px 10px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    background: var(--accent); color: var(--accent-fg); font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="ribbon">Variant B · Atlas Pro</div>
+
+<div class="app">
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">G</div>
+      GeoChatBot
+    </div>
+    <div class="top-sep"></div>
+    <div class="crumb"><b>Cedar Key</b><span class="sep">/</span>Untitled session</div>
+
+    <div class="top-actions">
+      <button class="btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<span class="kbd">⌘K</span></button>
+      <button class="btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.4 13.4 7.2 4.2M15.6 6.4l-7.2 4.2"/></svg>Share</button>
+      <button class="btn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8L4.2 7a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 9 4.6h0A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+
+      <div class="pop-anchor">
+        <button class="btn btn-primary">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          Add data
+        </button>
+        <!-- Popover open by default to show interaction -->
+        <div class="popover">
+          <h5>Add a dataset</h5>
+          <div class="pop-drop">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color: var(--ink-soft); margin-bottom: 6px;"><path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            <div><b>Drop a file</b> or click to choose</div>
+            <div style="font-family: var(--font-mono); font-size: 10px; color: var(--ink-dim); margin-top: 6px;">CSV · GeoJSON · Shapefile.zip · Excel · Parquet</div>
+          </div>
+          <div class="pop-or">or</div>
+          <div class="pop-paste">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 9V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2"/><rect x="4" y="9" width="12" height="12" rx="2"/></svg>
+            Paste a URL or table from clipboard
+          </div>
+          <div class="pop-foot">
+            <code>⌘V</code> to paste · <code>⌘O</code> to open file
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Left rail -->
+  <aside class="rail">
+    <div class="rail-section">
+      <h4>Datasets <span class="add">+</span></h4>
+      <div class="filter-row">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="6"/><path d="m20 20-3-3"/></svg>
+        <input placeholder="Filter datasets…" />
+      </div>
+      <div class="ds">
+        <span class="swatch" style="background:#fbbf24"></span>
+        <span class="name">ports.csv</span>
+        <span class="rows">842 r</span>
+        <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <div class="ds">
+        <span class="swatch" style="background:#60a5fa"></span>
+        <span class="name">coastline.geojson</span>
+        <span class="rows">314 r</span>
+        <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <div class="ds muted">
+        <span class="swatch" style="background:#525861"></span>
+        <span class="name">shipping_lanes.parquet</span>
+        <span class="rows">11k r</span>
+        <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m3 3 18 18M2 12s3.5-7 10-7c2.4 0 4.5.9 6.2 2.1M22 12s-3.5 7-10 7c-2.4 0-4.5-.9-6.2-2.1"/><path d="M9 9a3 3 0 0 1 6 6"/></svg>
+      </div>
+    </div>
+
+    <div class="rail-section">
+      <h4>Saved <span class="add">+</span></h4>
+      <div class="filter-row">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="6"/><path d="m20 20-3-3"/></svg>
+        <input placeholder="Filter saved…" />
+      </div>
+      <div class="saved">
+        <div class="saved-item active">
+          <div class="ico">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="11" width="3" height="9" rx="1"/><rect x="10.5" y="6" width="3" height="14" rx="1"/><rect x="17" y="14" width="3" height="6" rx="1"/></svg>
+          </div>
+          <div class="meta">
+            <div class="title">Container throughput by port</div>
+            <div class="sub">bar · 12 rows · 2m ago</div>
+          </div>
+        </div>
+        <div class="saved-item">
+          <div class="ico">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>
+          </div>
+          <div class="meta">
+            <div class="title">Top 10 busiest ports</div>
+            <div class="sub">table · 10 rows · 5m ago</div>
+          </div>
+        </div>
+        <div class="saved-item">
+          <div class="ico">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>
+          </div>
+          <div class="meta">
+            <div class="title">Coastline buffer 50nm</div>
+            <div class="sub">map · GeoJSON · 9m ago</div>
+          </div>
+        </div>
+        <div class="saved-item">
+          <div class="ico">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l4-4 4 4 4-8 5 8"/></svg>
+          </div>
+          <div class="meta">
+            <div class="title">Throughput trend 2018–2025</div>
+            <div class="sub">line · 96 pts · 14m ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <section class="main">
+    <div class="tab-strip">
+      <div class="tab active">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>
+        Map
+        <span class="badge">842 + 314</span>
+      </div>
+      <div class="tab">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Results
+        <span class="badge">4</span>
+      </div>
+      <div class="tab">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+        Detail
+      </div>
+      <div class="tab-actions">
+        <button class="iconbtn" title="Reset"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg></button>
+        <button class="iconbtn" title="Layers"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5M3 17l9 5 9-5"/></svg></button>
+        <button class="iconbtn" title="Export"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></button>
+        <button class="iconbtn" title="Theme"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+      </div>
+    </div>
+
+    <div class="canvas">
+      <svg class="map-svg" viewBox="0 0 1200 660" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+            <path d="M 80 0 L 0 0 0 80" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+          </pattern>
+          <linearGradient id="land2" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#1a1f27"/>
+            <stop offset="100%" stop-color="#0f1216"/>
+          </linearGradient>
+        </defs>
+        <rect width="1200" height="660" fill="#0a0c10"/>
+        <rect width="1200" height="660" fill="url(#grid)"/>
+        <!-- coastline -->
+        <path d="M120 380 q40 -50 110 -40 q80 12 130 -10 q40 -16 80 8 q70 36 130 -8 q60 -42 130 4 q70 48 140 -16 q70 -64 160 -22 q60 28 120 -2 L1200 660 L0 660 Z" fill="url(#land2)" stroke="rgba(196,240,66,0.5)" stroke-width="1.4"/>
+        <path d="M260 196 q60 -28 130 -10 q90 22 160 -16 q60 -32 100 8 q40 38 100 14 q70 -28 140 8 L900 230 q-50 14 -120 -2 q-90 -22 -160 4 q-50 18 -120 -4 q-100 -34 -160 -2 Z" fill="rgba(96,165,250,0.10)" stroke="rgba(96,165,250,0.45)" stroke-width="1.2"/>
+        <!-- ports -->
+        <g fill="#fbbf24">
+          <circle cx="245" cy="370" r="4"/><circle cx="280" cy="392" r="3.5"/>
+          <circle cx="330" cy="358" r="5"/><circle cx="372" cy="380" r="3.5"/>
+          <circle cx="430" cy="350" r="3.5"/><circle cx="510" cy="372" r="4"/>
+          <circle cx="600" cy="318" r="5"/><circle cx="654" cy="334" r="3.5"/>
+          <circle cx="720" cy="296" r="5"/><circle cx="788" cy="278" r="6"/>
+          <circle cx="840" cy="304" r="3.5"/><circle cx="906" cy="322" r="4.5"/>
+          <circle cx="970" cy="298" r="3.5"/><circle cx="1040" cy="316" r="4.5"/>
+        </g>
+        <!-- selected -->
+        <g>
+          <circle cx="788" cy="278" r="10" fill="none" stroke="#c4f042" stroke-width="1.5"/>
+          <text x="804" y="282" font-family="JetBrains Mono" font-size="11" fill="#c4f042">PORT-OF-TAMPA</text>
+        </g>
+      </svg>
+
+      <div class="floating stats">
+        <div class="stat">
+          <div class="v">842</div>
+          <div class="l">Ports</div>
+        </div>
+        <div class="stat">
+          <div class="v"><span class="accent">314</span></div>
+          <div class="l">Coastline edges</div>
+        </div>
+        <div class="stat">
+          <div class="v">29.13°</div>
+          <div class="l">Lat</div>
+        </div>
+        <div class="stat">
+          <div class="v">−83.04°</div>
+          <div class="l">Lon</div>
+        </div>
+      </div>
+
+      <div class="floating legend">
+        <h5>Layers</h5>
+        <div class="legend-row"><span class="sw" style="background:#fbbf24"></span> ports.csv · point · 842</div>
+        <div class="legend-row"><span class="sw" style="background:#60a5fa"></span> coastline.geojson · line · 314</div>
+        <div class="legend-row"><span class="sw" style="background:#c4f042"></span> selection · 1</div>
+      </div>
+
+      <div class="floating scale">
+        <span class="bar"></span> 100 nm
+      </div>
+    </div>
+  </section>
+
+  <!-- Bottom dock -->
+  <footer class="dock">
+    <div class="dock-prev">
+      <b>Last result:</b> Mapped 842 ports across 28 regions; biggest cluster on the FL Gulf coast (n=47).
+    </div>
+    <div class="dock-input">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color: var(--accent)"><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 12 21 3M21 3v6M21 3h-6"/></svg>
+      <input placeholder="Ask: ‘chart top 10 by throughput’ · ‘buffer coast by 50nm’ · ‘group by state’" />
+      <span style="font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted); padding: 0 6px;">↵</span>
+      <button class="send">
+        Run
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h16m0 0-5-5m5 5-5 5"/></svg>
+      </button>
+    </div>
+  </footer>
+</div>
+
+</body>
+</html>
