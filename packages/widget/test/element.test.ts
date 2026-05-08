@@ -516,6 +516,26 @@ describe('clear-race regression (kept)', () => {
   });
 });
 
+describe('Phase 7: saves + rail round-trip', () => {
+  it('saves.add() pushes a row into <gcb-rail>', async () => {
+    const el = document.createElement('geo-chatbot') as any;
+    document.body.appendChild(el);
+    await el.updateComplete;
+    el.saves.clear();
+    el.saves.add({
+      title: 'pinned',
+      kind: 'chart',
+      origin: { planId: 'p', stepId: 's', question: 'q' },
+      payload: {},
+    });
+    await el.updateComplete;
+    const rail = el.shadowRoot!.querySelector('gcb-rail') as HTMLElement;
+    await (rail as any).updateComplete;
+    const text = rail.shadowRoot!.textContent ?? '';
+    expect(text).toMatch(/pinned/);
+  });
+});
+
 describe('Phase 6: critic wiring', () => {
   it('passes onStepError to the executor when ask() runs', async () => {
     const el = document.createElement('geo-chatbot') as any;

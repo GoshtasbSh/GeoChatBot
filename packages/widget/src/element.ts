@@ -45,6 +45,8 @@ import './ui/modal.js';
 import './ui/upload-popover.js';
 import './ui/shell.js';
 import type { ShellTab } from './ui/shell.js';
+import './ui/rail.js';
+import { SavesStore, type SavedResultV1 } from './state/saves-store.js';
 import './ui/result-canvas.js';
 import './ui/settings-drawer.js';
 import type { SettingsValue } from './ui/settings-drawer.js';
@@ -400,6 +402,19 @@ export class GeoChatBotElement extends LitElement {
   @state() private _maskedKey: string | null = null;
 
   /* -------------------------------------------------------------------- */
+  /* Phase 7 saves state                                                  */
+  /* -------------------------------------------------------------------- */
+  /** localStorage-backed saves for this widget instance. */
+  saves = new SavesStore();
+
+  @state() private _savesList: ReadonlyArray<SavedResultV1> = [];
+
+  /** Currently-selected save (drives Detail tab in Slice 2). */
+  @state() private _activeSaveId: string | null = null;
+
+  private _savesChange?: () => void;
+
+  /* -------------------------------------------------------------------- */
   /* Persistence                                                          */
   /* -------------------------------------------------------------------- */
   /**
@@ -438,6 +453,9 @@ export class GeoChatBotElement extends LitElement {
     this._unsubscribeTheme = subscribeOSTheme(() => {
       if (this.theme === 'auto') this.requestUpdate();
     }, null);
+    this._savesList = this.saves.list();
+    this._savesChange = () => { this._savesList = this.saves.list(); };
+    this.saves.addEventListener('change', this._savesChange);
   }
 
   /** Read persisted settings on connect; silently no-op if storage is unavailable. */
@@ -507,6 +525,11 @@ export class GeoChatBotElement extends LitElement {
   private _openSettings = () => { this._settingsOpen = true; };
   private _closeSettings = () => { this._settingsOpen = false; };
 
+  private _onSaveSelect = (e: CustomEvent<string>): void => {
+    this._activeSaveId = e.detail;
+    this._activeTab = 'detail';
+  };
+
   /**
    * Compute why the chat input is disabled, or null when ready. The
    * <gcb-ask-input> renders an empty-state CTA based on this so the
@@ -549,7 +572,7 @@ export class GeoChatBotElement extends LitElement {
       <gcb-shell
         .activeTab=${this._activeTab}
         .datasetCount=${this.loaded.length}
-        .savedCount=${0}
+        .savedCount=${this._savesList.length}
         @gcb:tab=${(e: CustomEvent<ShellTab>) => (this._activeTab = e.detail)}
       >
         <div slot="topbar" style="display:flex; align-items:center; gap:10px; height:100%; padding:0 14px;">
@@ -584,17 +607,19 @@ export class GeoChatBotElement extends LitElement {
           >⚙</button>
         </div>
 
-        <div slot="rail" style="padding: 14px;">
-          <div style="font-family: var(--gcb-font-mono); font-size: 11px; color: var(--gcb-ink-muted); text-transform: uppercase; letter-spacing: 0.14em;">Datasets</div>
-          ${this.loaded.length === 0
-            ? html`<div style="font-size:12px; color:var(--gcb-ink-muted); margin-top:8px;">No datasets yet. Click + Add data.</div>`
-            : html`<ul style="list-style:none; padding:0; margin:8px 0; display:flex; flex-direction:column; gap:4px;">
-                ${this.loaded.map((r) => html`
-                  <li style="font-size:12px; padding:6px 8px; border-radius:6px; background:var(--gcb-bg-3);">
-                    ${r.name}
-                  </li>`)}
-              </ul>`}
-        </div>
+        <gcb-rail
+          slot="rail"
+          .datasets=${this.loaded.map((r) => ({
+            name: r.name,
+            rows: this.profiles[r.name]?.rowCount ?? r.table.numRows,
+            hasGeometry: !!r.geometry,
+          }))}
+          .saves=${this._savesList}
+          .activeSaveId=${this._activeSaveId}
+          @gcb:save-select=${this._onSaveSelect}
+          @gcb:save-remove=${(e: CustomEvent<string>) => this.saves.remove(e.detail)}
+          @gcb:dataset-toggle=${() => { /* visibility toggle: Slice 2 */ }}
+        ></gcb-rail>
 
         <div slot="main" style="height:100%; overflow:auto; padding: 14px;">
           ${this.error ? html`<div class="err">${this.error}</div>` : null}
@@ -1118,6 +1143,28 @@ export class GeoChatBotElement extends LitElement {
     const { planId: _p, stepId: _s, ...payload } = e;
     void _p; void _s;
     canvas.setResult(payload as { kind: string; [k: string]: unknown });
+
+    // Overlay a "Save" button if not already present, so the user can pin
+    // this result to the rail. Idempotent — re-creates on every mount.
+    const host = this.shadowRoot!;
+    let saveBtn = host.querySelector('.gcb-save-btn') as HTMLButtonElement | null;
+    if (!saveBtn) {
+      saveBtn = document.createElement('button');
+      saveBtn.className = 'gcb-save-btn icon-btn';
+      saveBtn.style.cssText = 'position:absolute; top:8px; right:8px; z-index:5;';
+      saveBtn.textContent = '☆ Save';
+      host.appendChild(saveBtn);
+    }
+    saveBtn.onclick = (): void => {
+      const saveKind: SavedResultV1['kind'] =
+        e.kind === 'layer' ? 'map' : (e.kind as SavedResultV1['kind']);
+      this.saves.add({
+        title: e.kind === 'summary' ? 'Summary' : `${e.kind} · ${new Date().toLocaleTimeString()}`,
+        kind: saveKind,
+        origin: { planId: e.planId, stepId: e.stepId, question: '' },
+        payload: payload as Record<string, unknown>,
+      });
+    };
   }
 
   private _buildCritic():
@@ -1360,6 +1407,7 @@ export class GeoChatBotElement extends LitElement {
     this._settingsOpen = false;
     this._agentBusy = false;
     this._maskedKey = null;
+    this._activeSaveId = null;
     if (this.shadowRoot) {
       const canvas = this.shadowRoot.querySelector('result-canvas') as
         | (HTMLElement & { clear(): void })
@@ -1390,6 +1438,10 @@ export class GeoChatBotElement extends LitElement {
     delete this._pendingPlan;
     this._unsubscribeTheme?.();
     delete this._unsubscribeTheme;
+    if (this._savesChange) {
+      this.saves.removeEventListener('change', this._savesChange);
+      delete this._savesChange;
+    }
   }
 
   /**
