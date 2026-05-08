@@ -25,7 +25,13 @@ export function resolveTheme(
   return mql?.matches ? 'dark' : 'light';
 }
 
-/** Set the `theme` attribute on a host element. */
+/**
+ * Write the raw `ThemeMode` to the host's `theme` attribute. We
+ * intentionally write `'auto'` (not the resolved value) so the CSS
+ * layer can branch on `:host([theme="auto"])` inside a
+ * `@media (prefers-color-scheme: dark)` block. Pass `ThemeMode`,
+ * never `ResolvedTheme`, or you lose the auto-follows-OS information.
+ */
 export function applyTheme(host: Element, mode: ThemeMode): void {
   host.setAttribute('theme', mode);
 }

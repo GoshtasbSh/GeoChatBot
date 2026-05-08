@@ -33,6 +33,8 @@ describe('theme resolver', () => {
 
   it('applyTheme sets the host theme attribute to the requested mode', () => {
     const host = document.createElement('div');
+    applyTheme(host, 'light');
+    expect(host.getAttribute('theme')).toBe('light');
     applyTheme(host, 'dark');
     expect(host.getAttribute('theme')).toBe('dark');
     applyTheme(host, 'auto');
