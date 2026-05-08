@@ -25,13 +25,18 @@ jobs:
       - name: Lint (Biome, soft-fail)
         run: npm run lint || echo "lint surfaced issues — not blocking Phase 0 CI"
 
+      # Build the widget first so workspace consumers (examples/react) can
+      # resolve @geochatbot/widget type declarations during typecheck.
+      - name: Build widget
+        run: npm run build --workspace=@geochatbot/widget
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Test
         run: npm test
 
-      - name: Build
+      - name: Build (all)
         run: npm run build
 
       - name: Hello
