@@ -334,7 +334,7 @@ describe('Phase 4 — review-driven fixes', () => {
     await el.ask('q');
     await flushUpdates(el);
 
-    const pr = el.shadowRoot!.querySelector('plan-review') as HTMLElement;
+    const pr = el.shadowRoot!.querySelector('gcb-modal plan-review') as HTMLElement;
     expect(pr).toBeTruthy();
 
     // Dispatch a step:edit event with args that fail SqlArgs (empty string).
@@ -366,7 +366,7 @@ describe('Phase 4 — review-driven fixes', () => {
 
     await el.ask('q');
     await flushUpdates(el);
-    const pr = el.shadowRoot!.querySelector('plan-review') as HTMLElement & {
+    const pr = el.shadowRoot!.querySelector('gcb-modal plan-review') as HTMLElement & {
       plan?: { steps: Array<{ id: string; args: Record<string, unknown> }> };
     };
 
@@ -392,14 +392,15 @@ describe('Phase 4 — review-driven fixes', () => {
     el.__setLlmCall(async () => makePlan());
     await el.ask('q');
     await flushUpdates(el);
-    expect(el.shadowRoot!.querySelector('plan-review')).toBeTruthy();
+    expect(el.shadowRoot!.querySelector('gcb-modal plan-review')).toBeTruthy();
 
     el.clear();
     await flushUpdates(el);
 
     // After clear, plan-review is removed, provider is gone, and a fresh
     // ask() with no setProvider should emit NO_KEY (the wipe was real).
-    expect(el.shadowRoot!.querySelector('plan-review')).toBeNull();
+    expect(el.shadowRoot!.querySelector('gcb-modal')).toBeNull();
+    expect(el.shadowRoot!.querySelector('gcb-modal plan-review')).toBeNull();
     expect(el.getProvider()).toBeUndefined();
 
     const errs: GeoChatBotEvents['error'][] = [];

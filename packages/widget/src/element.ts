@@ -41,6 +41,7 @@ import {
 } from './agent/executor/index.js';
 import './ui/plan-review.js';
 import type { PlanReview } from './ui/plan-review.js';
+import './ui/modal.js';
 import './ui/result-canvas.js';
 import './ui/settings-drawer.js';
 import type { SettingsValue } from './ui/settings-drawer.js';
@@ -1109,7 +1110,7 @@ export class GeoChatBotElement extends LitElement {
    *  of being silently absorbed by inline `as never` casts. Returns null
    *  in headless mode (no shadow DOM children) or before the first plan. */
   private _planReview(): PlanReview | null {
-    return this.shadowRoot?.querySelector('plan-review') ?? null;
+    return this.shadowRoot?.querySelector('gcb-modal plan-review') ?? null;
   }
 
   private _pushPlanStatus(e: ExecProgressEvent): void {
@@ -1168,24 +1169,42 @@ export class GeoChatBotElement extends LitElement {
     // into a widget that is supposed to be event-only.
     if (this.mode === 'headless') return;
     if (!this._pendingPlan) return;
-    // Always reattach listeners against the current plan id. Re-using the
-    // same `<plan-review>` instance with stale closures would let a click
-    // on an older render approve a newer plan, or vice-versa.
     const planId = this._pendingPlan.id;
-    const oldPr = this.shadowRoot!.querySelector('plan-review');
-    if (oldPr) oldPr.remove();
+
+    // Tear down any previous modal+plan-review so listeners don't carry
+    // stale closures into a new plan id.
+    const oldModal = this.shadowRoot!.querySelector('gcb-modal');
+    if (oldModal) oldModal.remove();
+
     interface PlanReviewEl extends HTMLElement {
       plan?: Plan;
       mode?: 'plan' | 'running';
     }
+    const modal = document.createElement('gcb-modal') as HTMLElement & {
+      open: boolean;
+    };
+    modal.open = true;
+    modal.addEventListener('gcb:modal-close', () => {
+      this.rejectPlan({ id: planId });
+    });
+
     const pr = document.createElement('plan-review') as PlanReviewEl;
-    pr.addEventListener('plan:approve', () => this.approvePlan(planId));
-    pr.addEventListener('plan:reject', () => this.rejectPlan({ id: planId }));
+    pr.addEventListener('plan:approve', () => {
+      this.approvePlan(planId);
+      modal.open = false;
+    });
+    pr.addEventListener('plan:reject', () => {
+      this.rejectPlan({ id: planId });
+      modal.open = false;
+    });
     pr.addEventListener('step:edit', (ev: Event) => {
       const detail = (ev as CustomEvent<{ stepId: string; args: Record<string, unknown> }>).detail;
       this._handleStepEdit(planId, detail, pr);
     });
-    this.shadowRoot!.appendChild(pr);
+
+    modal.appendChild(pr);
+    this.shadowRoot!.appendChild(modal);
+
     pr.plan = this._pendingPlan.plan;
     pr.mode = 'plan';
   }
@@ -1314,8 +1333,8 @@ export class GeoChatBotElement extends LitElement {
         | (HTMLElement & { clear(): void })
         | null;
       canvas?.clear();
-      const planReview = this.shadowRoot.querySelector('plan-review');
-      planReview?.remove();
+      const modal = this.shadowRoot.querySelector('gcb-modal');
+      modal?.remove();
     }
   }
 
