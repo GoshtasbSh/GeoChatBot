@@ -4,86 +4,141 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GeoChatBot — dev</title>
+    <!-- Phase 7 Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
       body {
-        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-        margin: 0;
-        background: #f7f7f9;
-        padding: 24px;
+        font-family: "Geist", system-ui, -apple-system, sans-serif;
+        background: #f3f1ec;
+        display: flex; flex-direction: column;
       }
-      .wrap { max-width: 880px; margin: 0 auto; }
-      h1 { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
-      .hint { font-size: 13px; color: #555; margin: 0 0 16px; }
-      .row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
-      button {
-        font: inherit; padding: 6px 10px; border-radius: 6px;
-        border: 1px solid #d1d5db; background: white; cursor: pointer;
+
+      /* Dev control bar — not part of the widget UI */
+      .dev-bar {
+        background: #0c0e12; color: #e7e9ee;
+        padding: 6px 16px; display: flex; align-items: center; gap: 10px;
+        flex: 0 0 auto; font-size: 12px;
+        font-family: "JetBrains Mono", monospace;
+        border-bottom: 1px solid #25292f;
       }
-      button:hover { background: #f3f4f6; }
+      .dev-bar b { color: #c4f042; }
+      .dev-bar .sep { color: #525861; }
+      .dev-bar button {
+        font: inherit; font-size: 11px;
+        padding: 3px 10px; border-radius: 5px;
+        border: 1px solid #25292f; background: #14171c; color: #b6bbc4; cursor: pointer;
+      }
+      .dev-bar button:hover { background: #1b1f25; color: #e7e9ee; }
+      .dev-bar button.primary { background: #c4f042; color: #0c0e12; border-color: #c4f042; font-weight: 600; }
+      .dev-bar button.primary:hover { background: #d3ff58; }
+      .dev-bar .spacer { flex: 1; }
+      .dev-bar .hint { color: #767c87; }
+      #api-key-input {
+        font: inherit; font-size: 11px; padding: 3px 8px; border-radius: 5px;
+        border: 1px solid #25292f; background: #0c0e12; color: #e7e9ee; width: 260px;
+      }
+
+      /* Dashboard fills the rest of the viewport */
+      geo-chatbot {
+        flex: 1 1 0; min-height: 0;
+        display: block;
+        /* Remove card chrome so the shell fills edge-to-edge */
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+      }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <h1>GeoChatBot — Phase 1 dev harness</h1>
-      <p class="hint">Drop a CSV or GeoJSON below, or click a fixture to load it.</p>
-      <div class="row">
-        <button id="fix-points">Load fixture: 5 cities (GeoJSON points)</button>
-        <button id="fix-polys">Load fixture: 3 polygons</button>
-      </div>
-      <geo-chatbot id="bot"></geo-chatbot>
+
+    <div class="dev-bar">
+      <b>GeoChatBot</b><span class="sep">/</span>dev
+      <span class="sep">|</span>
+      <button id="btn-cities" class="primary">Load cities.geojson</button>
+      <button id="btn-polys">Load polys.geojson</button>
+      <button id="btn-clear">clear()</button>
+      <button id="btn-theme">Theme: auto</button>
+      <span class="spacer"></span>
+      <span class="hint">API key:</span>
+      <input id="api-key-input" type="password" placeholder="sk-ant-api…" />
+      <button id="btn-set-key">Apply key</button>
     </div>
+
+    <geo-chatbot id="bot" dangerously-allow-browser theme="auto"></geo-chatbot>
 
     <script type="module">
       import './src/index.ts';
 
-      const points = {
+      const bot = document.getElementById('bot');
+
+      // ── Fixture data ──────────────────────────────────────────────────
+      const CITIES = {
         type: 'FeatureCollection',
         features: [
-          ['New York', -74.006, 40.7128, 8_336_000],
-          ['London', -0.1276, 51.5074, 8_982_000],
-          ['Tokyo', 139.6917, 35.6895, 13_960_000],
-          ['Sydney', 151.2093, -33.8688, 5_312_000],
-          ['Sao Paulo', -46.6333, -23.5505, 12_330_000],
-        ].map(([name, lon, lat, pop]) => ({
+          ['New York',   -74.0060,  40.7128, 8_336_000],
+          ['London',     -0.1276,   51.5074, 8_982_000],
+          ['Tokyo',     139.6917,   35.6895,13_960_000],
+          ['Sydney',    151.2093,  -33.8688, 5_312_000],
+          ['São Paulo',  -46.6333, -23.5505,12_330_000],
+        ].map(([name, lon, lat, population]) => ({
           type: 'Feature',
-          properties: { name, population: pop },
+          properties: { name, population },
           geometry: { type: 'Point', coordinates: [lon, lat] },
         })),
       };
 
-      const polys = {
+      const POLYS = {
         type: 'FeatureCollection',
         features: [
-          {
-            type: 'Feature',
-            properties: { name: 'A' },
-            geometry: { type: 'Polygon', coordinates: [[[-10,-10],[-10,10],[10,10],[10,-10],[-10,-10]]] },
-          },
-          {
-            type: 'Feature',
-            properties: { name: 'B' },
-            geometry: { type: 'Polygon', coordinates: [[[20,20],[20,40],[40,40],[40,20],[20,20]]] },
-          },
-          {
-            type: 'Feature',
-            properties: { name: 'C' },
-            geometry: { type: 'Polygon', coordinates: [[[-60,30],[-60,50],[-30,50],[-30,30],[-60,30]]] },
-          },
+          { type:'Feature', properties:{ name:'A' }, geometry:{ type:'Polygon', coordinates:[[[-10,-10],[-10,10],[10,10],[10,-10],[-10,-10]]] } },
+          { type:'Feature', properties:{ name:'B' }, geometry:{ type:'Polygon', coordinates:[[[20,20],[20,40],[40,40],[40,20],[20,20]]] } },
+          { type:'Feature', properties:{ name:'C' }, geometry:{ type:'Polygon', coordinates:[[[-60,30],[-60,50],[-30,50],[-30,30],[-60,30]]] } },
         ],
       };
 
-      function dropFixture(obj, filename) {
-        const file = new File([JSON.stringify(obj)], filename, { type: 'application/geo+json' });
-        const dt = new DataTransfer();
-        dt.items.add(file);
-        const bot = document.getElementById('bot');
-        const dropZone = bot.shadowRoot.querySelector('.drop');
-        const evt = new DragEvent('drop', { dataTransfer: dt, bubbles: true });
-        dropZone.dispatchEvent(evt);
-      }
+      // pushData() replaces the old .drop zone dispatch (removed in Phase 7)
+      document.getElementById('btn-cities').addEventListener('click', async () => {
+        await bot.pushData(new File([JSON.stringify(CITIES)], 'cities.geojson', { type: 'application/geo+json' }));
+      });
 
-      document.getElementById('fix-points').addEventListener('click', () => dropFixture(points, 'cities.geojson'));
-      document.getElementById('fix-polys').addEventListener('click', () => dropFixture(polys, 'polys.geojson'));
+      document.getElementById('btn-polys').addEventListener('click', async () => {
+        await bot.pushData(new File([JSON.stringify(POLYS)], 'polys.geojson', { type: 'application/geo+json' }));
+      });
+
+      document.getElementById('btn-clear').addEventListener('click', () => bot.clear());
+
+      const THEMES = ['auto', 'light', 'dark'];
+      document.getElementById('btn-theme').addEventListener('click', () => {
+        const cur = bot.getAttribute('theme') ?? 'auto';
+        const next = THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length];
+        bot.setAttribute('theme', next);
+        document.getElementById('btn-theme').textContent = `Theme: ${next}`;
+      });
+
+      // Pre-fill key from localStorage so you don't retype on each HMR reload
+      const stored = localStorage.getItem('geochatbot:apiKey');
+      if (stored) document.getElementById('api-key-input').value = stored;
+
+      document.getElementById('btn-set-key').addEventListener('click', () => {
+        const key = document.getElementById('api-key-input').value.trim();
+        if (!key) return;
+        localStorage.setItem('geochatbot:apiKey', key);
+        localStorage.setItem('geochatbot:dangerouslyAllowBrowser', '1');
+        // Re-run connectedCallback so the widget picks up the new stored key
+        bot.disconnectedCallback?.();
+        bot.connectedCallback?.();
+        const btn = document.getElementById('btn-set-key');
+        btn.textContent = 'Saved ✓';
+        setTimeout(() => (btn.textContent = 'Apply key'), 2000);
+      });
     </script>
   </body>
 </html>
