@@ -16,35 +16,41 @@
  * branch on env at the call site.
  */
 
-import { Executor } from './executor.js';
+import type { OutputRef, Plan } from "../types.js";
+import { Executor } from "./executor.js";
 import type {
-  CriticDecision,
-  DatasetEntry,
-  ExecutorCallbacks,
-  ExecutorEngine,
-  StepErrorContext,
-} from './types.js';
-import type { OutputRef, Plan } from '../types.js';
+	CriticDecision,
+	DatasetEntry,
+	ExecutorCallbacks,
+	ExecutorEngine,
+	StepErrorContext,
+} from "./types.js";
 
 export interface ExecutorHandle {
-  execute(plan: Plan, planId: string, callbacks?: ExecutorCallbacks): Promise<void>;
-  dispose(): Promise<void>;
+	execute(
+		plan: Plan,
+		planId: string,
+		callbacks?: ExecutorCallbacks,
+	): Promise<void>;
+	dispose(): Promise<void>;
 }
 
 export interface InProcessOptions {
-  engine: ExecutorEngine;
-  datasets: DatasetEntry[];
+	engine: ExecutorEngine;
+	datasets: DatasetEntry[];
 }
 
 /** Build an in-process executor — used in tests and when Worker is missing. */
-export function createInProcessExecutor(opts: InProcessOptions): ExecutorHandle {
-  const exec = new Executor({ engine: opts.engine, datasets: opts.datasets });
-  return {
-    execute: (plan, planId, callbacks) => exec.execute(plan, planId, callbacks),
-    dispose: async () => {
-      /* shared engine is owned by the caller */
-    },
-  };
+export function createInProcessExecutor(
+	opts: InProcessOptions,
+): ExecutorHandle {
+	const exec = new Executor({ engine: opts.engine, datasets: opts.datasets });
+	return {
+		execute: (plan, planId, callbacks) => exec.execute(plan, planId, callbacks),
+		dispose: async () => {
+			/* shared engine is owned by the caller */
+		},
+	};
 }
 
 /**
@@ -53,7 +59,7 @@ export function createInProcessExecutor(opts: InProcessOptions): ExecutorHandle 
  * makes `new Worker(new URL(...), { type: 'module' })` work.
  */
 export function canUseExecutorWorker(): boolean {
-  return typeof Worker !== 'undefined' && typeof URL !== 'undefined';
+	return typeof Worker !== "undefined" && typeof URL !== "undefined";
 }
 
 /**
@@ -65,114 +71,131 @@ export function canUseExecutorWorker(): boolean {
  * decide the strategy without a try/catch.
  */
 export async function createWorkerExecutor(): Promise<WorkerExecutorHandle | null> {
-  if (!canUseExecutorWorker()) return null;
+	if (!canUseExecutorWorker()) return null;
 
-  // Lazy-import Comlink + the worker URL so this codepath stays out of the
-  // node test bundle entirely. Vite resolves `new Worker(new URL(..., import.meta.url))`
-  // at build time and emits a sibling chunk.
-  //
-  // The whole spawn-and-init sequence is wrapped in a try/catch because
-  // some environments (ServiceWorker scope, hardened CSP, Worker quotas
-  // exceeded) may fail at the `new Worker(...)` call or during `init()`.
-  // We swallow the error and return null so the host can fall back to
-  // the in-process executor without the call site needing a try/catch.
-  // The reason is logged for diagnosability.
-  let Comlink: typeof import('comlink');
-  let worker: Worker | undefined;
-  try {
-    Comlink = await import('comlink');
-    const workerUrl = new URL('./worker.js', import.meta.url);
-    worker = new Worker(workerUrl, { type: 'module' });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[geochatbot] worker spawn failed; falling back to in-process executor', err);
-    return null;
-  }
+	// Lazy-import Comlink + the worker URL so this codepath stays out of the
+	// node test bundle entirely. Vite resolves `new Worker(new URL(..., import.meta.url))`
+	// at build time and emits a sibling chunk.
+	//
+	// The whole spawn-and-init sequence is wrapped in a try/catch because
+	// some environments (ServiceWorker scope, hardened CSP, Worker quotas
+	// exceeded) may fail at the `new Worker(...)` call or during `init()`.
+	// We swallow the error and return null so the host can fall back to
+	// the in-process executor without the call site needing a try/catch.
+	// The reason is logged for diagnosability.
+	let Comlink: typeof import("comlink");
+	let worker: Worker | undefined;
+	try {
+		Comlink = await import("comlink");
+		const workerUrl = new URL("./worker.js", import.meta.url);
+		worker = new Worker(workerUrl, { type: "module" });
+	} catch (err) {
+		// eslint-disable-next-line no-console
+		console.warn(
+			"[geochatbot] worker spawn failed; falling back to in-process executor",
+			err,
+		);
+		return null;
+	}
 
-  const remote = Comlink.wrap<RemoteWorkerApi>(worker);
-  try {
-    await remote.init();
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[geochatbot] worker init failed; tearing down and falling back', err);
-    try { worker.terminate(); } catch { /* already torn down */ }
-    return null;
-  }
+	const remote = Comlink.wrap<RemoteWorkerApi>(worker);
+	try {
+		await remote.init();
+	} catch (err) {
+		// eslint-disable-next-line no-console
+		console.warn(
+			"[geochatbot] worker init failed; tearing down and falling back",
+			err,
+		);
+		try {
+			worker.terminate();
+		} catch {
+			/* already torn down */
+		}
+		return null;
+	}
 
-  // Idempotency latch for `dispose()`. After the first call we tear
-  // down the worker; the Comlink remote then has no live channel to
-  // talk to, so a naive second `remote.dispose()` rejects with a
-  // MessageChannel error. This flag short-circuits the second call.
-  let disposed = false;
+	// Idempotency latch for `dispose()`. After the first call we tear
+	// down the worker; the Comlink remote then has no live channel to
+	// talk to, so a naive second `remote.dispose()` rejects with a
+	// MessageChannel error. This flag short-circuits the second call.
+	let disposed = false;
 
-  return {
-    async registerDataset(ds) {
-      return remote.registerDataset(ds);
-    },
-    async execute(plan, planId, callbacks) {
-      const cb: ExecutorCallbacks = callbacks ?? {};
-      // The worker emits an `onStepError` payload with `priorOutputs` as
-      // a plain Record (see WireStepErrorContext in worker.ts). The user-
-      // supplied critic expects a Map, so we wrap here. We also keep the
-      // wrapped bag a fresh object so Comlink.proxy can transfer it
-      // without aliasing the caller's closure.
-      const wrapped: ExecutorCallbacks = { ...cb };
-      if (cb.onStepError) {
-        const userCritic = cb.onStepError;
-        wrapped.onStepError = async (
-          wire: WireStepErrorContextLike,
-        ): Promise<CriticDecision | undefined> => {
-          const ctx: StepErrorContext = {
-            planId: wire.planId,
-            step: wire.step,
-            resolvedArgs: wire.resolvedArgs,
-            error: wire.error,
-            priorOutputs:
-              wire.priorOutputs instanceof Map
-                ? wire.priorOutputs
-                : new Map<string, OutputRef>(Object.entries(wire.priorOutputs)),
-            retryCount: wire.retryCount,
-            maxRetries: wire.maxRetries,
-          };
-          return userCritic(ctx);
-        };
-      }
-      // Comlink.proxy wraps callbacks so the worker can invoke them
-      // back across the postMessage boundary.
-      await remote.execute({ plan, planId }, Comlink.proxy(wrapped));
-    },
-    async dispose() {
-      if (disposed) return;
-      disposed = true;
-      try {
-        await remote.dispose();
-      } catch {
-        /* worker may already be torn down; ignore */
-      } finally {
-        try { worker.terminate(); } catch { /* idempotent */ }
-      }
-    },
-  };
+	return {
+		async registerDataset(ds) {
+			return remote.registerDataset(ds);
+		},
+		async execute(plan, planId, callbacks) {
+			const cb: ExecutorCallbacks = callbacks ?? {};
+			// The worker emits an `onStepError` payload with `priorOutputs` as
+			// a plain Record (see WireStepErrorContext in worker.ts). The user-
+			// supplied critic expects a Map, so we wrap here. We also keep the
+			// wrapped bag a fresh object so Comlink.proxy can transfer it
+			// without aliasing the caller's closure.
+			const wrapped: ExecutorCallbacks = { ...cb };
+			if (cb.onStepError) {
+				const userCritic = cb.onStepError;
+				wrapped.onStepError = async (
+					wire: WireStepErrorContextLike,
+				): Promise<CriticDecision | undefined> => {
+					const ctx: StepErrorContext = {
+						planId: wire.planId,
+						step: wire.step,
+						resolvedArgs: wire.resolvedArgs,
+						error: wire.error,
+						priorOutputs:
+							wire.priorOutputs instanceof Map
+								? wire.priorOutputs
+								: new Map<string, OutputRef>(Object.entries(wire.priorOutputs)),
+						retryCount: wire.retryCount,
+						maxRetries: wire.maxRetries,
+					};
+					return userCritic(ctx);
+				};
+			}
+			// Comlink.proxy wraps callbacks so the worker can invoke them
+			// back across the postMessage boundary.
+			await remote.execute({ plan, planId }, Comlink.proxy(wrapped));
+		},
+		async dispose() {
+			if (disposed) return;
+			disposed = true;
+			try {
+				await remote.dispose();
+			} catch {
+				/* worker may already be torn down; ignore */
+			} finally {
+				try {
+					worker.terminate();
+				} catch {
+					/* idempotent */
+				}
+			}
+		},
+	};
 }
 
 interface RemoteWorkerApi {
-  init(): Promise<void>;
-  registerDataset(ds: WorkerDatasetIpc): Promise<DatasetEntry>;
-  execute(req: { plan: Plan; planId: string }, cb: ExecutorCallbacks): Promise<void>;
-  dispose(): Promise<void>;
+	init(): Promise<void>;
+	registerDataset(ds: WorkerDatasetIpc): Promise<DatasetEntry>;
+	execute(
+		req: { plan: Plan; planId: string },
+		cb: ExecutorCallbacks,
+	): Promise<void>;
+	dispose(): Promise<void>;
 }
 
 /** What the worker accepts when registering a dataset. */
 export interface WorkerDatasetIpc {
-  name: string;
-  bytes: ArrayBuffer;
-  geometry?: import('../../data/contracts.js').GeometryEncoding;
-  source: import('../../data/contracts.js').SourceFormat;
-  filename: string;
+	name: string;
+	bytes: ArrayBuffer;
+	geometry?: import("../../data/contracts.js").GeometryEncoding;
+	source: import("../../data/contracts.js").SourceFormat;
+	filename: string;
 }
 
 export interface WorkerExecutorHandle extends ExecutorHandle {
-  registerDataset(ds: WorkerDatasetIpc): Promise<DatasetEntry>;
+	registerDataset(ds: WorkerDatasetIpc): Promise<DatasetEntry>;
 }
 
 /**
@@ -182,11 +205,11 @@ export interface WorkerExecutorHandle extends ExecutorHandle {
  * Comlink/structuredClone preserved the Map for this runtime.
  */
 interface WireStepErrorContextLike {
-  planId: string;
-  step: StepErrorContext['step'];
-  resolvedArgs: Record<string, unknown>;
-  error: { message: string; code?: string };
-  priorOutputs: Record<string, OutputRef> | ReadonlyMap<string, OutputRef>;
-  retryCount: number;
-  maxRetries: number;
+	planId: string;
+	step: StepErrorContext["step"];
+	resolvedArgs: Record<string, unknown>;
+	error: { message: string; code?: string };
+	priorOutputs: Record<string, OutputRef> | ReadonlyMap<string, OutputRef>;
+	retryCount: number;
+	maxRetries: number;
 }

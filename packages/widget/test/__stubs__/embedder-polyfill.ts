@@ -15,26 +15,35 @@
  */
 
 import {
-  __setTestEmbedder,
-  EMBEDDING_DIM,
-} from '../../src/agent/retrieval/embedder.js';
+	EMBEDDING_DIM,
+	__setTestEmbedder,
+} from "../../src/agent/retrieval/embedder.js";
 
 const slots = new Map<string, number>();
 
 __setTestEmbedder((text: string) => {
-  const v = new Float32Array(EMBEDDING_DIM);
-  const tokens = (text ?? '').toString().toLowerCase().match(/[a-z0-9]+/g) ?? [];
-  for (const t of tokens) {
-    let slot = slots.get(t);
-    if (slot === undefined) {
-      slot = slots.size % EMBEDDING_DIM;
-      slots.set(t, slot);
-    }
-    v[slot]! += 1;
-  }
-  let norm = 0;
-  for (let i = 0; i < EMBEDDING_DIM; i++) norm += v[i]! * v[i]!;
-  const inv = norm > 0 ? 1 / Math.sqrt(norm) : 0;
-  for (let i = 0; i < EMBEDDING_DIM; i++) v[i]! *= inv;
-  return v;
+	const v = new Float32Array(EMBEDDING_DIM);
+	const tokens =
+		(text ?? "")
+			.toString()
+			.toLowerCase()
+			.match(/[a-z0-9]+/g) ?? [];
+	for (const t of tokens) {
+		let slot = slots.get(t);
+		if (slot === undefined) {
+			slot = slots.size % EMBEDDING_DIM;
+			slots.set(t, slot);
+		}
+		v[slot] += 1;
+	}
+	let norm = 0;
+	for (let i = 0; i < EMBEDDING_DIM; i++) {
+		const vi = v[i];
+		norm += vi * vi;
+	}
+	const inv = norm > 0 ? 1 / Math.sqrt(norm) : 0;
+	for (let i = 0; i < EMBEDDING_DIM; i++) {
+		v[i] *= inv;
+	}
+	return v;
 });

@@ -1,6 +1,6 @@
-import { LitElement, html, css, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { tokensCSS } from './tokens.js';
+import { LitElement, css, html, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
+import { tokensCSS } from "./tokens.js";
 
 /**
  * <gcb-modal> — Phase 7 generic modal.
@@ -13,11 +13,11 @@ import { tokensCSS } from './tokens.js';
  *
  * Spec: docs/superpowers/specs/2026-05-08-phase-7-dashboard-redesign-design.md §1.3, §3.1
  */
-@customElement('gcb-modal')
+@customElement("gcb-modal")
 export class GcbModal extends LitElement {
-  static override styles = [
-    tokensCSS,
-    css`
+	static override styles = [
+		tokensCSS,
+		css`
       :host { display: contents; font-family: var(--gcb-font-sans); }
       .scrim {
         position: fixed; inset: 0; z-index: 1000;
@@ -42,64 +42,68 @@ export class GcbModal extends LitElement {
       @keyframes fadein { from { opacity: 0; } }
       @keyframes rise   { from { transform: translateY(14px) scale(.98); opacity: 0; } }
     `,
-  ];
+	];
 
-  /** Whether the modal is visible. Reflects so hosts can use the attribute too. */
-  @property({ type: Boolean, reflect: true })
-  open = false;
+	/** Whether the modal is visible. Reflects so hosts can use the attribute too. */
+	@property({ type: Boolean, reflect: true })
+	open = false;
 
-  /** Element that had focus when the modal opened — restored on close. */
-  private _previouslyFocused: HTMLElement | null = null;
-  private _onKeydown = (e: KeyboardEvent): void => {
-    if (this.open && e.key === 'Escape') {
-      this._emitClose();
-    }
-  };
+	/** Element that had focus when the modal opened — restored on close. */
+	private _previouslyFocused: HTMLElement | null = null;
+	private _onKeydown = (e: KeyboardEvent): void => {
+		if (this.open && e.key === "Escape") {
+			this._emitClose();
+		}
+	};
 
-  override connectedCallback(): void {
-    super.connectedCallback();
-    document.addEventListener('keydown', this._onKeydown);
-  }
+	override connectedCallback(): void {
+		super.connectedCallback();
+		document.addEventListener("keydown", this._onKeydown);
+	}
 
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    document.removeEventListener('keydown', this._onKeydown);
-  }
+	override disconnectedCallback(): void {
+		super.disconnectedCallback();
+		document.removeEventListener("keydown", this._onKeydown);
+	}
 
-  override updated(changed: Map<string, unknown>): void {
-    if (changed.has('open')) {
-      if (this.open) {
-        this._previouslyFocused = (document.activeElement as HTMLElement) ?? null;
-      } else if (this._previouslyFocused) {
-        // Microtask so any host re-render finishes first. The
-        // document.contains() guard handles a trigger element that
-        // was unmounted while the modal was open (e.g. the rail
-        // re-rendered) — without it, .focus() silently no-ops on a
-        // detached node and the user has keyboard focus nowhere.
-        queueMicrotask(() => {
-          if (this._previouslyFocused && document.contains(this._previouslyFocused)) {
-            this._previouslyFocused.focus();
-          }
-          this._previouslyFocused = null;
-        });
-      }
-    }
-  }
+	override updated(changed: Map<string, unknown>): void {
+		if (changed.has("open")) {
+			if (this.open) {
+				this._previouslyFocused =
+					(document.activeElement as HTMLElement) ?? null;
+			} else if (this._previouslyFocused) {
+				// Microtask so any host re-render finishes first. The
+				// document.contains() guard handles a trigger element that
+				// was unmounted while the modal was open (e.g. the rail
+				// re-rendered) — without it, .focus() silently no-ops on a
+				// detached node and the user has keyboard focus nowhere.
+				queueMicrotask(() => {
+					if (
+						this._previouslyFocused &&
+						document.contains(this._previouslyFocused)
+					) {
+						this._previouslyFocused.focus();
+					}
+					this._previouslyFocused = null;
+				});
+			}
+		}
+	}
 
-  private _emitClose(): void {
-    this.dispatchEvent(
-      new CustomEvent('gcb:modal-close', { bubbles: true, composed: true }),
-    );
-  }
+	private _emitClose(): void {
+		this.dispatchEvent(
+			new CustomEvent("gcb:modal-close", { bubbles: true, composed: true }),
+		);
+	}
 
-  private _onScrimClick = (e: MouseEvent): void => {
-    // Only the scrim itself, not bubbles from the card.
-    if (e.target === e.currentTarget) this._emitClose();
-  };
+	private _onScrimClick = (e: MouseEvent): void => {
+		// Only the scrim itself, not bubbles from the card.
+		if (e.target === e.currentTarget) this._emitClose();
+	};
 
-  override render() {
-    if (!this.open) return nothing;
-    return html`
+	override render() {
+		if (!this.open) return nothing;
+		return html`
       <div
         class="scrim"
         role="presentation"
@@ -115,11 +119,11 @@ export class GcbModal extends LitElement {
         </div>
       </div>
     `;
-  }
+	}
 }
 
 declare global {
-  interface HTMLElementTagNameMap {
-    'gcb-modal': GcbModal;
-  }
+	interface HTMLElementTagNameMap {
+		"gcb-modal": GcbModal;
+	}
 }

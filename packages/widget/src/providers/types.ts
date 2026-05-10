@@ -7,60 +7,60 @@
  */
 
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
+	role: "system" | "user" | "assistant";
+	content: string;
 }
 
 export interface GenerateInput {
-  messages: ChatMessage[];
-  /** Optional sampling controls; not all providers will respect them. */
-  temperature?: number;
-  maxTokens?: number;
-  signal?: AbortSignal;
+	messages: ChatMessage[];
+	/** Optional sampling controls; not all providers will respect them. */
+	temperature?: number;
+	maxTokens?: number;
+	signal?: AbortSignal;
 }
 
 export interface GenerateOutput {
-  text: string;
-  /** Provider-specific usage; optional. */
-  usage?: { inputTokens?: number; outputTokens?: number };
-  /** Model id actually used (post-default). */
-  model?: string;
+	text: string;
+	/** Provider-specific usage; optional. */
+	usage?: { inputTokens?: number; outputTokens?: number };
+	/** Model id actually used (post-default). */
+	model?: string;
 }
 
 export interface ChatProvider {
-  readonly id: string;
-  readonly label: string;
-  /**
-   * True if the provider has a free tier or runs locally. Used to
-   * surface "Free" badges in UI.
-   */
-  readonly free?: boolean;
-  generate(input: GenerateInput): Promise<GenerateOutput>;
+	readonly id: string;
+	readonly label: string;
+	/**
+	 * True if the provider has a free tier or runs locally. Used to
+	 * surface "Free" badges in UI.
+	 */
+	readonly free?: boolean;
+	generate(input: GenerateInput): Promise<GenerateOutput>;
 }
 
 export type ProviderErrorCode =
-  | 'AUTH'
-  | 'RATE_LIMIT'
-  | 'NETWORK'
-  | 'BAD_RESPONSE'
-  | 'ABORTED'
-  | 'UNSUPPORTED';
+	| "AUTH"
+	| "RATE_LIMIT"
+	| "NETWORK"
+	| "BAD_RESPONSE"
+	| "ABORTED"
+	| "UNSUPPORTED";
 
 export class ProviderError extends Error {
-  readonly code: ProviderErrorCode;
-  readonly providerId: string;
-  readonly status?: number;
+	readonly code: ProviderErrorCode;
+	readonly providerId: string;
+	readonly status?: number;
 
-  constructor(
-    code: ProviderErrorCode,
-    message: string,
-    providerId: string,
-    status?: number,
-  ) {
-    super(message);
-    this.name = 'ProviderError';
-    this.code = code;
-    this.providerId = providerId;
-    if (status !== undefined) this.status = status;
-  }
+	constructor(
+		code: ProviderErrorCode,
+		message: string,
+		providerId: string,
+		status?: number,
+	) {
+		super(message);
+		this.name = "ProviderError";
+		this.code = code;
+		this.providerId = providerId;
+		if (status !== undefined) this.status = status;
+	}
 }

@@ -16,34 +16,34 @@
  * error rather than silently failing.
  */
 
-import { z } from 'zod';
-import { registerRunner } from '../runtime.js';
+import { z } from "zod";
+import { registerRunner } from "../runtime.js";
 import {
-  materializeView,
-  quoteIdent,
-  quoteString,
-  resolveTable,
-} from '../sql-helpers.js';
-import type { ExecCtx, RunnerResult } from '../types.js';
+	materializeView,
+	quoteIdent,
+	quoteString,
+	resolveTable,
+} from "../sql-helpers.js";
+import type { ExecCtx, RunnerResult } from "../types.js";
 
-const AggFn = z.enum(['sum', 'mean', 'median', 'count', 'min', 'max']);
+const AggFn = z.enum(["sum", "mean", "median", "count", "min", "max"]);
 
 function aggFnSql(fn: z.infer<typeof AggFn>, col: string): string {
-  const ident = quoteIdent(col);
-  switch (fn) {
-    case 'sum':
-      return `SUM(${ident})`;
-    case 'mean':
-      return `AVG(${ident})`;
-    case 'median':
-      return `MEDIAN(${ident})`;
-    case 'count':
-      return `COUNT(${ident})`;
-    case 'min':
-      return `MIN(${ident})`;
-    case 'max':
-      return `MAX(${ident})`;
-  }
+	const ident = quoteIdent(col);
+	switch (fn) {
+		case "sum":
+			return `SUM(${ident})`;
+		case "mean":
+			return `AVG(${ident})`;
+		case "median":
+			return `MEDIAN(${ident})`;
+		case "count":
+			return `COUNT(${ident})`;
+		case "min":
+			return `MIN(${ident})`;
+		case "max":
+			return `MAX(${ident})`;
+	}
 }
 
 /* -------------------------------------------------------------------------- */
@@ -51,47 +51,47 @@ function aggFnSql(fn: z.infer<typeof AggFn>, col: string): string {
 /* -------------------------------------------------------------------------- */
 
 const AggregateArgs = z.object({
-  layer: z.unknown(),
-  group_by: z.union([z.string(), z.array(z.string()).min(1)]),
-  agg_fn: AggFn,
-  value_col: z.string(),
+	layer: z.unknown(),
+	group_by: z.union([z.string(), z.array(z.string()).min(1)]),
+	agg_fn: AggFn,
+	value_col: z.string(),
 });
 
 export async function runAggregate(
-  args: Record<string, unknown>,
-  ctx: ExecCtx,
+	args: Record<string, unknown>,
+	ctx: ExecCtx,
 ): Promise<RunnerResult> {
-  const { layer, group_by, agg_fn, value_col } = AggregateArgs.parse(args);
-  const view = resolveTable(layer, ctx);
-  const groups = Array.isArray(group_by) ? group_by : [group_by];
-  const groupSql = groups.map(quoteIdent).join(', ');
-  const aggExpr = aggFnSql(agg_fn, value_col);
-  const sql = `SELECT ${groupSql}, ${aggExpr} AS ${quoteIdent(`${agg_fn}_${value_col}`)} FROM ${quoteIdent(view)} GROUP BY ${groupSql}`;
-  const out = await materializeView(ctx, 'agg', sql);
-  return { output: { kind: 'table', ref: out } };
+	const { layer, group_by, agg_fn, value_col } = AggregateArgs.parse(args);
+	const view = resolveTable(layer, ctx);
+	const groups = Array.isArray(group_by) ? group_by : [group_by];
+	const groupSql = groups.map(quoteIdent).join(", ");
+	const aggExpr = aggFnSql(agg_fn, value_col);
+	const sql = `SELECT ${groupSql}, ${aggExpr} AS ${quoteIdent(`${agg_fn}_${value_col}`)} FROM ${quoteIdent(view)} GROUP BY ${groupSql}`;
+	const out = await materializeView(ctx, "agg", sql);
+	return { output: { kind: "table", ref: out } };
 }
 
-registerRunner('stats.aggregate', runAggregate);
+registerRunner("stats.aggregate", runAggregate);
 
 /* -------------------------------------------------------------------------- */
 /* stats.summary_stats                                                        */
 /* -------------------------------------------------------------------------- */
 
 const SummaryStatsArgs = z.object({
-  layer: z.unknown(),
-  columns: z.array(z.string()).min(1),
+	layer: z.unknown(),
+	columns: z.array(z.string()).min(1),
 });
 
 export async function runSummaryStats(
-  args: Record<string, unknown>,
-  ctx: ExecCtx,
+	args: Record<string, unknown>,
+	ctx: ExecCtx,
 ): Promise<RunnerResult> {
-  const { layer, columns } = SummaryStatsArgs.parse(args);
-  const view = resolveTable(layer, ctx);
-  // One UNION ALL row per column, projecting count/min/max/mean/median/std.
-  const parts = columns.map((c) => {
-    const ident = quoteIdent(c);
-    return `SELECT
+	const { layer, columns } = SummaryStatsArgs.parse(args);
+	const view = resolveTable(layer, ctx);
+	// One UNION ALL row per column, projecting count/min/max/mean/median/std.
+	const parts = columns.map((c) => {
+		const ident = quoteIdent(c);
+		return `SELECT
         ${quoteString(c)} AS column,
         COUNT(${ident})::DOUBLE AS count,
         MIN(${ident})::DOUBLE AS min,
@@ -100,67 +100,67 @@ export async function runSummaryStats(
         MEDIAN(${ident})::DOUBLE AS median,
         STDDEV_POP(${ident})::DOUBLE AS std
       FROM ${quoteIdent(view)}`;
-  });
-  const sql = parts.join(' UNION ALL ');
-  const out = await materializeView(ctx, 'summary', sql);
-  return { output: { kind: 'table', ref: out } };
+	});
+	const sql = parts.join(" UNION ALL ");
+	const out = await materializeView(ctx, "summary", sql);
+	return { output: { kind: "table", ref: out } };
 }
 
-registerRunner('stats.summary_stats', runSummaryStats);
+registerRunner("stats.summary_stats", runSummaryStats);
 
 /* -------------------------------------------------------------------------- */
 /* stats.distance_matrix                                                      */
 /* -------------------------------------------------------------------------- */
 
 const DistanceMatrixArgs = z.object({
-  a: z.unknown(),
-  b: z.unknown(),
-  k: z.number().int().positive().optional(),
+	a: z.unknown(),
+	b: z.unknown(),
+	k: z.number().int().positive().optional(),
 });
 
 export async function runDistanceMatrix(
-  args: Record<string, unknown>,
-  ctx: ExecCtx,
+	args: Record<string, unknown>,
+	ctx: ExecCtx,
 ): Promise<RunnerResult> {
-  const { a, b, k } = DistanceMatrixArgs.parse(args);
-  const va = resolveTable(a, ctx);
-  const vb = resolveTable(b, ctx);
-  // rowid is unavailable on DuckDB views; use ROW_NUMBER() for stable surrogate ids.
-  const baseSql = `WITH
+	const { a, b, k } = DistanceMatrixArgs.parse(args);
+	const va = resolveTable(a, ctx);
+	const vb = resolveTable(b, ctx);
+	// rowid is unavailable on DuckDB views; use ROW_NUMBER() for stable surrogate ids.
+	const baseSql = `WITH
       _a AS (SELECT ROW_NUMBER() OVER () AS _gcb_rid, * FROM ${quoteIdent(va)}),
       _b AS (SELECT ROW_NUMBER() OVER () AS _gcb_rid, * FROM ${quoteIdent(vb)})
     SELECT a._gcb_rid AS a_id, b._gcb_rid AS b_id,
            ST_Distance(a.geom, b.geom) AS distance
     FROM _a a CROSS JOIN _b b`;
-  let sql = baseSql;
-  if (k !== undefined) {
-    sql = `WITH base AS (${baseSql}),
+	let sql = baseSql;
+	if (k !== undefined) {
+		sql = `WITH base AS (${baseSql}),
       ranked AS (
         SELECT *, ROW_NUMBER() OVER (PARTITION BY a_id ORDER BY distance) AS rn FROM base
       )
       SELECT a_id, b_id, distance FROM ranked WHERE rn <= ${k}`;
-  }
-  const out = await materializeView(ctx, 'distmat', sql);
-  return { output: { kind: 'table', ref: out } };
+	}
+	const out = await materializeView(ctx, "distmat", sql);
+	return { output: { kind: "table", ref: out } };
 }
 
-registerRunner('stats.distance_matrix', runDistanceMatrix);
+registerRunner("stats.distance_matrix", runDistanceMatrix);
 
 /* -------------------------------------------------------------------------- */
 /* Deferred tools — explicit "not yet implemented" stubs                      */
 /* -------------------------------------------------------------------------- */
 
-function deferred(toolId: string): import('../types.js').RuntimeRunner {
-  return async () => {
-    throw new Error(
-      `${toolId} is not implemented in Phase 5 v1 (deferred to Phase 5 expansion)`,
-    );
-  };
+function deferred(toolId: string): import("../types.js").RuntimeRunner {
+	return async () => {
+		throw new Error(
+			`${toolId} is not implemented in Phase 5 v1 (deferred to Phase 5 expansion)`,
+		);
+	};
 }
 
-registerRunner('stats.hex_bin', deferred('stats.hex_bin'));
-registerRunner('stats.density_grid', deferred('stats.density_grid'));
-registerRunner('stats.morans_i', deferred('stats.morans_i'));
-registerRunner('stats.getis_ord_gi', deferred('stats.getis_ord_gi'));
-registerRunner('geometry.voronoi', deferred('geometry.voronoi'));
+registerRunner("stats.hex_bin", deferred("stats.hex_bin"));
+registerRunner("stats.density_grid", deferred("stats.density_grid"));
+registerRunner("stats.morans_i", deferred("stats.morans_i"));
+registerRunner("stats.getis_ord_gi", deferred("stats.getis_ord_gi"));
+registerRunner("geometry.voronoi", deferred("geometry.voronoi"));
 // geometry.reproject is now a passthrough in geometry.ts (not deferred).

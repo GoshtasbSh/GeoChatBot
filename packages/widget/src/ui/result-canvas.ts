@@ -16,25 +16,25 @@
  * Spec: docs/superpowers/specs/2026-05-08-phase-7-dashboard-redesign-design.md §3.2
  */
 
-import { LitElement, html, css, nothing, type TemplateResult } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
-import { tokensCSS } from './tokens.js';
-import type { ResultPayload } from '../agent/executor/types.js';
-import type { GeoJsonInputLayer } from './MapView.js';
+import { LitElement, type TemplateResult, css, html, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
+import type { ResultPayload } from "../agent/executor/types.js";
+import type { GeoJsonInputLayer } from "./MapView.js";
+import { tokensCSS } from "./tokens.js";
 
 interface Turn {
-  id: string;
-  question: string;
-  text?: string;
-  results: ResultPayload[];
-  origin: { planId: string; stepId: string; question: string };
+	id: string;
+	question: string;
+	text?: string;
+	results: ResultPayload[];
+	origin: { planId: string; stepId: string; question: string };
 }
 
-@customElement('result-canvas')
+@customElement("result-canvas")
 export class ResultCanvas extends LitElement {
-  static override styles = [
-    tokensCSS,
-    css`
+	static override styles = [
+		tokensCSS,
+		css`
       :host {
         display: block;
         height: 100%;
@@ -226,58 +226,75 @@ export class ResultCanvas extends LitElement {
       ::-webkit-scrollbar-thumb { background: var(--gcb-line); border-radius: 3px; }
       ::-webkit-scrollbar-thumb:hover { background: var(--gcb-line-strong); }
     `,
-  ];
+	];
 
-  @state() private _turns: Turn[] = [];
-  @state() private _mapLoaded = false;
+	@state() private _turns: Turn[] = [];
+	@state() private _mapLoaded = false;
 
-  /** Origin metadata for the next save event. */
-  private _origin: { planId: string; stepId: string; question: string } = { planId: '', stepId: '', question: '' };
+	/** Origin metadata for the next save event. */
+	private _origin: { planId: string; stepId: string; question: string } = {
+		planId: "",
+		stepId: "",
+		question: "",
+	};
 
-  /** Begin a new user turn. Called by the host when ask() fires. */
-  beginTurn(question: string): void {
-    const id = `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    this._turns = [...this._turns, { id, question, results: [], origin: { ...this._origin, question } }];
-    this._scrollToBottomNextTick();
-  }
+	/** Begin a new user turn. Called by the host when ask() fires. */
+	beginTurn(question: string): void {
+		const id = `t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+		this._turns = [
+			...this._turns,
+			{ id, question, results: [], origin: { ...this._origin, question } },
+		];
+		this._scrollToBottomNextTick();
+	}
 
-  /** Pass plan/step metadata for save events on the latest turn. */
-  setOrigin(origin: { planId: string; stepId: string; question: string }): void {
-    this._origin = origin;
-    if (this._turns.length > 0) {
-      const last = this._turns[this._turns.length - 1]!;
-      last.origin = origin;
-    }
-  }
+	/** Pass plan/step metadata for save events on the latest turn. */
+	setOrigin(origin: {
+		planId: string;
+		stepId: string;
+		question: string;
+	}): void {
+		this._origin = origin;
+		const lastIdx = this._turns.length - 1;
+		if (lastIdx < 0) return;
+		// Reassign the array so Lit picks up the change. In-place mutation
+		// of `_turns[lastIdx].origin` would not trigger a re-render.
+		this._turns = this._turns.map((t, i) =>
+			i === lastIdx ? { ...t, origin } : t,
+		);
+	}
 
-  /** Append a result payload to the latest turn (or create one if none exists). */
-  setResult(p: ResultPayload): void {
-    if (this._turns.length === 0) {
-      this.beginTurn('');
-    }
-    const last = this._turns[this._turns.length - 1]!;
-    const next: Turn = { ...last, results: [...last.results, p] };
-    this._turns = [...this._turns.slice(0, -1), next];
-    if (p.kind === 'layer' && !this._mapLoaded) {
-      void import('./MapView.js').then(() => { this._mapLoaded = true; });
-    }
-    this._scrollToBottomNextTick();
-  }
+	/** Append a result payload to the latest turn (or create one if none exists). */
+	setResult(p: ResultPayload): void {
+		if (this._turns.length === 0) {
+			this.beginTurn("");
+		}
+		const last = this._turns[this._turns.length - 1];
+		if (!last) return;
+		const next: Turn = { ...last, results: [...last.results, p] };
+		this._turns = [...this._turns.slice(0, -1), next];
+		if (p.kind === "layer" && !this._mapLoaded) {
+			void import("./MapView.js").then(() => {
+				this._mapLoaded = true;
+			});
+		}
+		this._scrollToBottomNextTick();
+	}
 
-  /** Reset all turns. Called between executions. */
-  clear(): void {
-    this._turns = [];
-  }
+	/** Reset all turns. Called between executions. */
+	clear(): void {
+		this._turns = [];
+	}
 
-  private _scrollToBottomNextTick(): void {
-    queueMicrotask(() => {
-      this.scrollTop = this.scrollHeight;
-    });
-  }
+	private _scrollToBottomNextTick(): void {
+		queueMicrotask(() => {
+			this.scrollTop = this.scrollHeight;
+		});
+	}
 
-  override render() {
-    if (this._turns.length === 0) {
-      return html`
+	override render() {
+		if (this._turns.length === 0) {
+			return html`
         <div class="empty">
           <div class="empty-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -288,20 +305,22 @@ export class ResultCanvas extends LitElement {
           <div class="empty-sub">Upload a dataset using "Add data", then ask GeoChatBot anything about it. Charts, maps, and answers will appear here.</div>
         </div>
       `;
-    }
+		}
 
-    return html`${this._turns.map((t, i) => this._renderTurn(t, i === this._turns.length - 1))}`;
-  }
+		return html`${this._turns.map((t, i) => this._renderTurn(t, i === this._turns.length - 1))}`;
+	}
 
-  private _renderTurn(t: Turn, isLast: boolean): TemplateResult {
-    const lastClass = isLast ? 'msg-last' : '';
-    return html`
-      ${t.question
-        ? html`
+	private _renderTurn(t: Turn, isLast: boolean): TemplateResult {
+		const lastClass = isLast ? "msg-last" : "";
+		return html`
+      ${
+				t.question
+					? html`
             <div class="msg user ${lastClass}">
               <div><span class="bubble">${t.question}</span></div>
             </div>`
-        : nothing}
+					: nothing
+			}
       <div class="msg ${lastClass}">
         <div class="avatar">G</div>
         <div class="body">
@@ -311,19 +330,31 @@ export class ResultCanvas extends LitElement {
         </div>
       </div>
     `;
-  }
+	}
 
-  private _renderResult(p: ResultPayload, turn: Turn): TemplateResult | typeof nothing {
-    switch (p.kind) {
-      case 'summary': return this._renderSummary(p, turn);
-      case 'chart':   return this._renderChart(p, turn);
-      case 'table':   return this._renderTable(p, turn);
-      case 'layer':   return this._renderLayer(p, turn);
-    }
-  }
+	private _renderResult(
+		p: ResultPayload,
+		turn: Turn,
+	): TemplateResult | typeof nothing {
+		switch (p.kind) {
+			case "summary":
+				return this._renderSummary(p, turn);
+			case "chart":
+				return this._renderChart(p, turn);
+			case "table":
+				return this._renderTable(p, turn);
+			case "layer":
+				return this._renderLayer(p, turn);
+		}
+	}
 
-  private _saveBtn(kind: string, payload: ResultPayload, title: string, turn: Turn) {
-    return html`
+	private _saveBtn(
+		kind: string,
+		payload: ResultPayload,
+		title: string,
+		turn: Turn,
+	) {
+		return html`
       <button
         class="save-btn"
         type="button"
@@ -335,22 +366,32 @@ export class ResultCanvas extends LitElement {
         Save
       </button>
     `;
-  }
+	}
 
-  private _emitSave(kind: string, payload: ResultPayload, title: string, turn: Turn): void {
-    this.dispatchEvent(new CustomEvent('gcb:save-result', {
-      bubbles: true, composed: true,
-      detail: { kind, payload, title, origin: turn.origin },
-    }));
-  }
+	private _emitSave(
+		kind: string,
+		payload: ResultPayload,
+		title: string,
+		turn: Turn,
+	): void {
+		this.dispatchEvent(
+			new CustomEvent("gcb:save-result", {
+				bubbles: true,
+				composed: true,
+				detail: { kind, payload, title, origin: turn.origin },
+			}),
+		);
+	}
 
-  private _renderSummary(p: ResultPayload, turn: Turn): TemplateResult {
-    if (p.kind !== 'summary') return html``;
-    // Try to extract a leading number for hero display (e.g. "0.43°", "5", "1,234.5 km").
-    const match = /^([-+]?\d{1,3}(?:[,\d]*)(?:\.\d+)?\s*[°a-zA-Z%]*)/.exec(p.text.trim());
-    const leadNum = match?.[1] ?? null;
-    const rest = leadNum ? p.text.trim().slice(leadNum.length).trim() : p.text;
-    return html`
+	private _renderSummary(p: ResultPayload, turn: Turn): TemplateResult {
+		if (p.kind !== "summary") return html``;
+		// Try to extract a leading number for hero display (e.g. "0.43°", "5", "1,234.5 km").
+		const match = /^([-+]?\d{1,3}(?:[,\d]*)(?:\.\d+)?\s*[°a-zA-Z%]*)/.exec(
+			p.text.trim(),
+		);
+		const leadNum = match?.[1] ?? null;
+		const rest = leadNum ? p.text.trim().slice(leadNum.length).trim() : p.text;
+		return html`
       <div class="card">
         <div class="card-hdr">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -359,26 +400,31 @@ export class ResultCanvas extends LitElement {
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
           <span class="card-lbl">Summary</span>
-          ${this._saveBtn('summary', p, 'Summary', turn)}
+          ${this._saveBtn("summary", p, "Summary", turn)}
         </div>
         <div class="sum-bd">
           ${leadNum ? html`<div class="sum-num">${leadNum}</div>` : nothing}
-          <div class="sum-text" style="margin-top:${leadNum ? '6px' : '0'};">${rest}</div>
+          <div class="sum-text" style="margin-top:${leadNum ? "6px" : "0"};">${rest}</div>
         </div>
       </div>
     `;
-  }
+	}
 
-  private _renderChart(p: ResultPayload, turn: Turn): TemplateResult {
-    if (p.kind !== 'chart') return html``;
-    const spec = p.spec;
-    const data = Array.isArray(spec.data) ? (spec.data as Array<Record<string, unknown>>).slice(0, 60) : [];
-    const title = `chart · ${spec.x} vs ${spec.y}`;
+	private _renderChart(p: ResultPayload, turn: Turn): TemplateResult {
+		if (p.kind !== "chart") return html``;
+		const spec = p.spec;
+		const data = Array.isArray(spec.data)
+			? (spec.data as Array<Record<string, unknown>>).slice(0, 60)
+			: [];
+		const title = `chart · ${spec.x} vs ${spec.y}`;
 
-    if ((spec.kind === 'bar' || spec.kind === 'grouped_bar') && data.length > 0) {
-      const values = data.map((d) => Number(d['y']) || 0);
-      const maxVal = Math.max(...values, 0);
-      return html`
+		if (
+			(spec.kind === "bar" || spec.kind === "grouped_bar") &&
+			data.length > 0
+		) {
+			const values = data.map((d) => Number(d.y) || 0);
+			const maxVal = Math.max(...values, 0);
+			return html`
         <div class="card">
           <div class="card-hdr">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -387,26 +433,26 @@ export class ResultCanvas extends LitElement {
               <line x1="6" y1="20" x2="6" y2="14"/>
             </svg>
             <span class="card-lbl">Chart · ${spec.kind} · ${spec.x} vs ${spec.y}</span>
-            ${this._saveBtn('chart', p, title, turn)}
+            ${this._saveBtn("chart", p, title, turn)}
           </div>
           <div class="chart-bd">
             ${data.map((d) => {
-              const val = Number(d['y']) || 0;
-              const pct = maxVal > 0 ? (val / maxVal) * 100 : 0;
-              return html`
+							const val = Number(d.y) || 0;
+							const pct = maxVal > 0 ? (val / maxVal) * 100 : 0;
+							return html`
                 <div class="bar-row">
-                  <div class="bar-lbl" title="${String(d['x'] ?? '')}">${String(d['x'] ?? '').slice(0, 18)}</div>
+                  <div class="bar-lbl" title="${String(d.x ?? "")}">${String(d.x ?? "").slice(0, 18)}</div>
                   <div class="bar-track"><div class="bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
                   <div class="bar-val">${fmtNum(val)}</div>
                 </div>
               `;
-            })}
+						})}
           </div>
         </div>
       `;
-    }
+		}
 
-    return html`
+		return html`
       <div class="card">
         <div class="card-hdr">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -415,24 +461,24 @@ export class ResultCanvas extends LitElement {
             <line x1="6" y1="20" x2="6" y2="14"/>
           </svg>
           <span class="card-lbl">Chart · ${spec.kind}</span>
-          ${this._saveBtn('chart', p, title, turn)}
+          ${this._saveBtn("chart", p, title, turn)}
         </div>
         <div class="chart-bd">
           <div class="chart-fallback">
-            ${data.length} data points · x=${spec.x ?? '(missing)'}, y=${spec.y ?? '(missing)'}
+            ${data.length} data points · x=${spec.x ?? "(missing)"}, y=${spec.y ?? "(missing)"}
             <pre>${JSON.stringify(spec, null, 2)}</pre>
           </div>
         </div>
       </div>
     `;
-  }
+	}
 
-  private _renderTable(p: ResultPayload, turn: Turn): TemplateResult {
-    if (p.kind !== 'table') return html``;
-    const cols = p.columns;
-    const rows = p.rows.slice(0, 200);
-    const title = `table · ${new Date().toLocaleTimeString()}`;
-    return html`
+	private _renderTable(p: ResultPayload, turn: Turn): TemplateResult {
+		if (p.kind !== "table") return html``;
+		const cols = p.columns;
+		const rows = p.rows.slice(0, 200);
+		const title = `table · ${new Date().toLocaleTimeString()}`;
+		return html`
       <div class="card">
         <div class="card-hdr">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -441,7 +487,7 @@ export class ResultCanvas extends LitElement {
             <line x1="9" y1="3" x2="9" y2="21"/>
           </svg>
           <span class="card-lbl">Table · ${p.rows.length} rows · ${cols.length} cols</span>
-          ${this._saveBtn('table', p, title, turn)}
+          ${this._saveBtn("table", p, title, turn)}
         </div>
         <div class="tbl-bd">
           <table>
@@ -449,23 +495,25 @@ export class ResultCanvas extends LitElement {
               <tr>${cols.map((c) => html`<th>${c}</th>`)}</tr>
             </thead>
             <tbody>
-              ${rows.map((r) => html`
+              ${rows.map(
+								(r) => html`
                 <tr>${cols.map((c) => html`<td>${formatCell(r[c])}</td>`)}</tr>
-              `)}
+              `,
+							)}
             </tbody>
           </table>
         </div>
       </div>
     `;
-  }
+	}
 
-  private _renderLayer(p: ResultPayload, turn: Turn): TemplateResult {
-    if (p.kind !== 'layer') return html``;
-    const fc = p.geojson;
-    const featCount = Array.isArray(fc?.features) ? fc.features.length : 0;
-    const layerName = p.name ?? 'result';
-    const mapTitle = `map · ${layerName}`;
-    return html`
+	private _renderLayer(p: ResultPayload, turn: Turn): TemplateResult {
+		if (p.kind !== "layer") return html``;
+		const fc = p.geojson;
+		const featCount = Array.isArray(fc?.features) ? fc.features.length : 0;
+		const layerName = p.name ?? "result";
+		const mapTitle = `map · ${layerName}`;
+		return html`
       <div class="card">
         <div class="card-hdr">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -473,12 +521,14 @@ export class ResultCanvas extends LitElement {
             <circle cx="12" cy="10" r="3"/>
           </svg>
           <span class="card-lbl">Map · ${layerName} · ${featCount} features</span>
-          ${this._saveBtn('map', p, mapTitle, turn)}
+          ${this._saveBtn("map", p, mapTitle, turn)}
         </div>
         <div class="map-bd">
-          ${this._mapLoaded
-            ? html`<gcb-map .geojsonLayers=${[{ name: layerName, geojson: fc as { type: 'FeatureCollection'; features: unknown[] } }] as GeoJsonInputLayer[]}></gcb-map>`
-            : html`<div class="map-loading">Loading map…</div>`}
+          ${
+						this._mapLoaded
+							? html`<gcb-map .geojsonLayers=${[{ name: layerName, geojson: fc as { type: "FeatureCollection"; features: unknown[] } }] as GeoJsonInputLayer[]}></gcb-map>`
+							: html`<div class="map-loading">Loading map…</div>`
+					}
           <div class="layer-added">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true">
               <polyline points="20 6 9 17 4 12"/>
@@ -488,27 +538,27 @@ export class ResultCanvas extends LitElement {
         </div>
       </div>
     `;
-  }
+	}
 }
 
 function formatCell(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
-  if (typeof v === 'object') return JSON.stringify(v);
-  return String(v);
+	if (v === null || v === undefined) return "";
+	if (typeof v === "number") return Number.isFinite(v) ? String(v) : "";
+	if (typeof v === "object") return JSON.stringify(v);
+	return String(v);
 }
 
 function fmtNum(n: number): string {
-  if (!Number.isFinite(n)) return String(n);
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return (n / 1e9).toFixed(1) + 'B';
-  if (abs >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-  if (abs >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-  return String(Math.round(n * 100) / 100);
+	if (!Number.isFinite(n)) return String(n);
+	const abs = Math.abs(n);
+	if (abs >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+	if (abs >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+	if (abs >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+	return String(Math.round(n * 100) / 100);
 }
 
 declare global {
-  interface HTMLElementTagNameMap {
-    'result-canvas': ResultCanvas;
-  }
+	interface HTMLElementTagNameMap {
+		"result-canvas": ResultCanvas;
+	}
 }

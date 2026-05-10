@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite';
-import { resolve } from 'node:path';
+import { resolve } from "node:path";
+import { defineConfig } from "vite";
 
 /**
  * Builds two artifacts from a single entry point:
@@ -17,51 +17,52 @@ import { resolve } from 'node:path';
  * (they're emitted as sibling files by the DuckDB package itself).
  */
 export default defineConfig({
-  build: {
-    target: 'es2022',
-    lib: {
-      entry: resolve(__dirname, 'src/index.ts'),
-      name: 'GeoChatBot',
-      // formats is overridden by rollupOptions.output below; keep in sync.
-      formats: ['es', 'umd'],
-      fileName: (format) => (format === 'es' ? 'geochatbot.js' : `geochatbot.${format}.cjs`),
-    },
-    sourcemap: true,
-    rollupOptions: {
-      // Bundle all deps; empty externals = single self-contained artifact.
-      external: [],
-      output: [
-        {
-          // ESM — code splitting enabled so lazy-imported chunks land as
-          // sibling files (MapView, each loader, etc.).
-          format: 'es',
-          entryFileNames: 'geochatbot.js',
-          chunkFileNames: '[name]-[hash].js',
-          inlineDynamicImports: false,
-        },
-        {
-          // UMD — Rollup forbids multi-chunk UMD output, so all dynamic
-          // imports are inlined here. This bundle is larger but self-contained
-          // and works with a plain <script> tag and window.GeoChatBot.
-          format: 'umd',
-          name: 'GeoChatBot',
-          entryFileNames: 'geochatbot.umd.cjs',
-          inlineDynamicImports: true,
-        },
-      ],
-    },
-  },
-  worker: {
-    format: 'es',
-  },
-  optimizeDeps: {
-    exclude: ['@duckdb/duckdb-wasm'],
-  },
-  server: {
-    headers: {
-      // DuckDB-WASM benefits from cross-origin isolation for SharedArrayBuffer.
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
+	build: {
+		target: "es2022",
+		lib: {
+			entry: resolve(__dirname, "src/index.ts"),
+			name: "GeoChatBot",
+			// formats is overridden by rollupOptions.output below; keep in sync.
+			formats: ["es", "umd"],
+			fileName: (format) =>
+				format === "es" ? "geochatbot.js" : `geochatbot.${format}.cjs`,
+		},
+		sourcemap: true,
+		rollupOptions: {
+			// Bundle all deps; empty externals = single self-contained artifact.
+			external: [],
+			output: [
+				{
+					// ESM — code splitting enabled so lazy-imported chunks land as
+					// sibling files (MapView, each loader, etc.).
+					format: "es",
+					entryFileNames: "geochatbot.js",
+					chunkFileNames: "[name]-[hash].js",
+					inlineDynamicImports: false,
+				},
+				{
+					// UMD — Rollup forbids multi-chunk UMD output, so all dynamic
+					// imports are inlined here. This bundle is larger but self-contained
+					// and works with a plain <script> tag and window.GeoChatBot.
+					format: "umd",
+					name: "GeoChatBot",
+					entryFileNames: "geochatbot.umd.cjs",
+					inlineDynamicImports: true,
+				},
+			],
+		},
+	},
+	worker: {
+		format: "es",
+	},
+	optimizeDeps: {
+		exclude: ["@duckdb/duckdb-wasm"],
+	},
+	server: {
+		headers: {
+			// DuckDB-WASM benefits from cross-origin isolation for SharedArrayBuffer.
+			"Cross-Origin-Opener-Policy": "same-origin",
+			"Cross-Origin-Embedder-Policy": "require-corp",
+		},
+	},
 });

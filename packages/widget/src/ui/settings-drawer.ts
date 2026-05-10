@@ -1,12 +1,12 @@
-import { LitElement, html, css, nothing } from 'lit';
-import { customElement, property, state } from 'lit/decorators.js';
+import { LitElement, css, html, nothing } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import {
-  PROVIDER_CATALOGUE,
-  DEFAULT_PROVIDER_ID,
-  defaultModelFor,
-  getProviderInfo,
-  type ProviderId,
-} from '../agent/forced-tool/index.js';
+	DEFAULT_PROVIDER_ID,
+	PROVIDER_CATALOGUE,
+	type ProviderId,
+	defaultModelFor,
+	getProviderInfo,
+} from "../agent/forced-tool/index.js";
 
 /**
  * <gcb-settings-drawer>
@@ -24,19 +24,19 @@ import {
  */
 
 export interface SettingsValue {
-  provider: ProviderId;
-  model: string;
-  apiKey: string;
-  dangerouslyAllowBrowser: boolean;
-  /** Multi-turn ReAct loop with inspection tools. Default off. */
-  agenticMode?: 'single-shot' | 'agentic';
-  /** RAG retrieval over corpus + examples + memory. Default 'auto'. */
-  retrievalMode?: 'auto' | 'on' | 'off';
+	provider: ProviderId;
+	model: string;
+	apiKey: string;
+	dangerouslyAllowBrowser: boolean;
+	/** Multi-turn ReAct loop with inspection tools. Default off. */
+	agenticMode?: "single-shot" | "agentic";
+	/** RAG retrieval over corpus + examples + memory. Default 'auto'. */
+	retrievalMode?: "auto" | "on" | "off";
 }
 
-@customElement('gcb-settings-drawer')
+@customElement("gcb-settings-drawer")
 export class GcbSettingsDrawer extends LitElement {
-  static override styles = css`
+	static override styles = css`
     :host {
       display: block;
       font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -170,88 +170,96 @@ export class GcbSettingsDrawer extends LitElement {
     }
   `;
 
-  /** Pre-fill the form (e.g. restored from localStorage). */
-  @property({ attribute: false }) value: SettingsValue = {
-    provider: DEFAULT_PROVIDER_ID,
-    model: defaultModelFor(DEFAULT_PROVIDER_ID),
-    apiKey: '',
-    dangerouslyAllowBrowser: false,
-    agenticMode: 'single-shot',
-    retrievalMode: 'auto',
-  };
+	/** Pre-fill the form (e.g. restored from localStorage). */
+	@property({ attribute: false }) value: SettingsValue = {
+		provider: DEFAULT_PROVIDER_ID,
+		model: defaultModelFor(DEFAULT_PROVIDER_ID),
+		apiKey: "",
+		dangerouslyAllowBrowser: false,
+		agenticMode: "single-shot",
+		retrievalMode: "auto",
+	};
 
-  @state() private _draft: SettingsValue = this.value;
+	@state() private _draft: SettingsValue = this.value;
 
-  override connectedCallback(): void {
-    super.connectedCallback();
-    this._draft = { ...this.value };
-  }
+	override connectedCallback(): void {
+		super.connectedCallback();
+		this._draft = { ...this.value };
+	}
 
-  override willUpdate(changed: Map<string, unknown>): void {
-    if (changed.has('value')) {
-      this._draft = { ...this.value };
-    }
-  }
+	override willUpdate(changed: Map<string, unknown>): void {
+		if (changed.has("value")) {
+			this._draft = { ...this.value };
+		}
+	}
 
-  private _onProvider = (e: Event) => {
-    const target = e.target as HTMLSelectElement;
-    const provider = target.value as ProviderId;
-    // Reset model to the new provider's default — the previous model id
-    // is almost certainly wrong for the new provider's API.
-    this._draft = {
-      ...this._draft,
-      provider,
-      model: defaultModelFor(provider),
-    };
-  };
+	private _onProvider = (e: Event) => {
+		const target = e.target as HTMLSelectElement;
+		const provider = target.value as ProviderId;
+		// Reset model to the new provider's default — the previous model id
+		// is almost certainly wrong for the new provider's API.
+		this._draft = {
+			...this._draft,
+			provider,
+			model: defaultModelFor(provider),
+		};
+	};
 
-  private _onModel = (e: Event) => {
-    const target = e.target as HTMLSelectElement;
-    this._draft = { ...this._draft, model: target.value };
-  };
+	private _onModel = (e: Event) => {
+		const target = e.target as HTMLSelectElement;
+		this._draft = { ...this._draft, model: target.value };
+	};
 
-  private _onKey = (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    this._draft = { ...this._draft, apiKey: target.value };
-  };
+	private _onKey = (e: Event) => {
+		const target = e.target as HTMLInputElement;
+		this._draft = { ...this._draft, apiKey: target.value };
+	};
 
-  private _onDangerous = (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    this._draft = { ...this._draft, dangerouslyAllowBrowser: target.checked };
-  };
+	private _onDangerous = (e: Event) => {
+		const target = e.target as HTMLInputElement;
+		this._draft = { ...this._draft, dangerouslyAllowBrowser: target.checked };
+	};
 
-  private _onAgentic = (e: Event) => {
-    const checked = (e.target as HTMLInputElement).checked;
-    this._draft = { ...this._draft, agenticMode: checked ? 'agentic' : 'single-shot' };
-  };
+	private _onAgentic = (e: Event) => {
+		const checked = (e.target as HTMLInputElement).checked;
+		this._draft = {
+			...this._draft,
+			agenticMode: checked ? "agentic" : "single-shot",
+		};
+	};
 
-  private _onRetrieval = (e: Event) => {
-    const checked = (e.target as HTMLInputElement).checked;
-    this._draft = { ...this._draft, retrievalMode: checked ? 'on' : 'off' };
-  };
+	private _onRetrieval = (e: Event) => {
+		const checked = (e.target as HTMLInputElement).checked;
+		this._draft = { ...this._draft, retrievalMode: checked ? "on" : "off" };
+	};
 
-  private _onSave = () => {
-    const detail: SettingsValue = { ...this._draft, apiKey: this._draft.apiKey.trim() };
-    this.dispatchEvent(new CustomEvent<SettingsValue>('gcb:settings', { detail }));
-  };
+	private _onSave = () => {
+		const detail: SettingsValue = {
+			...this._draft,
+			apiKey: this._draft.apiKey.trim(),
+		};
+		this.dispatchEvent(
+			new CustomEvent<SettingsValue>("gcb:settings", { detail }),
+		);
+	};
 
-  private _onClose = () => {
-    this.dispatchEvent(new CustomEvent('gcb:settings-close'));
-  };
+	private _onClose = () => {
+		this.dispatchEvent(new CustomEvent("gcb:settings-close"));
+	};
 
-  private _onScrimClick = (e: MouseEvent) => {
-    if (e.target === e.currentTarget) this._onClose();
-  };
+	private _onScrimClick = (e: MouseEvent) => {
+		if (e.target === e.currentTarget) this._onClose();
+	};
 
-  override render() {
-    const canSave = this._draft.apiKey.trim().length > 0;
-    const masked = this._draft.apiKey
-      ? this._draft.apiKey.length > 8
-        ? `${this._draft.apiKey.slice(0, 4)}…${this._draft.apiKey.slice(-4)}`
-        : '•'.repeat(this._draft.apiKey.length)
-      : '';
-    const providerInfo = getProviderInfo(this._draft.provider);
-    return html`
+	override render() {
+		const canSave = this._draft.apiKey.trim().length > 0;
+		const masked = this._draft.apiKey
+			? this._draft.apiKey.length > 8
+				? `${this._draft.apiKey.slice(0, 4)}…${this._draft.apiKey.slice(-4)}`
+				: "•".repeat(this._draft.apiKey.length)
+			: "";
+		const providerInfo = getProviderInfo(this._draft.provider);
+		return html`
       <div class="scrim" @click=${this._onScrimClick} role="dialog" aria-modal="true" aria-label="GeoChatBot settings">
         <div class="panel">
           <h3>Connect a model</h3>
@@ -265,32 +273,36 @@ export class GcbSettingsDrawer extends LitElement {
             <span class="label-text">Provider</span>
             <select aria-label="Provider" .value=${this._draft.provider} @change=${this._onProvider}>
               ${PROVIDER_CATALOGUE.map(
-                (p) => html`
+								(p) => html`
                   <option value=${p.id} ?selected=${p.id === this._draft.provider}>
-                    ${p.label}${p.free ? ' · free' : ''}
+                    ${p.label}${p.free ? " · free" : ""}
                   </option>
                 `,
-              )}
+							)}
             </select>
-            ${providerInfo.signupUrl
-              ? html`<p class="signup-hint">
-                  ${providerInfo.free
-                    ? html`<span class="free-badge">FREE</span>`
-                    : nothing}
+            ${
+							providerInfo.signupUrl
+								? html`<p class="signup-hint">
+                  ${
+										providerInfo.free
+											? html`<span class="free-badge">FREE</span>`
+											: nothing
+									}
                   Get a key:
                   <a href=${providerInfo.signupUrl} target="_blank" rel="noopener">${providerInfo.signupUrl}</a>
                 </p>`
-              : nothing}
+								: nothing
+						}
           </label>
 
           <label class="row">
             <span class="label-text">Model</span>
             <select aria-label="Model" .value=${this._draft.model} @change=${this._onModel}>
               ${providerInfo.models.map(
-                (m) => html`
+								(m) => html`
                   <option value=${m.id} ?selected=${m.id === this._draft.model}>${m.label}</option>
                 `,
-              )}
+							)}
             </select>
           </label>
 
@@ -319,7 +331,7 @@ export class GcbSettingsDrawer extends LitElement {
           <label class="toggle">
             <input
               type="checkbox"
-              .checked=${this._draft.agenticMode === 'agentic'}
+              .checked=${this._draft.agenticMode === "agentic"}
               @change=${this._onAgentic}
             />
             <span>
@@ -333,7 +345,7 @@ export class GcbSettingsDrawer extends LitElement {
           <label class="toggle">
             <input
               type="checkbox"
-              .checked=${(this._draft.retrievalMode ?? 'auto') !== 'off'}
+              .checked=${(this._draft.retrievalMode ?? "auto") !== "off"}
               @change=${this._onRetrieval}
             />
             <span>
@@ -361,20 +373,24 @@ export class GcbSettingsDrawer extends LitElement {
         </div>
       </div>
     `;
-  }
+	}
 
-  private _placeholderFor(p: ProviderId): string {
-    switch (p) {
-      case 'anthropic': return 'sk-ant-…';
-      case 'openai': return 'sk-…';
-      case 'groq': return 'gsk_…';
-      case 'gemini': return 'AIza…';
-    }
-  }
+	private _placeholderFor(p: ProviderId): string {
+		switch (p) {
+			case "anthropic":
+				return "sk-ant-…";
+			case "openai":
+				return "sk-…";
+			case "groq":
+				return "gsk_…";
+			case "gemini":
+				return "AIza…";
+		}
+	}
 }
 
 declare global {
-  interface HTMLElementTagNameMap {
-    'gcb-settings-drawer': GcbSettingsDrawer;
-  }
+	interface HTMLElementTagNameMap {
+		"gcb-settings-drawer": GcbSettingsDrawer;
+	}
 }

@@ -1,6 +1,6 @@
-import { LitElement, html, css, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { tokensCSS } from './tokens.js';
+import { LitElement, css, html, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
+import { tokensCSS } from "./tokens.js";
 
 /**
  * <gcb-upload-popover> — Phase 7 compact upload affordance.
@@ -14,11 +14,11 @@ import { tokensCSS } from './tokens.js';
  *
  * Spec: docs/superpowers/specs/2026-05-08-phase-7-dashboard-redesign-design.md §1.2, §3.1
  */
-@customElement('gcb-upload-popover')
+@customElement("gcb-upload-popover")
 export class GcbUploadPopover extends LitElement {
-  static override styles = [
-    tokensCSS,
-    css`
+	static override styles = [
+		tokensCSS,
+		css`
       :host { display: contents; font-family: var(--gcb-font-sans); }
       .popover {
         position: absolute; right: 0; top: 100%;
@@ -82,97 +82,99 @@ export class GcbUploadPopover extends LitElement {
       }
       input[type="file"] { display: none; }
     `,
-  ];
+	];
 
-  @property({ type: Boolean, reflect: true })
-  open = false;
+	@property({ type: Boolean, reflect: true })
+	open = false;
 
-  /** Drag-over highlight. */
-  private _over = false;
+	/** Drag-over highlight. */
+	private _over = false;
 
-  private _onKeydown = (e: KeyboardEvent): void => {
-    if (this.open && e.key === 'Escape') this._emitClose();
-  };
-  private _onDocMouseDown = (e: MouseEvent): void => {
-    if (!this.open) return;
-    // If the mousedown started outside our shadow boundary, close.
-    const path = e.composedPath();
-    if (!path.includes(this)) this._emitClose();
-  };
+	private _onKeydown = (e: KeyboardEvent): void => {
+		if (this.open && e.key === "Escape") this._emitClose();
+	};
+	private _onDocMouseDown = (e: MouseEvent): void => {
+		if (!this.open) return;
+		// If the mousedown started outside our shadow boundary, close.
+		const path = e.composedPath();
+		if (!path.includes(this)) this._emitClose();
+	};
 
-  override connectedCallback(): void {
-    super.connectedCallback();
-    document.addEventListener('keydown', this._onKeydown);
-    // Capture phase: composedPath() is intact before retargeting strips
-    // shadow nodes, so an inside-popover click reliably includes `this`.
-    document.addEventListener('mousedown', this._onDocMouseDown, true);
-  }
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    document.removeEventListener('keydown', this._onKeydown);
-    document.removeEventListener('mousedown', this._onDocMouseDown, true);
-  }
+	override connectedCallback(): void {
+		super.connectedCallback();
+		document.addEventListener("keydown", this._onKeydown);
+		// Capture phase: composedPath() is intact before retargeting strips
+		// shadow nodes, so an inside-popover click reliably includes `this`.
+		document.addEventListener("mousedown", this._onDocMouseDown, true);
+	}
+	override disconnectedCallback(): void {
+		super.disconnectedCallback();
+		document.removeEventListener("keydown", this._onKeydown);
+		document.removeEventListener("mousedown", this._onDocMouseDown, true);
+	}
 
-  private _emitFiles(files: File[]): void {
-    if (!files.length) return;
-    this.dispatchEvent(
-      new CustomEvent<File[]>('gcb:files', {
-        detail: files, bubbles: true, composed: true,
-      }),
-    );
-    this._emitClose();
-  }
-  private _emitClose(): void {
-    this.dispatchEvent(
-      new CustomEvent('gcb:popover-close', { bubbles: true, composed: true }),
-    );
-  }
+	private _emitFiles(files: File[]): void {
+		if (!files.length) return;
+		this.dispatchEvent(
+			new CustomEvent<File[]>("gcb:files", {
+				detail: files,
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		this._emitClose();
+	}
+	private _emitClose(): void {
+		this.dispatchEvent(
+			new CustomEvent("gcb:popover-close", { bubbles: true, composed: true }),
+		);
+	}
 
-  private _onDragOver = (e: DragEvent): void => {
-    e.preventDefault();
-    this._over = true;
-    this.requestUpdate();
-  };
-  private _onDragLeave = (): void => {
-    this._over = false;
-    this.requestUpdate();
-  };
-  private _onDrop = (e: DragEvent): void => {
-    e.preventDefault();
-    this._over = false;
-    const files = e.dataTransfer?.files;
-    if (files && files.length) this._emitFiles(Array.from(files));
-  };
-  private _onClickPick = (): void => {
-    const input = this.shadowRoot!.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement | null;
-    input?.click();
-  };
-  private _onFileChange = (e: Event): void => {
-    const t = e.target as HTMLInputElement;
-    if (t.files && t.files.length) {
-      this._emitFiles(Array.from(t.files));
-      // Reset so re-picking the SAME file fires `change` again. Without
-      // this, browsers (Chrome/Safari/Firefox) coalesce identical
-      // selections into a single change event and the user has to pick
-      // a different file or close+reopen the popover.
-      t.value = '';
-    }
-  };
-  private _onPasteHint = (): void => {
-    // Hint click does not pull files; we listen for `paste` on the host.
-    // The user is expected to paste into the popover with the keyboard;
-    // the click is purely affordance.
-  };
+	private _onDragOver = (e: DragEvent): void => {
+		e.preventDefault();
+		this._over = true;
+		this.requestUpdate();
+	};
+	private _onDragLeave = (): void => {
+		this._over = false;
+		this.requestUpdate();
+	};
+	private _onDrop = (e: DragEvent): void => {
+		e.preventDefault();
+		this._over = false;
+		const files = e.dataTransfer?.files;
+		if (files?.length) this._emitFiles(Array.from(files));
+	};
+	private _onClickPick = (): void => {
+		const input = this.shadowRoot?.querySelector(
+			'input[type="file"]',
+		) as HTMLInputElement | null;
+		input?.click();
+	};
+	private _onFileChange = (e: Event): void => {
+		const t = e.target as HTMLInputElement;
+		if (t.files?.length) {
+			this._emitFiles(Array.from(t.files));
+			// Reset so re-picking the SAME file fires `change` again. Without
+			// this, browsers (Chrome/Safari/Firefox) coalesce identical
+			// selections into a single change event and the user has to pick
+			// a different file or close+reopen the popover.
+			t.value = "";
+		}
+	};
+	private _onPasteHint = (): void => {
+		// Hint click does not pull files; we listen for `paste` on the host.
+		// The user is expected to paste into the popover with the keyboard;
+		// the click is purely affordance.
+	};
 
-  override render() {
-    if (!this.open) return nothing;
-    return html`
+	override render() {
+		if (!this.open) return nothing;
+		return html`
       <div class="popover" role="dialog" aria-label="Add a dataset">
         <h5>Add a dataset</h5>
         <div
-          class="drop-area ${this._over ? 'over' : ''}"
+          class="drop-area ${this._over ? "over" : ""}"
           @dragover=${this._onDragOver}
           @dragleave=${this._onDragLeave}
           @drop=${this._onDrop}
@@ -193,11 +195,11 @@ export class GcbUploadPopover extends LitElement {
           @change=${this._onFileChange} />
       </div>
     `;
-  }
+	}
 }
 
 declare global {
-  interface HTMLElementTagNameMap {
-    'gcb-upload-popover': GcbUploadPopover;
-  }
+	interface HTMLElementTagNameMap {
+		"gcb-upload-popover": GcbUploadPopover;
+	}
 }

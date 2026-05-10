@@ -1,12 +1,12 @@
-import { LitElement, html, css, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { tokensCSS } from './tokens.js';
-import type { SavedResultV1 } from '../state/saves-store.js';
+import { LitElement, css, html, nothing } from "lit";
+import { customElement, property } from "lit/decorators.js";
+import type { SavedResultV1 } from "../state/saves-store.js";
+import { tokensCSS } from "./tokens.js";
 
 export interface RailDataset {
-  name: string;
-  rows: number;
-  hasGeometry: boolean;
+	name: string;
+	rows: number;
+	hasGeometry: boolean;
 }
 
 /**
@@ -15,16 +15,16 @@ export interface RailDataset {
  * element.ts when an executor result with kind: 'layer' arrives.
  */
 export interface RailLayer {
-  /** Identifier — usually the layer name from the result payload. */
-  id: string;
-  /** Display name shown in the Layers list. */
-  name: string;
-  /** Feature count to display alongside the name. */
-  features: number;
-  /** Whether the user has it visible (eye icon state). */
-  visible: boolean;
-  /** Whether the layer is brand-new (shows "NEW" badge). */
-  isNew: boolean;
+	/** Identifier — usually the layer name from the result payload. */
+	id: string;
+	/** Display name shown in the Layers list. */
+	name: string;
+	/** Feature count to display alongside the name. */
+	features: number;
+	/** Whether the user has it visible (eye icon state). */
+	visible: boolean;
+	/** Whether the layer is brand-new (shows "NEW" badge). */
+	isNew: boolean;
 }
 
 /**
@@ -44,11 +44,11 @@ export interface RailLayer {
  *
  * Spec: docs/superpowers/specs/2026-05-08-phase-7-dashboard-redesign-design.md §3.1
  */
-@customElement('gcb-rail')
+@customElement("gcb-rail")
 export class GcbRail extends LitElement {
-  static override styles = [
-    tokensCSS,
-    css`
+	static override styles = [
+		tokensCSS,
+		css`
       :host {
         display: flex; flex-direction: column;
         height: 100%; min-height: 0;
@@ -185,29 +185,31 @@ export class GcbRail extends LitElement {
         outline-offset: 2px;
       }
     `,
-  ];
+	];
 
-  /** Raw datasets (uploaded files) — shown in the Datasets section. */
-  @property({ attribute: false }) datasets: ReadonlyArray<RailDataset> = [];
-  /** Saved results — pinned by the user. */
-  @property({ attribute: false }) saves: ReadonlyArray<SavedResultV1> = [];
-  /** Derived layers from render.map results. */
-  @property({ attribute: false }) layers: ReadonlyArray<RailLayer> = [];
-  /** Currently-active save id (for highlighting). */
-  @property() activeSaveId: string | null = null;
+	/** Raw datasets (uploaded files) — shown in the Datasets section. */
+	@property({ attribute: false }) datasets: ReadonlyArray<RailDataset> = [];
+	/** Saved results — pinned by the user. */
+	@property({ attribute: false }) saves: ReadonlyArray<SavedResultV1> = [];
+	/** Derived layers from render.map results. */
+	@property({ attribute: false }) layers: ReadonlyArray<RailLayer> = [];
+	/** Currently-active save id (for highlighting). */
+	@property() activeSaveId: string | null = null;
 
-  private _emit<T>(name: string, detail: T): void {
-    this.dispatchEvent(
-      new CustomEvent<T>(name, { detail, bubbles: true, composed: true }),
-    );
-  }
+	private _emit<T>(name: string, detail: T): void {
+		this.dispatchEvent(
+			new CustomEvent<T>(name, { detail, bubbles: true, composed: true }),
+		);
+	}
 
-  private _emitVoid(name: string): void {
-    this.dispatchEvent(new CustomEvent(name, { bubbles: true, composed: true }));
-  }
+	private _emitVoid(name: string): void {
+		this.dispatchEvent(
+			new CustomEvent(name, { bubbles: true, composed: true }),
+		);
+	}
 
-  override render() {
-    return html`
+	override render() {
+		return html`
       <div class="panel-hdr">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <polygon points="12 2 2 7 12 12 22 7 12 2"/>
@@ -222,32 +224,41 @@ export class GcbRail extends LitElement {
         <!-- Layers (derived from render.map results) -->
         <div class="section" role="list" aria-label="Layers">
           <div class="section-lbl">Layers</div>
-          ${this.layers.length === 0
-            ? html`<div class="empty">Layers from analysis appear here.</div>`
-            : this.layers.map((l) => html`
-                <div class="row ${l.isNew ? 'is-new' : ''}" role="listitem">
+          ${
+						this.layers.length === 0
+							? html`<div class="empty">Layers from analysis appear here.</div>`
+							: this.layers.map(
+									(l) => html`
+                <div class="row ${l.isNew ? "is-new" : ""}" role="listitem">
                   <svg class="icon" viewBox="0 0 14 14" fill="none">
-                    <circle cx="7" cy="7" r="4.5" stroke="${l.isNew ? '#60a5fa' : '#22c55e'}" stroke-width="1.2"/>
-                    <circle cx="7" cy="7" r="2" fill="${l.isNew ? '#60a5fa' : '#22c55e'}"/>
+                    <circle cx="7" cy="7" r="4.5" stroke="${l.isNew ? "#60a5fa" : "#22c55e"}" stroke-width="1.2"/>
+                    <circle cx="7" cy="7" r="2" fill="${l.isNew ? "#60a5fa" : "#22c55e"}"/>
                   </svg>
-                  <span class="dot" style="background:${l.isNew ? '#60a5fa' : '#22c55e'}"></span>
+                  <span class="dot" style="background:${l.isNew ? "#60a5fa" : "#22c55e"}"></span>
                   <span class="name" title=${l.name}>${l.name}</span>
-                  ${l.isNew
-                    ? html`<span class="new-badge">NEW</span>`
-                    : html`<span class="count">${l.features} ft</span>`}
+                  ${
+										l.isNew
+											? html`<span class="new-badge">NEW</span>`
+											: html`<span class="count">${l.features} ft</span>`
+									}
                   <button
                     class="eye"
                     type="button"
-                    aria-pressed=${l.visible ? 'true' : 'false'}
+                    aria-pressed=${l.visible ? "true" : "false"}
                     aria-label="Toggle visibility for ${l.name}"
-                    @click=${(e: Event) => { e.stopPropagation(); this._emit('gcb:layer-toggle', { id: l.id }); }}
+                    @click=${(e: Event) => {
+											e.stopPropagation();
+											this._emit("gcb:layer-toggle", { id: l.id });
+										}}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                     </svg>
                   </button>
                 </div>
-              `)}
+              `,
+								)
+					}
         </div>
 
         <div class="divider"></div>
@@ -255,14 +266,16 @@ export class GcbRail extends LitElement {
         <!-- Saved -->
         <div class="section" role="list" aria-label="Saved results">
           <div class="section-lbl">Saved</div>
-          ${this.saves.length === 0
-            ? html`<div class="empty">No saved results yet.</div>`
-            : this.saves.map((s) => html`
+          ${
+						this.saves.length === 0
+							? html`<div class="empty">No saved results yet.</div>`
+							: this.saves.map(
+									(s) => html`
                 <div
                   class="saved-row"
                   role="listitem"
-                  aria-current=${s.id === this.activeSaveId ? 'true' : 'false'}
-                  @click=${() => this._emit('gcb:save-select', s.id)}
+                  aria-current=${s.id === this.activeSaveId ? "true" : "false"}
+                  @click=${() => this._emit("gcb:save-select", s.id)}
                 >
                   <div class="saved-icon">
                     ${this._savedIcon(s.kind)}
@@ -275,14 +288,19 @@ export class GcbRail extends LitElement {
                     class="remove"
                     type="button"
                     aria-label="Remove ${s.title}"
-                    @click=${(e: Event) => { e.stopPropagation(); this._emit('gcb:save-remove', s.id); }}
+                    @click=${(e: Event) => {
+											e.stopPropagation();
+											this._emit("gcb:save-remove", s.id);
+										}}
                   >
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true">
                       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
                   </button>
                 </div>
-              `)}
+              `,
+								)
+					}
         </div>
 
         <div class="divider"></div>
@@ -290,9 +308,11 @@ export class GcbRail extends LitElement {
         <!-- Datasets (raw uploads) -->
         <div class="section" role="list" aria-label="Datasets">
           <div class="section-lbl">Datasets</div>
-          ${this.datasets.length === 0
-            ? html`<div class="empty">No datasets uploaded.</div>`
-            : this.datasets.map((d) => html`
+          ${
+						this.datasets.length === 0
+							? html`<div class="empty">No datasets uploaded.</div>`
+							: this.datasets.map(
+									(d) => html`
                 <div class="row dataset-row" role="listitem">
                   <svg class="icon" viewBox="0 0 14 14" fill="none">
                     <rect x="1" y="2.5" width="12" height="9" rx="1" stroke="currentColor" stroke-width="1.1"/>
@@ -306,14 +326,19 @@ export class GcbRail extends LitElement {
                     class="eye"
                     type="button"
                     aria-label="Toggle visibility for ${d.name}"
-                    @click=${(e: Event) => { e.stopPropagation(); this._emit('gcb:dataset-toggle', d.name); }}
+                    @click=${(e: Event) => {
+											e.stopPropagation();
+											this._emit("gcb:dataset-toggle", d.name);
+										}}
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                     </svg>
                   </button>
                 </div>
-              `)}
+              `,
+								)
+					}
         </div>
 
       </div><!-- /panel-scroll -->
@@ -324,7 +349,7 @@ export class GcbRail extends LitElement {
           class="add-btn"
           type="button"
           aria-label="Add data"
-          @click=${() => this._emitVoid('gcb:add-data')}
+          @click=${() => this._emitVoid("gcb:add-data")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -335,37 +360,36 @@ export class GcbRail extends LitElement {
         </button>
       </div>
     `;
-  }
+	}
 
-  private _savedIcon(kind: SavedResultV1['kind']): unknown {
-    switch (kind) {
-      case 'chart':
-        return html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+	private _savedIcon(kind: SavedResultV1["kind"]): unknown {
+		switch (kind) {
+			case "chart":
+				return html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
         </svg>`;
-      case 'map':
-        return html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			case "map":
+				return html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
         </svg>`;
-      case 'table':
-        return html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			case "table":
+				return html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <rect x="3" y="3" width="18" height="18" rx="2"/>
           <line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/>
         </svg>`;
-      case 'summary':
-      default:
-        return html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			default:
+				return html`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/>
         </svg>`;
-    }
-  }
+		}
+	}
 }
 
 // suppress unused-import lint until tests use this
 void nothing;
 
 declare global {
-  interface HTMLElementTagNameMap {
-    'gcb-rail': GcbRail;
-  }
+	interface HTMLElementTagNameMap {
+		"gcb-rail": GcbRail;
+	}
 }

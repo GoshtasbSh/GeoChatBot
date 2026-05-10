@@ -6,18 +6,18 @@
  * paid one) without re-mounting the component.
  */
 
-import type { ChatProvider } from './types.js';
+import type { ChatProvider } from "./types.js";
 
 let active: ChatProvider | undefined;
 
 export function setProvider(p: ChatProvider): void {
-  active = p;
+	active = p;
 }
 
 export function getProvider(): ChatProvider | undefined {
-  return active;
+	return active;
 }
 
 export function clearProvider(): void {
-  active = undefined;
+	active = undefined;
 }

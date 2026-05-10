@@ -1,18 +1,18 @@
 {
-  "name": "@geochatbot/demo",
-  "version": "0.0.1",
-  "private": true,
-  "description": "Demo page exercising the GeoChatBot widget end-to-end (drop file → see table + map).",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@geochatbot/widget": "*"
-  },
-  "devDependencies": {
-    "vite": "^6.0.0"
-  }
+	"name": "@geochatbot/demo",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Demo page exercising the GeoChatBot widget end-to-end (drop file → see table + map).",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview"
+	},
+	"dependencies": {
+		"@geochatbot/widget": "*"
+	},
+	"devDependencies": {
+		"vite": "^6.0.0"
+	}
 }

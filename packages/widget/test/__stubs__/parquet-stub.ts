@@ -11,13 +11,13 @@
  */
 
 export const ParquetLoader = {
-  id: 'parquet',
-  name: 'Parquet (stub)',
-  module: 'parquet',
-  version: '0.0.0',
-  extensions: ['parquet'],
-  mimeTypes: ['application/x-parquet'],
-  parse: async () => {
-    throw new Error('ParquetLoader is stubbed in test environment.');
-  },
+	id: "parquet",
+	name: "Parquet (stub)",
+	module: "parquet",
+	version: "0.0.0",
+	extensions: ["parquet"],
+	mimeTypes: ["application/x-parquet"],
+	parse: async () => {
+		throw new Error("ParquetLoader is stubbed in test environment.");
+	},
 };

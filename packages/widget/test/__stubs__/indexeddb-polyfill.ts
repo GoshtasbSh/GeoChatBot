@@ -7,4 +7,4 @@
  * Jest/Vitest projects that need IndexedDB in Node.
  */
 
-import 'fake-indexeddb/auto';
+import "fake-indexeddb/auto";

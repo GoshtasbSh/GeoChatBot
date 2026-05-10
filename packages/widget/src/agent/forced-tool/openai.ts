@@ -6,13 +6,13 @@
  * sign-up and pay per token thereafter.
  */
 
-import { callOpenAICompat } from './openai-compat.js';
-import type { ForcedToolInput } from './types.js';
+import { callOpenAICompat } from "./openai-compat.js";
+import type { ForcedToolInput } from "./types.js";
 
-const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+const ENDPOINT = "https://api.openai.com/v1/chat/completions";
 
 export async function callOpenAI(
-  input: ForcedToolInput,
+	input: ForcedToolInput,
 ): Promise<Record<string, unknown>> {
-  return callOpenAICompat(input, ENDPOINT, 'openai');
+	return callOpenAICompat(input, ENDPOINT, "openai");
 }

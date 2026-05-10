@@ -1,6 +1,6 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
-import { tokensCSS } from './tokens.js';
+import { LitElement, css, html } from "lit";
+import { customElement, property } from "lit/decorators.js";
+import { tokensCSS } from "./tokens.js";
 
 /**
  * Shell tab — kept for backwards compat with existing call sites that
@@ -8,7 +8,7 @@ import { tokensCSS } from './tokens.js';
  * tab is now an internal hint used by the host to decide what to render
  * in the main slot. Default 'map' continues to work.
  */
-export type ShellTab = 'map' | 'results' | 'detail';
+export type ShellTab = "map" | "results" | "detail";
 
 const RAIL_W = 48;
 const PANEL_W = 240;
@@ -31,11 +31,11 @@ const DOCK_H_MIN = 76;
  *
  * Spec: docs/superpowers/specs/2026-05-08-phase-7-dashboard-redesign-design.md §1
  */
-@customElement('gcb-shell')
+@customElement("gcb-shell")
 export class GcbShell extends LitElement {
-  static override styles = [
-    tokensCSS,
-    css`
+	static override styles = [
+		tokensCSS,
+		css`
       :host {
         display: grid;
         grid-template-columns: ${RAIL_W}px ${PANEL_W}px 1fr;
@@ -98,41 +98,43 @@ export class GcbShell extends LitElement {
 
       ::slotted(*) { box-sizing: border-box; }
     `,
-  ];
+	];
 
-  /**
-   * Backwards-compatible tab hint. The shell no longer renders a tab
-   * strip — the host decides what to put in the main slot. Setting
-   * activeTab still updates the property + emits gcb:tab so existing
-   * tests and external integrations keep working.
-   */
-  @property() activeTab: ShellTab = 'map';
-  @property({ type: Number }) datasetCount = 0;
-  @property({ type: Number }) savedCount = 0;
+	/**
+	 * Backwards-compatible tab hint. The shell no longer renders a tab
+	 * strip — the host decides what to put in the main slot. Setting
+	 * activeTab still updates the property + emits gcb:tab so existing
+	 * tests and external integrations keep working.
+	 */
+	@property() activeTab: ShellTab = "map";
+	@property({ type: Number }) datasetCount = 0;
+	@property({ type: Number }) savedCount = 0;
 
-  /** Internal helper retained for backwards compatibility with prior tab API. */
-  setTab(id: ShellTab): void {
-    this.activeTab = id;
-    this.dispatchEvent(
-      new CustomEvent<ShellTab>('gcb:tab', {
-        detail: id, bubbles: true, composed: true,
-      }),
-    );
-  }
+	/** Internal helper retained for backwards compatibility with prior tab API. */
+	setTab(id: ShellTab): void {
+		this.activeTab = id;
+		this.dispatchEvent(
+			new CustomEvent<ShellTab>("gcb:tab", {
+				detail: id,
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
 
-  override render() {
-    return html`
+	override render() {
+		return html`
       <div class="topbar"><slot name="topbar"></slot></div>
       <div class="icon-rail"><slot name="iconRail"></slot></div>
       <div class="panel"><slot name="rail"></slot></div>
       <div class="main"><slot name="main"></slot></div>
       <div class="dock"><slot name="dock"></slot></div>
     `;
-  }
+	}
 }
 
 declare global {
-  interface HTMLElementTagNameMap {
-    'gcb-shell': GcbShell;
-  }
+	interface HTMLElementTagNameMap {
+		"gcb-shell": GcbShell;
+	}
 }

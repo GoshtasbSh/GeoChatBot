@@ -16,13 +16,13 @@
  * silently; surface as NO_TOOL_USE.
  */
 
-import { callOpenAICompat } from './openai-compat.js';
-import type { ForcedToolInput } from './types.js';
+import { callOpenAICompat } from "./openai-compat.js";
+import type { ForcedToolInput } from "./types.js";
 
-const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+const ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 
 export async function callGroq(
-  input: ForcedToolInput,
+	input: ForcedToolInput,
 ): Promise<Record<string, unknown>> {
-  return callOpenAICompat(input, ENDPOINT, 'groq');
+	return callOpenAICompat(input, ENDPOINT, "groq");
 }

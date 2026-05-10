@@ -1,113 +1,120 @@
-import { PlanSchema, type Plan } from './types.js';
-import { getTool } from './tools/registry.js';
+import { getTool } from "./tools/registry.js";
+import { type Plan, PlanSchema } from "./types.js";
 
 export class PlanValidationError extends Error {
-  /** Optional pointer to the offending step id, for inline UI highlighting. */
-  readonly stepId?: string;
-  constructor(message: string, stepId?: string) {
-    super(message);
-    this.name = 'PlanValidationError';
-    if (stepId !== undefined) this.stepId = stepId;
-  }
+	/** Optional pointer to the offending step id, for inline UI highlighting. */
+	readonly stepId?: string;
+	constructor(message: string, stepId?: string) {
+		super(message);
+		this.name = "PlanValidationError";
+		if (stepId !== undefined) this.stepId = stepId;
+	}
 }
 
 const VAR_REF = /\$\{(\w+)\}/g;
 
 export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
-  // Layer 1: shape
-  const parsed = PlanSchema.safeParse(input);
-  if (!parsed.success) {
-    throw new PlanValidationError(`malformed plan: ${parsed.error.message}`);
-  }
-  const plan = parsed.data;
+	// Layer 1: shape
+	const parsed = PlanSchema.safeParse(input);
+	if (!parsed.success) {
+		throw new PlanValidationError(`malformed plan: ${parsed.error.message}`);
+	}
+	const plan = parsed.data;
 
-  // Duplicate step ids
-  const seenIds = new Set<string>();
-  for (const s of plan.steps) {
-    if (seenIds.has(s.id)) throw new PlanValidationError(`duplicate step id: ${s.id}`, s.id);
-    seenIds.add(s.id);
-  }
+	// Duplicate step ids
+	const seenIds = new Set<string>();
+	for (const s of plan.steps) {
+		if (seenIds.has(s.id))
+			throw new PlanValidationError(`duplicate step id: ${s.id}`, s.id);
+		seenIds.add(s.id);
+	}
 
-  // dataset_refs: dedup, non-empty, every entry is a loaded dataset.
-  // Duplicates indicate planner confusion and would let two cross-ref
-  // checks fight over the same name; reject up front.
-  const loaded = new Set(loadedDatasets);
-  const seenRefs = new Set<string>();
-  for (const d of plan.dataset_refs) {
-    if (seenRefs.has(d)) {
-      throw new PlanValidationError(`duplicate dataset_refs entry: ${d}`);
-    }
-    seenRefs.add(d);
-    if (!loaded.has(d)) {
-      // Including the available dataset names in the error message lets
-      // the planner's retry loop self-correct: the second LLM call sees
-      // the validation message and can pick the canonical name.
-      const available = loadedDatasets.length
-        ? `available: ${loadedDatasets.map((n) => `"${n}"`).join(', ')}`
-        : 'no datasets loaded';
-      throw new PlanValidationError(
-        `dataset_refs contains missing dataset: "${d}" (${available})`,
-      );
-    }
-  }
+	// dataset_refs: dedup, non-empty, every entry is a loaded dataset.
+	// Duplicates indicate planner confusion and would let two cross-ref
+	// checks fight over the same name; reject up front.
+	const loaded = new Set(loadedDatasets);
+	const seenRefs = new Set<string>();
+	for (const d of plan.dataset_refs) {
+		if (seenRefs.has(d)) {
+			throw new PlanValidationError(`duplicate dataset_refs entry: ${d}`);
+		}
+		seenRefs.add(d);
+		if (!loaded.has(d)) {
+			// Including the available dataset names in the error message lets
+			// the planner's retry loop self-correct: the second LLM call sees
+			// the validation message and can pick the canonical name.
+			const available = loadedDatasets.length
+				? `available: ${loadedDatasets.map((n) => `"${n}"`).join(", ")}`
+				: "no datasets loaded";
+			throw new PlanValidationError(
+				`dataset_refs contains missing dataset: "${d}" (${available})`,
+			);
+		}
+	}
 
-  // Layer 2: tool existence + args parse
-  for (const step of plan.steps) {
-    const tool = getTool(step.tool);
-    if (!tool) {
-      throw new PlanValidationError(`unknown tool: ${step.tool}`, step.id);
-    }
-    const argRes = tool.args.safeParse(step.args);
-    if (!argRes.success) {
-      throw new PlanValidationError(
-        `step ${step.id} (${step.tool}) bad args: ${argRes.error.message}`,
-        step.id,
-      );
-    }
-  }
+	// Layer 2: tool existence + args parse
+	for (const step of plan.steps) {
+		const tool = getTool(step.tool);
+		if (!tool) {
+			throw new PlanValidationError(`unknown tool: ${step.tool}`, step.id);
+		}
+		const argRes = tool.args.safeParse(step.args);
+		if (!argRes.success) {
+			throw new PlanValidationError(
+				`step ${step.id} (${step.tool}) bad args: ${argRes.error.message}`,
+				step.id,
+			);
+		}
+	}
 
-  // Layer 3: reference integrity (forward-only)
-  // Duplicate output_var would silently shadow an earlier step's output
-  // because the executor stores results in a single Map keyed by var name
-  // — any `${dup}` resolves to whichever step ran last. Reject up front.
-  const definedSoFar = new Set<string>();
-  const seenOutputVars = new Set<string>();
-  for (const step of plan.steps) {
-    const refs = collectVarRefs(step.args);
-    for (const r of refs) {
-      if (r === step.output_var) {
-        throw new PlanValidationError(`step ${step.id} self-references \${${r}}`, step.id);
-      }
-      if (!definedSoFar.has(r)) {
-        throw new PlanValidationError(
-          `step ${step.id} references unknown var \${${r}} (forward or undefined)`,
-          step.id,
-        );
-      }
-    }
-    if (step.output_var !== undefined) {
-      if (seenOutputVars.has(step.output_var)) {
-        throw new PlanValidationError(
-          `duplicate output_var: ${step.output_var}`,
-          step.id,
-        );
-      }
-      seenOutputVars.add(step.output_var);
-      definedSoFar.add(step.output_var);
-    }
-  }
+	// Layer 3: reference integrity (forward-only)
+	// Duplicate output_var would silently shadow an earlier step's output
+	// because the executor stores results in a single Map keyed by var name
+	// — any `${dup}` resolves to whichever step ran last. Reject up front.
+	const definedSoFar = new Set<string>();
+	const seenOutputVars = new Set<string>();
+	for (const step of plan.steps) {
+		const refs = collectVarRefs(step.args);
+		for (const r of refs) {
+			if (r === step.output_var) {
+				throw new PlanValidationError(
+					`step ${step.id} self-references \${${r}}`,
+					step.id,
+				);
+			}
+			if (!definedSoFar.has(r)) {
+				throw new PlanValidationError(
+					`step ${step.id} references unknown var \${${r}} (forward or undefined)`,
+					step.id,
+				);
+			}
+		}
+		if (step.output_var !== undefined) {
+			if (seenOutputVars.has(step.output_var)) {
+				throw new PlanValidationError(
+					`duplicate output_var: ${step.output_var}`,
+					step.id,
+				);
+			}
+			seenOutputVars.add(step.output_var);
+			definedSoFar.add(step.output_var);
+		}
+	}
 
-  // Last step must be a render.* tool. (`render.summary` matches the prefix
-  // — it does not need a separate clause.)
-  const last = plan.steps[plan.steps.length - 1]!;
-  if (!last.tool.startsWith('render.')) {
-    throw new PlanValidationError(
-      `last step must be a render.* tool (got ${last.tool})`,
-      last.id,
-    );
-  }
+	// Last step must be a render.* tool. (`render.summary` matches the prefix
+	// — it does not need a separate clause.)
+	const last = plan.steps[plan.steps.length - 1];
+	if (!last) {
+		throw new PlanValidationError("plan has no steps");
+	}
+	if (!last.tool.startsWith("render.")) {
+		throw new PlanValidationError(
+			`last step must be a render.* tool (got ${last.tool})`,
+			last.id,
+		);
+	}
 
-  return plan;
+	return plan;
 }
 
 /**
@@ -120,25 +127,28 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
 const MAX_REF_DEPTH = 32;
 
 function collectVarRefs(
-  value: unknown,
-  out: string[] = [],
-  depth = 0,
+	value: unknown,
+	out: string[] = [],
+	depth = 0,
 ): string[] {
-  if (depth > MAX_REF_DEPTH) {
-    throw new PlanValidationError(
-      `args nesting too deep (>${MAX_REF_DEPTH}); refusing to validate`,
-    );
-  }
-  if (typeof value === 'string') {
-    for (const m of value.matchAll(VAR_REF)) out.push(m[1]!);
-    return out;
-  }
-  if (Array.isArray(value)) {
-    for (const v of value) collectVarRefs(v, out, depth + 1);
-    return out;
-  }
-  if (value && typeof value === 'object') {
-    for (const v of Object.values(value)) collectVarRefs(v, out, depth + 1);
-  }
-  return out;
+	if (depth > MAX_REF_DEPTH) {
+		throw new PlanValidationError(
+			`args nesting too deep (>${MAX_REF_DEPTH}); refusing to validate`,
+		);
+	}
+	if (typeof value === "string") {
+		for (const m of value.matchAll(VAR_REF)) {
+			const g = m[1];
+			if (g !== undefined) out.push(g);
+		}
+		return out;
+	}
+	if (Array.isArray(value)) {
+		for (const v of value) collectVarRefs(v, out, depth + 1);
+		return out;
+	}
+	if (value && typeof value === "object") {
+		for (const v of Object.values(value)) collectVarRefs(v, out, depth + 1);
+	}
+	return out;
 }

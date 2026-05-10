@@ -1,4 +1,4 @@
-import { css } from 'lit';
+import { css } from "lit";
 
 /**
  * Phase 7 design tokens — Combined design (mockups/I-combined.html).

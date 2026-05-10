@@ -6,19 +6,19 @@
  *
  * Only runs in the test environment — never shipped to production.
  */
-if (typeof DragEvent !== 'undefined') {
-  const OrigDragEvent = DragEvent;
+if (typeof DragEvent !== "undefined") {
+	const OrigDragEvent = DragEvent;
 
-  class PatchedDragEvent extends OrigDragEvent {
-    readonly dataTransfer: DataTransfer | null;
+	class PatchedDragEvent extends OrigDragEvent {
+		readonly dataTransfer: DataTransfer | null;
 
-    constructor(type: string, init?: DragEventInit) {
-      super(type, init);
-      // happy-dom ignores init.dataTransfer — store it ourselves.
-      this.dataTransfer = init?.dataTransfer ?? null;
-    }
-  }
+		constructor(type: string, init?: DragEventInit) {
+			super(type, init);
+			// happy-dom ignores init.dataTransfer — store it ourselves.
+			this.dataTransfer = init?.dataTransfer ?? null;
+		}
+	}
 
-  // @ts-expect-error — intentional global replacement for test env only
-  globalThis.DragEvent = PatchedDragEvent;
+	// @ts-expect-error — intentional global replacement for test env only
+	globalThis.DragEvent = PatchedDragEvent;
 }

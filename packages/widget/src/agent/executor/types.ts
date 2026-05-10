@@ -12,101 +12,108 @@
  * full-mode UI and the headless `result` event.
  */
 
-import type { Table as ArrowTable } from 'apache-arrow';
-import type { OutputRef, Step, ToolOutputKind } from '../types.js';
+import type { Table as ArrowTable } from "apache-arrow";
+import type { OutputRef, Step, ToolOutputKind } from "../types.js";
 
 /** Per-dataset metadata available to runners. */
 export interface DatasetEntry {
-  /** Logical name as the planner sees it (e.g. `sales`). */
-  name: string;
-  /** DuckDB table holding raw columns. */
-  tableName: string;
-  /** DuckDB view exposing the table + a `geom` column (if geometry is loaded). */
-  geomView?: string;
-  /** True when `geomView` exists and queries can rely on a `geom` column. */
-  hasGeometry: boolean;
+	/** Logical name as the planner sees it (e.g. `sales`). */
+	name: string;
+	/** DuckDB table holding raw columns. */
+	tableName: string;
+	/** DuckDB view exposing the table + a `geom` column (if geometry is loaded). */
+	geomView?: string;
+	/** True when `geomView` exists and queries can rely on a `geom` column. */
+	hasGeometry: boolean;
 }
 
 /** Subset of {@link DuckDBEngine} the executor depends on. Tests stub this. */
 export interface ExecutorEngine {
-  query(sql: string): Promise<ArrowTable>;
-  hasSpatial: boolean;
+	query(sql: string): Promise<ArrowTable>;
+	hasSpatial: boolean;
 }
 
 /** Execution context handed to every runner. */
 export interface ExecCtx {
-  /** Plan id for correlation in events. */
-  planId: string;
-  /** Step currently executing. */
-  step: Step;
-  /** Engine handle for SQL / spatial work. */
-  engine: ExecutorEngine;
-  /** Datasets registered through the widget's ingest path. */
-  datasets: Map<string, DatasetEntry>;
-  /** Outputs from previous steps; populated as the executor advances. */
-  outputs: Map<string, OutputRef>;
-  /** Mint a fresh, deterministic-looking view name for a step output. */
-  newView(prefix: string): string;
+	/** Plan id for correlation in events. */
+	planId: string;
+	/** Step currently executing. */
+	step: Step;
+	/** Engine handle for SQL / spatial work. */
+	engine: ExecutorEngine;
+	/** Datasets registered through the widget's ingest path. */
+	datasets: Map<string, DatasetEntry>;
+	/** Outputs from previous steps; populated as the executor advances. */
+	outputs: Map<string, OutputRef>;
+	/** Mint a fresh, deterministic-looking view name for a step output. */
+	newView(prefix: string): string;
+	/**
+	 * Optional abort signal forwarded from the host (e.g. element.ts's
+	 * `_execAbort`). Runners that perform external I/O — geocoder fetch,
+	 * future tile fetch — should pass this to `fetch()` so the user's
+	 * "Stop" button can interrupt long-running operations promptly.
+	 */
+	signal?: AbortSignal;
 }
 
 /** Headless-equivalent payload for `render.*` runners. */
 export type ResultPayload =
-  | {
-      kind: 'layer';
-      /** GeoJSON FeatureCollection. */
-      geojson: { type: 'FeatureCollection'; features: unknown[] };
-      /** Optional layer name; defaults to the source view. */
-      name?: string;
-      /** Optional MapLibre style hints. */
-      style?: Record<string, unknown>;
-    }
-  | {
-      kind: 'chart';
-      spec: {
-        kind: 'bar' | 'line' | 'scatter' | 'pie' | 'grouped_bar';
-        x: string;
-        y: string;
-        group?: string;
-        data: ReadonlyArray<Record<string, unknown>>;
-      };
-    }
-  | {
-      kind: 'table';
-      rows: ReadonlyArray<Record<string, unknown>>;
-      columns: ReadonlyArray<string>;
-    }
-  | {
-      kind: 'summary';
-      text: string;
-    };
+	| {
+			kind: "layer";
+			/** GeoJSON FeatureCollection. */
+			geojson: { type: "FeatureCollection"; features: unknown[] };
+			/** Optional layer name; defaults to the source view. */
+			name?: string;
+			/** Optional MapLibre style hints. */
+			style?: Record<string, unknown>;
+	  }
+	| {
+			kind: "chart";
+			spec: {
+				kind: "bar" | "line" | "scatter" | "pie" | "grouped_bar";
+				x: string;
+				y: string;
+				group?: string;
+				data: ReadonlyArray<Record<string, unknown>>;
+			};
+	  }
+	| {
+			kind: "table";
+			rows: ReadonlyArray<Record<string, unknown>>;
+			columns: ReadonlyArray<string>;
+	  }
+	| {
+			kind: "summary";
+			text: string;
+	  };
 
 /** What a runner returns. */
 export interface RunnerResult {
-  /** OutputRef stored under `step.output_var` if present. */
-  output: OutputRef;
-  /** Render payload — only for render.* tools. */
-  payload?: ResultPayload;
+	/** OutputRef stored under `step.output_var` if present. */
+	output: OutputRef;
+	/** Render payload — only for render.* tools. */
+	payload?: ResultPayload;
 }
 
 /** Pure runtime function for a single tool id. Args are already substituted. */
 export type RuntimeRunner = (
-  args: Record<string, unknown>,
-  ctx: ExecCtx,
+	args: Record<string, unknown>,
+	ctx: ExecCtx,
 ) => Promise<RunnerResult>;
 
 /** Progress event mirrored on the host element. */
 export interface ProgressEvent {
-  planId: string;
-  stepId: string;
-  status: 'running' | 'success' | 'fail';
-  durationMs?: number;
-  error?: string;
+	planId: string;
+	stepId: string;
+	status: "running" | "success" | "fail";
+	durationMs?: number;
+	error?: string;
 }
 
 /** Result event (one per render.* step). */
 export type ResultEvent = ResultPayload & {
-  planId: string;
-  stepId: string;
+	planId: string;
+	stepId: string;
 };
 
 /**
@@ -124,43 +131,48 @@ export type ResultEvent = ResultPayload & {
  * ({@link ExecutorOptions.maxRetries}, default 2 per PLAN.md §6).
  */
 export type CriticDecision =
-  | { action: 'patch'; patchedStep: import('../types.js').Step }
-  | { action: 'retry' }
-  | { action: 'abort' };
+	| { action: "patch"; patchedStep: import("../types.js").Step }
+	| { action: "retry" }
+	| { action: "abort" };
 
 /** Argument bag passed to {@link ExecutorCallbacks.onStepError}. */
 export interface StepErrorContext {
-  planId: string;
-  step: import('../types.js').Step;
-  /** Args after `${var}` substitution — what the runner actually saw. */
-  resolvedArgs: Record<string, unknown>;
-  error: { message: string; code?: string };
-  /**
-   * Snapshot of all prior step outputs available at the time of failure.
-   * Lets a critic build its prompt without needing access to the
-   * Executor's internal Map.
-   */
-  priorOutputs: ReadonlyMap<string, import('../types.js').OutputRef>;
-  /** How many times this step has been retried/patched so far (0 on first failure). */
-  retryCount: number;
-  /** Maximum retries permitted by the executor for this step. */
-  maxRetries: number;
+	planId: string;
+	step: import("../types.js").Step;
+	/** Args after `${var}` substitution — what the runner actually saw. */
+	resolvedArgs: Record<string, unknown>;
+	error: { message: string; code?: string };
+	/**
+	 * Snapshot of all prior step outputs available at the time of failure.
+	 * Lets a critic build its prompt without needing access to the
+	 * Executor's internal Map.
+	 */
+	priorOutputs: ReadonlyMap<string, import("../types.js").OutputRef>;
+	/** How many times this step has been retried/patched so far (0 on first failure). */
+	retryCount: number;
+	/** Maximum retries permitted by the executor for this step. */
+	maxRetries: number;
 }
 
 /** Callback bag the host element supplies to {@link Executor.execute}. */
 export interface ExecutorCallbacks {
-  onProgress?: (e: ProgressEvent) => void;
-  onResult?: (e: ResultEvent) => void;
-  onError?: (e: { planId: string; stepId: string; message: string; code?: string }) => void;
-  /**
-   * Phase 6 hook: invoked when a step throws. A critic implementation may
-   * inspect prior outputs and either patch / retry / abort. Returning
-   * `undefined` (or omitting the callback) is equivalent to `'abort'`.
-   */
-  onStepError?: (ctx: StepErrorContext) => Promise<CriticDecision | undefined>;
+	onProgress?: (e: ProgressEvent) => void;
+	onResult?: (e: ResultEvent) => void;
+	onError?: (e: {
+		planId: string;
+		stepId: string;
+		message: string;
+		code?: string;
+	}) => void;
+	/**
+	 * Phase 6 hook: invoked when a step throws. A critic implementation may
+	 * inspect prior outputs and either patch / retry / abort. Returning
+	 * `undefined` (or omitting the callback) is equivalent to `'abort'`.
+	 */
+	onStepError?: (ctx: StepErrorContext) => Promise<CriticDecision | undefined>;
 }
 
 /** Convenience predicate for branching on output kind. */
 export function isLayerKind(k: ToolOutputKind): boolean {
-  return k === 'layer';
+	return k === "layer";
 }

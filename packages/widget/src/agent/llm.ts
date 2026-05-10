@@ -13,26 +13,26 @@
  */
 
 import {
-  callForcedTool,
-  ForcedToolError,
-  type ProviderId,
-} from './forced-tool/index.js';
+	ForcedToolError,
+	type ProviderId,
+	callForcedTool,
+} from "./forced-tool/index.js";
 
 export interface PlannerLLMInput {
-  /** Provider id; defaults to 'anthropic' if omitted. */
-  provider?: ProviderId;
-  apiKey: string;
-  model: string;
-  cachedSystemPrompt: string;
-  systemPrompt: string;
-  userQuestion: string;
-  toolName: string;
-  toolDescription: string;
-  toolInputSchema: Record<string, unknown>;
-  temperature?: number;
-  maxTokens?: number;
-  signal?: AbortSignal;
-  dangerouslyAllowBrowser?: boolean;
+	/** Provider id; defaults to 'anthropic' if omitted. */
+	provider?: ProviderId;
+	apiKey: string;
+	model: string;
+	cachedSystemPrompt: string;
+	systemPrompt: string;
+	userQuestion: string;
+	toolName: string;
+	toolDescription: string;
+	toolInputSchema: Record<string, unknown>;
+	temperature?: number;
+	maxTokens?: number;
+	signal?: AbortSignal;
+	dangerouslyAllowBrowser?: boolean;
 }
 
 /**
@@ -41,52 +41,54 @@ export interface PlannerLLMInput {
  * {@link ForcedToolError} directly via `agent/forced-tool/index.js`.
  */
 export class PlannerLLMError extends Error {
-  readonly code:
-    | 'AUTH'
-    | 'RATE_LIMIT'
-    | 'NETWORK'
-    | 'BAD_RESPONSE'
-    | 'NO_TOOL_USE'
-    | 'ABORTED';
-  readonly status?: number;
-  constructor(code: PlannerLLMError['code'], message: string, status?: number) {
-    super(message);
-    this.name = 'PlannerLLMError';
-    this.code = code;
-    if (status !== undefined) this.status = status;
-  }
+	readonly code:
+		| "AUTH"
+		| "RATE_LIMIT"
+		| "NETWORK"
+		| "BAD_RESPONSE"
+		| "NO_TOOL_USE"
+		| "ABORTED";
+	readonly status?: number;
+	constructor(code: PlannerLLMError["code"], message: string, status?: number) {
+		super(message);
+		this.name = "PlannerLLMError";
+		this.code = code;
+		if (status !== undefined) this.status = status;
+	}
 }
 
 export async function callPlannerLLM(
-  input: PlannerLLMInput,
+	input: PlannerLLMInput,
 ): Promise<Record<string, unknown>> {
-  const provider = input.provider ?? 'anthropic';
-  try {
-    return await callForcedTool({
-      provider,
-      apiKey: input.apiKey,
-      model: input.model,
-      cachedSystemPrompt: input.cachedSystemPrompt,
-      systemPrompt: input.systemPrompt,
-      userMessage: input.userQuestion,
-      toolName: input.toolName,
-      toolDescription: input.toolDescription,
-      toolInputSchema: input.toolInputSchema,
-      ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
-      ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
-      ...(input.signal !== undefined ? { signal: input.signal } : {}),
-      ...(input.dangerouslyAllowBrowser !== undefined
-        ? { dangerouslyAllowBrowser: input.dangerouslyAllowBrowser }
-        : {}),
-    });
-  } catch (err) {
-    // Cancellations propagate as native AbortError so the host can
-    // distinguish user-initiated abort from a real network failure.
-    if (err instanceof Error && err.name === 'AbortError') throw err;
-    if (err instanceof ForcedToolError) {
-      const code = err.code === 'ABORTED' ? 'ABORTED' : err.code;
-      throw new PlannerLLMError(code, err.message, err.status);
-    }
-    throw err;
-  }
+	const provider = input.provider ?? "anthropic";
+	try {
+		return await callForcedTool({
+			provider,
+			apiKey: input.apiKey,
+			model: input.model,
+			cachedSystemPrompt: input.cachedSystemPrompt,
+			systemPrompt: input.systemPrompt,
+			userMessage: input.userQuestion,
+			toolName: input.toolName,
+			toolDescription: input.toolDescription,
+			toolInputSchema: input.toolInputSchema,
+			...(input.temperature !== undefined
+				? { temperature: input.temperature }
+				: {}),
+			...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
+			...(input.signal !== undefined ? { signal: input.signal } : {}),
+			...(input.dangerouslyAllowBrowser !== undefined
+				? { dangerouslyAllowBrowser: input.dangerouslyAllowBrowser }
+				: {}),
+		});
+	} catch (err) {
+		// Cancellations propagate as native AbortError so the host can
+		// distinguish user-initiated abort from a real network failure.
+		if (err instanceof Error && err.name === "AbortError") throw err;
+		if (err instanceof ForcedToolError) {
+			const code = err.code === "ABORTED" ? "ABORTED" : err.code;
+			throw new PlannerLLMError(code, err.message, err.status);
+		}
+		throw err;
+	}
 }

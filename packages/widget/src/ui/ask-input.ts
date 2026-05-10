@@ -1,5 +1,5 @@
-import { LitElement, html, css, nothing } from 'lit';
-import { customElement, property, state } from 'lit/decorators.js';
+import { LitElement, css, html, nothing } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 
 /**
  * <gcb-ask-input>
@@ -19,11 +19,11 @@ import { customElement, property, state } from 'lit/decorators.js';
  * open the settings drawer.
  */
 
-export type AskInputDisabledReason = 'no-data' | 'no-key' | null;
+export type AskInputDisabledReason = "no-data" | "no-key" | null;
 
-@customElement('gcb-ask-input')
+@customElement("gcb-ask-input")
 export class GcbAskInput extends LitElement {
-  static override styles = css`
+	static override styles = css`
     :host {
       display: block;
       font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -111,63 +111,63 @@ export class GcbAskInput extends LitElement {
     .empty button:hover { background: var(--gcb-accent-soft-bg, #f5f3ff); }
   `;
 
-  /**
-   * Why the input is disabled, or null when ready to accept questions.
-   * The host computes this from its own state (datasets loaded, key set).
-   */
-  @property({ attribute: false }) disabledReason: AskInputDisabledReason = null;
+	/**
+	 * Why the input is disabled, or null when ready to accept questions.
+	 * The host computes this from its own state (datasets loaded, key set).
+	 */
+	@property({ attribute: false }) disabledReason: AskInputDisabledReason = null;
 
-  /**
-   * Optional example prompts shown as clickable chips beneath the input.
-   * Click → fills the input AND submits, so the user has zero-friction
-   * "click and watch the agent run" demo path.
-   */
-  @property({ attribute: false }) examples: ReadonlyArray<string> = [];
+	/**
+	 * Optional example prompts shown as clickable chips beneath the input.
+	 * Click → fills the input AND submits, so the user has zero-friction
+	 * "click and watch the agent run" demo path.
+	 */
+	@property({ attribute: false }) examples: ReadonlyArray<string> = [];
 
-  /** Whether a plan is currently in flight. When true, Ask is disabled. */
-  @property({ type: Boolean }) busy = false;
+	/** Whether a plan is currently in flight. When true, Ask is disabled. */
+	@property({ type: Boolean }) busy = false;
 
-  @state() private _value = '';
+	@state() private _value = "";
 
-  private _onInput = (e: Event) => {
-    this._value = (e.target as HTMLInputElement).value;
-  };
+	private _onInput = (e: Event) => {
+		this._value = (e.target as HTMLInputElement).value;
+	};
 
-  private _onKeydown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      this._submit();
-    }
-  };
+	private _onKeydown = (e: KeyboardEvent) => {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault();
+			this._submit();
+		}
+	};
 
-  private _submit() {
-    const q = this._value.trim();
-    if (!q || this.disabledReason !== null || this.busy) return;
-    this.dispatchEvent(new CustomEvent<string>('gcb:ask', { detail: q }));
-    this._value = '';
-  }
+	private _submit() {
+		const q = this._value.trim();
+		if (!q || this.disabledReason !== null || this.busy) return;
+		this.dispatchEvent(new CustomEvent<string>("gcb:ask", { detail: q }));
+		this._value = "";
+	}
 
-  private _onChip = (q: string) => {
-    if (this.disabledReason !== null || this.busy) return;
-    this.dispatchEvent(new CustomEvent<string>('gcb:ask', { detail: q }));
-  };
+	private _onChip = (q: string) => {
+		if (this.disabledReason !== null || this.busy) return;
+		this.dispatchEvent(new CustomEvent<string>("gcb:ask", { detail: q }));
+	};
 
-  private _requestSettings = () => {
-    this.dispatchEvent(new CustomEvent('gcb:request-settings'));
-  };
+	private _requestSettings = () => {
+		this.dispatchEvent(new CustomEvent("gcb:request-settings"));
+	};
 
-  override render() {
-    if (this.disabledReason === 'no-data') {
-      return html`
+	override render() {
+		if (this.disabledReason === "no-data") {
+			return html`
         <div class="wrap">
           <div class="empty" role="status">
             <span>Drop a CSV or GeoJSON file above to start.</span>
           </div>
         </div>
       `;
-    }
-    if (this.disabledReason === 'no-key') {
-      return html`
+		}
+		if (this.disabledReason === "no-key") {
+			return html`
         <div class="wrap">
           <div class="empty" role="status">
             <span>Set your Anthropic API key to start chatting.</span>
@@ -175,13 +175,13 @@ export class GcbAskInput extends LitElement {
           </div>
         </div>
       `;
-    }
-    return html`
+		}
+		return html`
       <div class="wrap">
         <div class="row">
           <input
             type="text"
-            placeholder=${this.busy ? 'Thinking…' : 'Ask a question about your data…'}
+            placeholder=${this.busy ? "Thinking…" : "Ask a question about your data…"}
             .value=${this._value}
             ?disabled=${this.busy}
             @input=${this._onInput}
@@ -195,11 +195,12 @@ export class GcbAskInput extends LitElement {
             @click=${() => this._submit()}
           >Ask</button>
         </div>
-        ${this.examples.length
-          ? html`
+        ${
+					this.examples.length
+						? html`
               <div class="examples" role="list" aria-label="Example questions">
                 ${this.examples.map(
-                  (ex) => html`
+									(ex) => html`
                     <button
                       class="chip"
                       type="button"
@@ -208,17 +209,18 @@ export class GcbAskInput extends LitElement {
                       @click=${() => this._onChip(ex)}
                     >${ex}</button>
                   `,
-                )}
+								)}
               </div>
             `
-          : nothing}
+						: nothing
+				}
       </div>
     `;
-  }
+	}
 }
 
 declare global {
-  interface HTMLElementTagNameMap {
-    'gcb-ask-input': GcbAskInput;
-  }
+	interface HTMLElementTagNameMap {
+		"gcb-ask-input": GcbAskInput;
+	}
 }

@@ -6,40 +6,44 @@
  * programmatic control.
  */
 
-export { GeoChatBotElement } from './element';
-export type { GeoChatBotEvents } from './element';
+export { GeoChatBotElement } from "./element";
+export type { GeoChatBotEvents } from "./element";
 export type {
-  ChatProvider,
-  ChatMessage,
-  GenerateInput,
-  GenerateOutput,
-  ProviderErrorCode,
-} from './providers';
+	ChatProvider,
+	ChatMessage,
+	GenerateInput,
+	GenerateOutput,
+	ProviderErrorCode,
+} from "./providers";
 export {
-  ProviderError,
-  setProvider,
-  getProvider,
-  clearProvider,
-  createEcho,
-  createGroq,
-  createAnthropic,
-  createOpenAICompat,
-  createGemini,
-} from './providers';
+	ProviderError,
+	setProvider,
+	getProvider,
+	clearProvider,
+	createEcho,
+	createGroq,
+	createAnthropic,
+	createOpenAICompat,
+	createGemini,
+} from "./providers";
 export type {
-  BinaryInput,
-  DataLoader,
-  GeometryEncoding,
-  LoaderOptions,
-  LoadResult,
-  SourceFormat,
-  DatasetProfile,
-} from './data/contracts';
-export { LoaderError } from './data/contracts';
-export type { Plan, Step, DatasetProfile as PlannerDatasetProfile } from './agent/index.js';
+	BinaryInput,
+	DataLoader,
+	GeometryEncoding,
+	LoaderOptions,
+	LoadResult,
+	SourceFormat,
+	DatasetProfile,
+} from "./data/contracts";
+export { LoaderError } from "./data/contracts";
+export type {
+	Plan,
+	Step,
+	DatasetProfile as PlannerDatasetProfile,
+} from "./agent/index.js";
 
-import { GeoChatBotElement } from './element';
-import './element';
+import { GeoChatBotElement } from "./element";
+import "./element";
 
 /**
  * Convenience for non-bundler embeds: ensure the element is defined.
@@ -48,13 +52,13 @@ import './element';
  * differs from `'geo-chatbot'`, a thin subclass is registered under the
  * new name (custom-element names cannot be re-bound after `define`).
  */
-export function defineGeoChatBot(tagName: string = 'geo-chatbot'): void {
-  if (typeof customElements === 'undefined') return;
-  if (customElements.get(tagName)) return;
-  if (tagName === 'geo-chatbot') {
-    // Side-effect import already registered the default tag; nothing to do.
-    return;
-  }
-  class AliasedGeoChatBot extends GeoChatBotElement {}
-  customElements.define(tagName, AliasedGeoChatBot);
+export function defineGeoChatBot(tagName = "geo-chatbot"): void {
+	if (typeof customElements === "undefined") return;
+	if (customElements.get(tagName)) return;
+	if (tagName === "geo-chatbot") {
+		// Side-effect import already registered the default tag; nothing to do.
+		return;
+	}
+	class AliasedGeoChatBot extends GeoChatBotElement {}
+	customElements.define(tagName, AliasedGeoChatBot);
 }

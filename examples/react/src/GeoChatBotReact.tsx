@@ -1,20 +1,20 @@
 import {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  type Ref,
-} from 'react';
+	type Ref,
+	forwardRef,
+	useEffect,
+	useImperativeHandle,
+	useRef,
+} from "react";
 // Side-effect import: registers the <geo-chatbot> custom element.
-import '@geochatbot/widget';
+import "@geochatbot/widget";
 import type {
-  GeoChatBotEvents,
-  GeoChatBotElement as WidgetElement,
-} from '@geochatbot/widget';
+	GeoChatBotEvents,
+	GeoChatBotElement as WidgetElement,
+} from "@geochatbot/widget";
 
-import './geo-chatbot.d';
+import "./geo-chatbot.d";
 
-type Theme = 'light' | 'dark';
+type Theme = "light" | "dark";
 
 export type { GeoChatBotEvents };
 
@@ -26,62 +26,67 @@ export type { GeoChatBotEvents };
 export type GeoChatBotElement = WidgetElement;
 
 export interface GeoChatBotReactProps {
-  theme?: Theme;
-  mode?: 'full' | 'headless';
-  onDatasetLoaded?: (payload: GeoChatBotEvents['dataset-loaded']) => void;
-  onPlan?: (payload: GeoChatBotEvents['plan']) => void;
-  onProgress?: (payload: GeoChatBotEvents['progress']) => void;
-  onResult?: (payload: GeoChatBotEvents['result']) => void;
-  onError?: (payload: GeoChatBotEvents['error']) => void;
-  style?: React.CSSProperties;
-  className?: string;
+	theme?: Theme;
+	mode?: "full" | "headless";
+	onDatasetLoaded?: (payload: GeoChatBotEvents["dataset-loaded"]) => void;
+	onPlan?: (payload: GeoChatBotEvents["plan"]) => void;
+	onProgress?: (payload: GeoChatBotEvents["progress"]) => void;
+	onResult?: (payload: GeoChatBotEvents["result"]) => void;
+	onError?: (payload: GeoChatBotEvents["error"]) => void;
+	style?: React.CSSProperties;
+	className?: string;
 }
 
-export const GeoChatBotReact = forwardRef<GeoChatBotElement, GeoChatBotReactProps>(
-  function GeoChatBotReact(props, ref: Ref<GeoChatBotElement>) {
-    const {
-      theme = 'light',
-      mode,
-      onDatasetLoaded,
-      onPlan,
-      onProgress,
-      onResult,
-      onError,
-      style,
-      className,
-    } = props;
-    const innerRef = useRef<GeoChatBotElement | null>(null);
+export const GeoChatBotReact = forwardRef<
+	GeoChatBotElement,
+	GeoChatBotReactProps
+>(function GeoChatBotReact(props, ref: Ref<GeoChatBotElement>) {
+	const {
+		theme = "light",
+		mode,
+		onDatasetLoaded,
+		onPlan,
+		onProgress,
+		onResult,
+		onError,
+		style,
+		className,
+	} = props;
+	const innerRef = useRef<GeoChatBotElement | null>(null);
 
-    useImperativeHandle<GeoChatBotElement | null, GeoChatBotElement | null>(
-      ref,
-      () => innerRef.current,
-      [],
-    );
+	useImperativeHandle<GeoChatBotElement | null, GeoChatBotElement | null>(
+		ref,
+		() => innerRef.current,
+		[],
+	);
 
-    useEffect(() => {
-      const el = innerRef.current;
-      if (!el || typeof el.on !== 'function') return;
-      if (mode) el.setMode(mode);
-      const unsubs: Array<() => void> = [];
-      if (onDatasetLoaded) unsubs.push(el.on('dataset-loaded', onDatasetLoaded));
-      if (onPlan) unsubs.push(el.on('plan', onPlan));
-      if (onProgress) unsubs.push(el.on('progress', onProgress));
-      if (onResult) unsubs.push(el.on('result', onResult));
-      if (onError) unsubs.push(el.on('error', onError));
-      return () => {
-        for (const u of unsubs) {
-          try { u(); } catch { /* ignore */ }
-        }
-      };
-    }, [mode, onDatasetLoaded, onPlan, onProgress, onResult, onError]);
+	useEffect(() => {
+		const el = innerRef.current;
+		if (!el || typeof el.on !== "function") return;
+		if (mode) el.setMode(mode);
+		const unsubs: Array<() => void> = [];
+		if (onDatasetLoaded) unsubs.push(el.on("dataset-loaded", onDatasetLoaded));
+		if (onPlan) unsubs.push(el.on("plan", onPlan));
+		if (onProgress) unsubs.push(el.on("progress", onProgress));
+		if (onResult) unsubs.push(el.on("result", onResult));
+		if (onError) unsubs.push(el.on("error", onError));
+		return () => {
+			for (const u of unsubs) {
+				try {
+					u();
+				} catch {
+					/* ignore */
+				}
+			}
+		};
+	}, [mode, onDatasetLoaded, onPlan, onProgress, onResult, onError]);
 
-    return (
-      <geo-chatbot
-        ref={innerRef as unknown as Ref<HTMLElement>}
-        theme={theme}
-        style={style}
-        className={className}
-      />
-    );
-  },
-);
+	return (
+		<geo-chatbot
+			ref={innerRef as unknown as Ref<HTMLElement>}
+			theme={theme}
+			style={style}
+			className={className}
+		/>
+	);
+});

@@ -6,28 +6,24 @@
  *   joins.nearest_neighbor  — k nearest features in b for each row in a
  */
 
-import { z } from 'zod';
-import { registerRunner } from '../runtime.js';
-import {
-  materializeView,
-  quoteIdent,
-  resolveLayer,
-} from '../sql-helpers.js';
-import type { ExecCtx, RunnerResult } from '../types.js';
+import { z } from "zod";
+import { registerRunner } from "../runtime.js";
+import { materializeView, quoteIdent, resolveLayer } from "../sql-helpers.js";
+import type { ExecCtx, RunnerResult } from "../types.js";
 
-const Predicate = z.enum(['within', 'intersects', 'contains', 'touches']);
+const Predicate = z.enum(["within", "intersects", "contains", "touches"]);
 
 function predicateSql(p: z.infer<typeof Predicate>): string {
-  switch (p) {
-    case 'within':
-      return 'ST_Within(a.geom, b.geom)';
-    case 'intersects':
-      return 'ST_Intersects(a.geom, b.geom)';
-    case 'contains':
-      return 'ST_Contains(a.geom, b.geom)';
-    case 'touches':
-      return 'ST_Touches(a.geom, b.geom)';
-  }
+	switch (p) {
+		case "within":
+			return "ST_Within(a.geom, b.geom)";
+		case "intersects":
+			return "ST_Intersects(a.geom, b.geom)";
+		case "contains":
+			return "ST_Contains(a.geom, b.geom)";
+		case "touches":
+			return "ST_Touches(a.geom, b.geom)";
+	}
 }
 
 /* -------------------------------------------------------------------------- */
@@ -35,26 +31,26 @@ function predicateSql(p: z.infer<typeof Predicate>): string {
 /* -------------------------------------------------------------------------- */
 
 const SpatialJoinArgs = z.object({
-  a: z.unknown(),
-  b: z.unknown(),
-  predicate: Predicate,
+	a: z.unknown(),
+	b: z.unknown(),
+	predicate: Predicate,
 });
 
 export async function runSpatialJoin(
-  args: Record<string, unknown>,
-  ctx: ExecCtx,
+	args: Record<string, unknown>,
+	ctx: ExecCtx,
 ): Promise<RunnerResult> {
-  const { a, b, predicate } = SpatialJoinArgs.parse(args);
-  const va = resolveLayer(a, ctx);
-  const vb = resolveLayer(b, ctx);
-  const sql = `SELECT a.* EXCLUDE (geom), b.* EXCLUDE (geom), a.geom AS geom
+	const { a, b, predicate } = SpatialJoinArgs.parse(args);
+	const va = resolveLayer(a, ctx);
+	const vb = resolveLayer(b, ctx);
+	const sql = `SELECT a.* EXCLUDE (geom), b.* EXCLUDE (geom), a.geom AS geom
     FROM ${quoteIdent(va)} a
     JOIN ${quoteIdent(vb)} b ON ${predicateSql(predicate)}`;
-  const out = await materializeView(ctx, 'sjoin', sql);
-  return { output: { kind: 'layer', ref: out } };
+	const out = await materializeView(ctx, "sjoin", sql);
+	return { output: { kind: "layer", ref: out } };
 }
 
-registerRunner('joins.spatial_join', runSpatialJoin);
+registerRunner("joins.spatial_join", runSpatialJoin);
 
 /* -------------------------------------------------------------------------- */
 /* joins.point_in_polygon                                                     */
@@ -63,34 +59,34 @@ registerRunner('joins.spatial_join', runSpatialJoin);
 const PipArgs = z.object({ points: z.unknown(), polygons: z.unknown() });
 
 export async function runPointInPolygon(
-  args: Record<string, unknown>,
-  ctx: ExecCtx,
+	args: Record<string, unknown>,
+	ctx: ExecCtx,
 ): Promise<RunnerResult> {
-  const { points, polygons } = PipArgs.parse(args);
-  return runSpatialJoin({ a: points, b: polygons, predicate: 'within' }, ctx);
+	const { points, polygons } = PipArgs.parse(args);
+	return runSpatialJoin({ a: points, b: polygons, predicate: "within" }, ctx);
 }
 
-registerRunner('joins.point_in_polygon', runPointInPolygon);
+registerRunner("joins.point_in_polygon", runPointInPolygon);
 
 /* -------------------------------------------------------------------------- */
 /* joins.nearest_neighbor                                                     */
 /* -------------------------------------------------------------------------- */
 
 const NearestArgs = z.object({
-  a: z.unknown(),
-  b: z.unknown(),
-  k: z.number().int().positive(),
+	a: z.unknown(),
+	b: z.unknown(),
+	k: z.number().int().positive(),
 });
 
 export async function runNearestNeighbor(
-  args: Record<string, unknown>,
-  ctx: ExecCtx,
+	args: Record<string, unknown>,
+	ctx: ExecCtx,
 ): Promise<RunnerResult> {
-  const { a, b, k } = NearestArgs.parse(args);
-  const va = resolveLayer(a, ctx);
-  const vb = resolveLayer(b, ctx);
-  // rowid is unavailable on DuckDB views; materialise surrogate ids first.
-  const sql = `WITH
+	const { a, b, k } = NearestArgs.parse(args);
+	const va = resolveLayer(a, ctx);
+	const vb = resolveLayer(b, ctx);
+	// rowid is unavailable on DuckDB views; materialise surrogate ids first.
+	const sql = `WITH
       _a AS (SELECT ROW_NUMBER() OVER () AS _gcb_rid, * FROM ${quoteIdent(va)}),
       _b AS (SELECT ROW_NUMBER() OVER () AS _gcb_rid, * FROM ${quoteIdent(vb)}),
       pairs AS (
@@ -104,8 +100,8 @@ export async function runNearestNeighbor(
         FROM _a a CROSS JOIN _b b
       )
     SELECT a_id, b_id, distance FROM pairs WHERE rn <= ${k}`;
-  const out = await materializeView(ctx, 'nearest', sql);
-  return { output: { kind: 'table', ref: out } };
+	const out = await materializeView(ctx, "nearest", sql);
+	return { output: { kind: "table", ref: out } };
 }
 
-registerRunner('joins.nearest_neighbor', runNearestNeighbor);
+registerRunner("joins.nearest_neighbor", runNearestNeighbor);
