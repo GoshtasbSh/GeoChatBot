@@ -4,80 +4,78 @@ import { describe, expect, it } from 'vitest';
 import '../../src/ui/result-canvas.js';
 import type { ResultPayload } from '../../src/agent/executor/types.js';
 
+interface Turn {
+  id: string;
+  question: string;
+  results: ResultPayload[];
+}
+
+interface CanvasEl extends HTMLElement {
+  updateComplete: Promise<unknown>;
+  setResult(p: ResultPayload | unknown): void;
+  beginTurn(q: string): void;
+  setOrigin(o: { planId: string; stepId: string; question: string }): void;
+  clear(): void;
+  _turns: Turn[];
+}
+
+function mount(): CanvasEl {
+  const el = document.createElement('result-canvas') as unknown as CanvasEl;
+  document.body.appendChild(el);
+  return el;
+}
+
 describe('<result-canvas>', () => {
-  it('starts empty (no panels rendered)', async () => {
-    const el = document.createElement('result-canvas') as unknown as HTMLElement & {
-      updateComplete: Promise<unknown>;
-    };
-    document.body.appendChild(el);
+  it('starts empty (no turns rendered)', async () => {
+    const el = mount();
     await el.updateComplete;
-    expect(el.shadowRoot?.querySelectorAll('.panel').length ?? 0).toBe(0);
+    expect(el._turns.length).toBe(0);
+    // Empty state shown
+    expect(el.shadowRoot?.querySelector('.empty')).toBeTruthy();
   });
 
-  it('keeps the last payload of each kind independently', async () => {
-    const el = document.createElement('result-canvas') as unknown as HTMLElement & {
-      updateComplete: Promise<unknown>;
-      setResult(p: ResultPayload): void;
-      _summary: ResultPayload | null;
-      _table: ResultPayload | null;
-    };
-    document.body.appendChild(el);
+  it('appends results to a single turn (auto-creates turn for legacy callers)', async () => {
+    const el = mount();
     el.setResult({ kind: 'summary', text: 'hello' });
-    el.setResult({
-      kind: 'table',
-      rows: [{ a: 1 }],
-      columns: ['a'],
-    });
+    el.setResult({ kind: 'table', rows: [{ a: 1 }], columns: ['a'] });
     await el.updateComplete;
-    expect(el._summary).toMatchObject({ kind: 'summary', text: 'hello' });
-    expect(el._table).toMatchObject({ kind: 'table' });
+    expect(el._turns.length).toBe(1);
+    expect(el._turns[0]!.results.length).toBe(2);
+    expect(el._turns[0]!.results[0]!).toMatchObject({ kind: 'summary', text: 'hello' });
+    expect(el._turns[0]!.results[1]!).toMatchObject({ kind: 'table' });
   });
 
-  it('clear() drops all kinds', async () => {
-    const el = document.createElement('result-canvas') as unknown as HTMLElement & {
-      updateComplete: Promise<unknown>;
-      setResult(p: ResultPayload): void;
-      clear(): void;
-      _summary: ResultPayload | null;
-    };
-    document.body.appendChild(el);
+  it('beginTurn creates a new user turn with question', async () => {
+    const el = mount();
+    el.beginTurn('How many rows?');
+    el.setResult({ kind: 'summary', text: '5 rows' });
+    await el.updateComplete;
+    expect(el._turns.length).toBe(1);
+    expect(el._turns[0]!.question).toBe('How many rows?');
+    expect(el._turns[0]!.results[0]!).toMatchObject({ kind: 'summary' });
+  });
+
+  it('clear() drops all turns', async () => {
+    const el = mount();
     el.setResult({ kind: 'summary', text: 'hi' });
     el.clear();
     await el.updateComplete;
-    expect(el._summary).toBeNull();
+    expect(el._turns.length).toBe(0);
   });
 
   it('does not crash on a malformed chart payload missing spec.data', async () => {
-    // Defensive regression: a critic-patched step or host-injected event
-    // could deliver a chart payload without `data`. The renderer must
-    // coerce to safe defaults rather than throw inside Lit's render cycle.
-    // Pre-fix, `this._chart.spec.data.length` threw; the entire shadow
-    // root render aborted. Post-fix, render completes cleanly. Asserting
-    // that updateComplete resolves and the payload is stored proves no
-    // exception escaped Lit's render loop.
-    const el = document.createElement('result-canvas') as unknown as HTMLElement & {
-      updateComplete: Promise<unknown>;
-      setResult(p: unknown): void;
-      _chart: unknown;
-    };
-    document.body.appendChild(el);
-    // Bypass the typed setResult signature to simulate malformed input.
+    const el = mount();
     el.setResult({ kind: 'chart', spec: { kind: 'bar' } });
     await expect(el.updateComplete).resolves.toBeDefined();
-    expect(el._chart).toMatchObject({ kind: 'chart' });
+    expect(el._turns[0]!.results[0]!).toMatchObject({ kind: 'chart' });
     expect(el.shadowRoot).toBeTruthy();
   });
 
   it('does not crash on a malformed layer payload missing geojson.features', async () => {
-    const el = document.createElement('result-canvas') as unknown as HTMLElement & {
-      updateComplete: Promise<unknown>;
-      setResult(p: unknown): void;
-      _layer: unknown;
-    };
-    document.body.appendChild(el);
+    const el = mount();
     el.setResult({ kind: 'layer', geojson: { type: 'FeatureCollection' } });
     await expect(el.updateComplete).resolves.toBeDefined();
-    expect(el._layer).toMatchObject({ kind: 'layer' });
+    expect(el._turns[0]!.results[0]!).toMatchObject({ kind: 'layer' });
     expect(el.shadowRoot).toBeTruthy();
   });
 });

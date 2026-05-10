@@ -518,3 +518,105 @@ describe('runner: render.table fallback (M6)', () => {
     expect(errs[0]!.message).toBe('engine offline');
   });
 });
+
+describe('runner: render.map fallback (no geom + no lat/lon)', () => {
+  it('returns a summary payload pointing at address columns when present', async () => {
+    let call = 0;
+    const engine2: ExecutorEngine = {
+      hasSpatial: true,
+      async query(sql: string) {
+        call++;
+        if (/EXCLUDE \(geom\)/.test(sql)) {
+          throw new Error('Binder Error: Column "geom" in EXCLUDE list not found in FROM clause');
+        }
+        if (/pragma_table_info/i.test(sql)) {
+          return tableFromJSON([
+            { name: 'Address' },
+            { name: 'First attempt' },
+          ]);
+        }
+        return tableFromJSON([{ ok: 1 }]);
+      },
+    };
+    const exec = new Executor({ engine: engine2, datasets: [sales] });
+    let payload: any;
+    await exec.execute(
+      {
+        goal: 'g',
+        assumptions: [],
+        dataset_refs: ['sales'],
+        steps: [
+          { id: 's1', tool: 'render.map', args: { layer: 'sales' }, why: 'final' },
+        ],
+      },
+      'pid',
+      { onResult: (e) => (payload = e) },
+    );
+    expect(payload.kind).toBe('summary');
+    expect(payload.text).toMatch(/address-like columns/);
+    expect(payload.text).toMatch(/"Address"/);
+    expect(call).toBeGreaterThanOrEqual(2); // first try (EXCLUDE), then pragma_table_info
+  });
+
+  it('returns a non-mappable summary when no address columns either', async () => {
+    const engine3: ExecutorEngine = {
+      hasSpatial: true,
+      async query(sql: string) {
+        if (/EXCLUDE \(geom\)/.test(sql)) {
+          throw new Error('Binder Error: Column "geom" in EXCLUDE list not found in FROM clause');
+        }
+        if (/pragma_table_info/i.test(sql)) {
+          return tableFromJSON([{ name: 'price' }, { name: 'rating' }]);
+        }
+        return tableFromJSON([{ ok: 1 }]);
+      },
+    };
+    const exec = new Executor({ engine: engine3, datasets: [sales] });
+    let payload: any;
+    await exec.execute(
+      {
+        goal: 'g',
+        assumptions: [],
+        dataset_refs: ['sales'],
+        steps: [
+          { id: 's1', tool: 'render.map', args: { layer: 'sales' }, why: 'final' },
+        ],
+      },
+      'pid',
+      { onResult: (e) => (payload = e) },
+    );
+    expect(payload.kind).toBe('summary');
+    expect(payload.text).toMatch(/no geometry column, no lat\/lon columns, and no address-like columns/);
+    expect(payload.text).toMatch(/"price"/);
+  });
+
+  it('drops null-geometry rows from the FeatureCollection', async () => {
+    const engine4: ExecutorEngine = {
+      hasSpatial: true,
+      async query() {
+        return tableFromJSON([
+          { __geom_json__: '{"type":"Point","coordinates":[-82,29]}', name: 'A' },
+          { __geom_json__: null, name: 'B' },
+          { __geom_json__: '{"type":"Point","coordinates":[-82.5,29.5]}', name: 'C' },
+        ]);
+      },
+    };
+    const exec = new Executor({ engine: engine4, datasets: [sales] });
+    let payload: any;
+    await exec.execute(
+      {
+        goal: 'g',
+        assumptions: [],
+        dataset_refs: ['sales'],
+        steps: [
+          { id: 's1', tool: 'render.map', args: { layer: 'sales' }, why: 'final' },
+        ],
+      },
+      'pid',
+      { onResult: (e) => (payload = e) },
+    );
+    expect(payload.kind).toBe('layer');
+    expect(payload.geojson.features).toHaveLength(2);
+    expect(payload.geojson.features.map((f: any) => f.properties.name)).toEqual(['A', 'C']);
+  });
+});

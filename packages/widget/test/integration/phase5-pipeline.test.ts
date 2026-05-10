@@ -251,16 +251,16 @@ describe('Phase 5 — 4-step plan end-to-end', () => {
     el.approvePlan();
     await el.__lastExecution;
 
+    interface Turn { results: Array<{ kind: string; text?: string }> }
     const canvas = el.shadowRoot?.querySelector('result-canvas') as
-      | (HTMLElement & {
-          updateComplete: Promise<unknown>;
-          _summary: { kind: string; text: string } | null;
-        })
+      | (HTMLElement & { updateComplete: Promise<unknown>; _turns: Turn[] })
       | null;
     expect(canvas).not.toBeNull();
     await canvas!.updateComplete;
     // Internal state captured via setResult(); proves the executor →
     // element → canvas wiring without depending on happy-dom shadow text.
-    expect(canvas!._summary).toMatchObject({ kind: 'summary', text: expect.stringContaining('3 points') });
+    const allResults = canvas!._turns.flatMap((t) => t.results);
+    const summary = allResults.find((r) => r.kind === 'summary');
+    expect(summary).toMatchObject({ kind: 'summary', text: expect.stringContaining('3 points') });
   });
 });

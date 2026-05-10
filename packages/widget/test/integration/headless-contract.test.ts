@@ -41,7 +41,11 @@ describe('headless mode', () => {
     el.pushData({ name: 's', kind: 'table', rows: 1, columns: [], sample: [] });
     await el.ask('q');
     el.rejectPlan({ feedback: 'do it differently' });
-    await new Promise((r) => setTimeout(r, 0));
+    // The planner's RAG retrieval pass adds an extra await tick before
+    // the second LLM call lands. Drain microtasks until the spy fires.
+    for (let i = 0; i < 100 && llm.mock.calls.length < 2; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
     expect(llm).toHaveBeenCalledTimes(2);
     expect(llm.mock.calls[1][0].userQuestion).toMatch(/do it differently/);
   });

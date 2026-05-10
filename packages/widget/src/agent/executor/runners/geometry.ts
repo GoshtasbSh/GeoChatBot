@@ -23,6 +23,28 @@ import {
 import type { ExecCtx, RunnerResult } from '../types.js';
 
 /* -------------------------------------------------------------------------- */
+/* geometry.reproject (passthrough — proj4js not yet bundled)                 */
+/* -------------------------------------------------------------------------- */
+
+const ReprojectArgs = z.object({ layer: z.unknown(), to_crs: z.string() });
+
+export async function runReproject(
+  args: Record<string, unknown>,
+  ctx: ExecCtx,
+): Promise<RunnerResult> {
+  const { layer } = ReprojectArgs.parse(args);
+  const view = resolveLayer(layer, ctx);
+  // proj4js (~50 KB) is deferred to Phase 5 expansion. Return the layer
+  // unchanged so downstream distance/buffer steps still run. Results will be
+  // in the original CRS units (degrees for EPSG:4326 data).
+  // eslint-disable-next-line no-console
+  console.warn('[geochatbot] geometry.reproject not yet implemented — returning layer unchanged');
+  return { output: { kind: 'layer', ref: view } };
+}
+
+registerRunner('geometry.reproject', runReproject);
+
+/* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 

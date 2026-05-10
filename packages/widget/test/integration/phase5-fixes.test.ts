@@ -184,11 +184,14 @@ describe('H1 — <result-canvas> is cleared between consecutive runs', () => {
     el.approvePlan();
     await el.__lastExecution;
 
+    interface Turn { results: Array<{ kind: string }> }
     const canvas1 = el.shadowRoot?.querySelector('result-canvas') as
-      | (HTMLElement & { _summary: unknown; _table: unknown; _chart: unknown; _layer: unknown })
+      | (HTMLElement & { _turns: Turn[] })
       | null;
     expect(canvas1).not.toBeNull();
-    expect(canvas1!._summary).not.toBeNull();
+    // Run 1 produced a summary somewhere in the turn history.
+    const r1 = canvas1!._turns.flatMap((t) => t.results);
+    expect(r1.some((p) => p.kind === 'summary')).toBe(true);
 
     // Run 2 — emits a table; H1 says we must NOT see run 1's summary mounted.
     const spy2 = new SpyEngine();
@@ -200,10 +203,12 @@ describe('H1 — <result-canvas> is cleared between consecutive runs', () => {
     await el.__lastExecution;
 
     const canvas2 = el.shadowRoot?.querySelector('result-canvas') as
-      | (HTMLElement & { _summary: unknown; _table: unknown; _chart: unknown; _layer: unknown })
+      | (HTMLElement & { _turns: Turn[] })
       | null;
-    expect(canvas2!._summary).toBeNull(); // cleared at the start of run 2
-    expect(canvas2!._table).not.toBeNull();
+    const r2 = canvas2!._turns.flatMap((t) => t.results);
+    // Cleared at the start of run 2: the summary from run 1 must be gone.
+    expect(r2.some((p) => p.kind === 'summary')).toBe(false);
+    expect(r2.some((p) => p.kind === 'table')).toBe(true);
   });
 });
 

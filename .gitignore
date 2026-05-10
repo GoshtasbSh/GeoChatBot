@@ -12,4 +12,6 @@ coverage/
 graphify-out/
 PLAN.md
 docs/superpowers/plans/
+.playwright-mcp/
+e2e/test-results/
 

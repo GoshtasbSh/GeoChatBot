@@ -6,6 +6,7 @@ interface ShellEl extends HTMLElement {
   activeTab: 'map' | 'results' | 'detail';
   datasetCount: number;
   savedCount: number;
+  setTab(id: 'map' | 'results' | 'detail'): void;
   updateComplete: Promise<unknown>;
 }
 
@@ -19,49 +20,32 @@ function mount(props: Partial<ShellEl> = {}): ShellEl {
 }
 
 describe('<gcb-shell>', () => {
-  it('renders the four named slots', async () => {
+  it('renders the five named slots (3-pane combined design)', async () => {
     const el = mount();
     await el.updateComplete;
     const slotNames = Array.from(el.shadowRoot!.querySelectorAll('slot'))
       .map((s) => s.getAttribute('name'));
-    expect(slotNames).toEqual(expect.arrayContaining(['topbar', 'rail', 'main', 'dock']));
+    expect(slotNames).toEqual(
+      expect.arrayContaining(['topbar', 'iconRail', 'rail', 'main', 'dock']),
+    );
   });
 
-  it('renders three tab buttons (Map, Results, Detail)', async () => {
+  it('exposes activeTab and updates it via setTab()', async () => {
     const el = mount();
     await el.updateComplete;
-    const tabs = Array.from(el.shadowRoot!.querySelectorAll('[role="tab"]'));
-    expect(tabs.length).toBe(3);
-    expect(tabs[0]!.textContent).toMatch(/Map/);
-    expect(tabs[1]!.textContent).toMatch(/Results/);
-    expect(tabs[2]!.textContent).toMatch(/Detail/);
-  });
-
-  it('tab badges reflect datasetCount + savedCount', async () => {
-    const el = mount({ datasetCount: 842, savedCount: 3 });
+    expect(el.activeTab).toBe('map');
+    el.setTab('detail');
     await el.updateComplete;
-    const text = el.shadowRoot!.textContent ?? '';
-    expect(text).toMatch(/842/);
-    expect(text).toMatch(/3/);
+    expect(el.activeTab).toBe('detail');
   });
 
-  it('clicking a tab emits gcb:tab with the new id', async () => {
+  it('setTab() emits gcb:tab with the new id (backwards-compat)', async () => {
     const el = mount();
     await el.updateComplete;
     const spy = vi.fn();
     el.addEventListener('gcb:tab', spy);
-    const resultsTab = el.shadowRoot!.querySelectorAll('[role="tab"]')[1] as HTMLElement;
-    resultsTab.click();
+    el.setTab('results');
     expect(spy).toHaveBeenCalledTimes(1);
     expect((spy.mock.calls[0][0] as CustomEvent<string>).detail).toBe('results');
-  });
-
-  it('activeTab prop drives aria-selected', async () => {
-    const el = mount({ activeTab: 'detail' });
-    await el.updateComplete;
-    const tabs = Array.from(el.shadowRoot!.querySelectorAll('[role="tab"]'));
-    const selected = tabs.filter((t) => t.getAttribute('aria-selected') === 'true');
-    expect(selected.length).toBe(1);
-    expect(selected[0]!.textContent).toMatch(/Detail/);
   });
 });

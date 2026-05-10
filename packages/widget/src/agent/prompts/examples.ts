@@ -293,6 +293,38 @@ export const EXAMPLES: Example[] = [
       ],
     },
   },
+  // 21 — Geocode multi-column US addresses then map them
+  {
+    question: 'Show me the Florida community survey responses on a map.',
+    plan: {
+      goal: 'Map the survey responses by geocoding their street + city + state columns',
+      assumptions: [
+        'survey has street/city/state columns and no geometry',
+        'all rows are in Florida → bias geocoder to country_code=us for accurate matches',
+      ],
+      dataset_refs: ['survey'],
+      steps: [
+        { id: 's1', tool: 'geocode.address', args: { layer: 'survey', address_cols: ['street', 'city', 'state'], country_code: 'us' }, output_var: 'survey_geo', why: 'Concatenate street + city + state and geocode with US bias so every address resolves to the right state' },
+        { id: 's2', tool: 'render.map', args: { layer: '${survey_geo}' }, why: 'Plot the geocoded survey points on the map' },
+      ],
+    },
+  },
+  // 22 — Single-column address with explicit city/state from the question
+  {
+    question: 'Show this Cedar Key, FL community survey on a map.',
+    plan: {
+      goal: 'Map the survey responses given only a single Address column and a known city/state',
+      assumptions: [
+        'survey has only one address-like column ("Address") and no geometry',
+        'user specified Cedar Key, FL → use region_hint to scope every address before geocoding',
+      ],
+      dataset_refs: ['survey'],
+      steps: [
+        { id: 's1', tool: 'geocode.address', args: { layer: 'survey', address_cols: ['Address'], country_code: 'us', region_hint: 'Cedar Key, FL, USA' }, output_var: 'survey_geo', why: 'Append "Cedar Key, FL, USA" to every street so Nominatim disambiguates the right Harvard Avenue' },
+        { id: 's2', tool: 'render.map', args: { layer: '${survey_geo}' }, why: 'Plot the geocoded survey points on the map' },
+      ],
+    },
+  },
 ];
 
 export function renderExamplesBlock(): string {

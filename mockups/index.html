@@ -242,14 +242,101 @@
     </div>
   </div>
 
+  <!-- COMBINED -->
+  <div style="margin-top:48px; border-top:1px solid var(--line); padding-top:40px;">
+    <span class="kicker" style="background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2);color:#10b981;">Round 3 · Combined design — your pick</span>
+    <h2 style="font-family:var(--font-display);font-size:clamp(24px,3vw,36px);font-weight:500;letter-spacing:-0.015em;margin:12px 0 8px;">G (light) + H (dark) merged into one</h2>
+    <p class="lede" style="margin-bottom:0;">One design system, two palettes. Toggle the ☀/🌙 button in the topbar. Light = G's warm paper + emerald. Dark = H's navy-slate + amber. Same 3-pane layout (icon rail + Contents panel + chat), G's "Add data" footer button, H's icon rail active states.</p>
+    <div class="grid" style="margin-top:20px; grid-template-columns:1fr;">
+      <div class="card">
+        <div class="rail" style="background:linear-gradient(90deg,#f7f5ef 50%,#1a2033 50%);height:6px;"></div>
+        <div class="preview" style="aspect-ratio:16/9;"><iframe src="I-combined.html" title="I — Combined"></iframe></div>
+        <div class="meta">
+          <div class="row">
+            <div class="name">I · <em>Combined</em> (Light G + Dark H)</div>
+            <div class="tag">Meridian × GIS Pro · dual theme</div>
+          </div>
+          <div class="desc">Click the sun/moon icon in the topbar to switch themes live. Light uses warm paper + emerald; dark uses navy-slate + amber. Same layout in both modes.</div>
+          <div class="features">
+            <span class="chip">light + dark</span><span class="chip">emerald / amber</span><span class="chip">3-pane + icon rail</span><span class="chip">Add data footer btn</span><span class="chip">inline result cards</span><span class="chip">☆ save per card</span>
+          </div>
+          <div class="actions">
+            <a class="btn btn-primary" href="I-combined.html" target="_blank">Open full screen ↗</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:48px; border-top:1px solid var(--line); padding-top:40px;">
+    <span class="kicker" style="background:rgba(132,204,22,.08);border-color:rgba(132,204,22,.2);color:#84cc16;">Round 2 · Chat-focused options</span>
+    <h2 style="font-family:var(--font-display);font-size:clamp(24px,3vw,36px);font-weight:500;letter-spacing:-0.015em;margin:12px 0 8px;">Chat-first redesigns with ArcGIS-style layer panel</h2>
+    <p class="lede" style="margin-bottom:0;">Same conversation history as other chatbots, upload button near the input, left panel for layers (new layers auto-appear). Three layout variants — pick the one that feels right.</p>
+  </div>
+
+  <div class="grid" style="margin-top:24px;">
+    <!-- F -->
+    <div class="card">
+      <div class="rail" style="background:linear-gradient(135deg,#0d1117,#84cc16 60%,#a3e635);height:6px;"></div>
+      <div class="preview"><iframe src="F-chat-dark.html" title="F — Atlas Dark chat"></iframe></div>
+      <div class="meta">
+        <div class="row">
+          <div class="name">F · Atlas <em>Dark</em></div>
+          <div class="tag">ChatGPT × ArcGIS dark</div>
+        </div>
+        <div class="desc">Full-height chat like ChatGPT dark mode. Lime accent on near-black navy. Left panel shows layers + saved results. Results appear inline as cards.</div>
+        <div class="features">
+          <span class="chip">dark</span><span class="chip">lime accent</span><span class="chip">chat-first</span><span class="chip">layer panel</span><span class="chip">inline results</span>
+        </div>
+        <div class="actions">
+          <a class="btn btn-primary" href="F-chat-dark.html" target="_blank">Open full screen ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- G -->
+    <div class="card">
+      <div class="rail" style="background:linear-gradient(135deg,#f7f5ef,#f7f5ef 50%,#059669 50%);height:6px;"></div>
+      <div class="preview"><iframe src="G-chat-light.html" title="G — Meridian light chat"></iframe></div>
+      <div class="meta">
+        <div class="row">
+          <div class="name">G · Meridian <em>Light</em></div>
+          <div class="tag">Claude.ai × ArcGIS light</div>
+        </div>
+        <div class="desc">Warm paper background like Claude. Emerald accent. Collapsible left panel. Big "Add data" button pinned to the panel footer. Spacious and calm.</div>
+        <div class="features">
+          <span class="chip">light</span><span class="chip">emerald accent</span><span class="chip">collapsible panel</span><span class="chip">warm paper</span><span class="chip">spacious</span>
+        </div>
+        <div class="actions">
+          <a class="btn btn-primary" href="G-chat-light.html" target="_blank">Open full screen ↗</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- H -->
+    <div class="card">
+      <div class="rail" style="background:linear-gradient(135deg,#1a2033,#f59e0b 70%,#fbbf24);height:6px;"></div>
+      <div class="preview"><iframe src="H-gis-pro.html" title="H — GIS Pro three-pane"></iframe></div>
+      <div class="meta">
+        <div class="row">
+          <div class="name">H · GIS <em>Pro</em></div>
+          <div class="tag">ArcGIS Pro × Felt</div>
+        </div>
+        <div class="desc">Three-pane: narrow icon rail + layer panel + chat workspace. Amber accent on deep navy-slate. Most similar to ArcGIS Pro. Upload lives in the chat column.</div>
+        <div class="features">
+          <span class="chip">dark slate</span><span class="chip">amber accent</span><span class="chip">3-pane layout</span><span class="chip">icon rail</span><span class="chip">GIS-pro feel</span>
+        </div>
+        <div class="actions">
+          <a class="btn btn-primary" href="H-gis-pro.html" target="_blank">Open full screen ↗</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <p>
-      Each preview is a static HTML file with no build step — they show
-      the same fake state (2 datasets, 3–4 saved results, FL Gulf-coast
-      ports). After picking, the chosen direction will replace the
-      current widget UI in <code>packages/widget/src/element.ts</code>
-      and a new top-level dashboard route will be added so the app
-      runs standalone or embeds via iframe.
+      Each preview is a static HTML file with no build step. After picking, the chosen direction will be wired into
+      <code>packages/widget/src/element.ts</code> and companion components.
     </p>
   </footer>
 </div>

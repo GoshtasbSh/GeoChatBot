@@ -13,7 +13,21 @@ export interface DatasetProfile {
     crs?: string;
     bbox?: [number, number, number, number];
   };
-  columns: Array<{ name: string; type: string; range?: [number | string, number | string]; nulls?: number; cardinality?: number }>;
+  columns: Array<{
+    name: string;
+    type: string;
+    range?: [number | string, number | string];
+    nulls?: number;
+    cardinality?: number;
+    /**
+     * Up to 3 representative example values, already truncated to 80 chars
+     * each. Drawn from the dataset profile's top-frequency strings or the
+     * numeric range — never raw arbitrary rows. Helps the planner identify
+     * column semantics (e.g., distinguishing an "Address" column from a
+     * "Notes" column) without exposing arbitrary user data.
+     */
+    samples?: unknown[];
+  }>;
   sample: unknown[];
 }
 
@@ -35,7 +49,12 @@ export function renderDatasetsBlock(datasets: DatasetProfile[]): string {
       const range = c.range ? ` (range: ${c.range[0]}-${c.range[1]})` : '';
       const nulls = c.nulls !== undefined ? ` nulls: ${c.nulls}` : '';
       const card = c.cardinality !== undefined ? ` cardinality: ${c.cardinality}` : '';
-      lines.push(`  - ${c.name}: ${c.type}${range}${nulls}${card}`.trimEnd());
+      // Render up to 3 examples per column. Already inside the
+      // UNTRUSTED_DATASET_PROFILE fence in planner.ts, so the model treats
+      // these as opaque data — we still JSON.stringify and cap each value
+      // to keep prompt-injection attempts bounded and the prompt small.
+      const samples = renderColumnSamples(c.samples);
+      lines.push(`  - ${c.name}: ${c.type}${range}${nulls}${card}${samples}`.trimEnd());
     }
     if (d.sample.length) {
       lines.push(`- sample rows (${Math.min(d.sample.length, SAMPLE_CAP)}): ${JSON.stringify(d.sample.slice(0, SAMPLE_CAP))}`);
@@ -55,8 +74,12 @@ export function renderToolsBlock(): string {
     arr.push(t);
     groups.set(key, arr);
   }
-  const order = ['geometry.*', 'joins.*', 'stats.*', 'render.*', 'sql'];
-  const ordered = order.filter((k) => groups.has(k));
+  const order = ['geocode.*', 'geometry.*', 'joins.*', 'stats.*', 'render.*', 'sql'];
+  // Surface any namespace we forgot to enumerate — without this an
+  // unlisted tool stays registered but invisible to the LLM, which is
+  // how `geocode.*` was silently dropped from the catalog before.
+  const remaining = [...groups.keys()].filter((k) => !order.includes(k)).sort();
+  const ordered = [...order.filter((k) => groups.has(k)), ...remaining];
 
   const out: string[] = [];
   for (const ns of ordered) {
@@ -73,6 +96,25 @@ export function renderToolsBlock(): string {
     }
   }
   return out.join('\n').trim();
+}
+
+function renderColumnSamples(samples: unknown[] | undefined): string {
+  if (!Array.isArray(samples) || samples.length === 0) return '';
+  const out: string[] = [];
+  for (const s of samples.slice(0, 3)) {
+    let str: string;
+    try {
+      str = typeof s === 'string' ? s : JSON.stringify(s);
+    } catch {
+      str = String(s);
+    }
+    if (typeof str !== 'string') continue;
+    // Hard-cap each rendered sample so a 5 KB cell can't blow up the prompt.
+    if (str.length > 80) str = `${str.slice(0, 77)}...`;
+    out.push(JSON.stringify(str));
+  }
+  if (out.length === 0) return '';
+  return ` examples: [${out.join(', ')}]`;
 }
 
 function argSignature(t: ToolDef): string {

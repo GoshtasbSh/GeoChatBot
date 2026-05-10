@@ -4,3 +4,4 @@ import './geometry.js';
 import './joins.js';
 import './stats.js';
 import './render.js';
+import './geocode.js';

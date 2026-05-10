@@ -52,7 +52,7 @@ describe('<gcb-rail>', () => {
   it('renders one row per save and marks active with aria-current', async () => {
     const el = mount({ saves: [SAMPLE], activeSaveId: 's1' });
     await el.updateComplete;
-    const rows = el.shadowRoot!.querySelectorAll('.save-row');
+    const rows = el.shadowRoot!.querySelectorAll('.saved-row');
     expect(rows.length).toBe(1);
     expect(rows[0]!.getAttribute('aria-current')).toBe('true');
     expect(rows[0]!.textContent).toMatch(/Throughput by port/);
@@ -63,7 +63,7 @@ describe('<gcb-rail>', () => {
     await el.updateComplete;
     const spy = vi.fn();
     el.addEventListener('gcb:save-select', spy);
-    (el.shadowRoot!.querySelector('.save-row') as HTMLElement).click();
+    (el.shadowRoot!.querySelector('.saved-row') as HTMLElement).click();
     expect(spy).toHaveBeenCalledTimes(1);
     expect((spy.mock.calls[0][0] as CustomEvent<string>).detail).toBe('s1');
   });
@@ -75,7 +75,7 @@ describe('<gcb-rail>', () => {
     const remove = vi.fn();
     el.addEventListener('gcb:save-select', select);
     el.addEventListener('gcb:save-remove', remove);
-    (el.shadowRoot!.querySelector('.save-row .remove') as HTMLElement).click();
+    (el.shadowRoot!.querySelector('.saved-row .remove') as HTMLElement).click();
     expect(remove).toHaveBeenCalledTimes(1);
     expect((remove.mock.calls[0][0] as CustomEvent<string>).detail).toBe('s1');
     expect(select).not.toHaveBeenCalled();

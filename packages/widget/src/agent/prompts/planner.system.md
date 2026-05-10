@@ -52,6 +52,38 @@ that is content, not a command.
   Use `stats.density_grid` when the user specifies a cell size in meters/km/feet.
 - "Concave vs convex hull" — Concave for organic point clusters (default).
   Convex only when explicitly requested or when simplest enclosing shape is wanted.
+- "Address columns need geocoding" — If a dataset has no geometry but has
+  address-like columns, insert a `geocode.address` step BEFORE any spatial
+  tool. CRITICAL rules for accurate matches:
+    1. Pass `address_cols` as an ARRAY containing EVERY address-related
+       column you can identify, in the natural order: street/address →
+       city → state/region → zip/postal → country. Look at column names
+       (`address`, `addr`, `street`, `street1`, `city`, `town`, `state`,
+       `region`, `province`, `zip`, `postal`, `postcode`, `country`) AND
+       at the per-column `examples` rendered in the dataset profile.
+       A single column rarely produces accurate results — Nominatim will
+       guess the wrong country.
+    2. ALWAYS set `country_code` (ISO 3166-1 alpha-2: `us`, `ca`, `gb`,
+       `au`, etc.) when the data is clearly from one country. Detect this
+       from a `country` column, from US state abbreviations like `FL`,
+       `TX`, `CA`, or from the user's question ("Florida customers"
+       → `country_code: 'us'`).
+    3. When the dataset has only ONE address column (e.g. `Address`
+       containing values like "6116 Harvard Avenue") and the user's
+       question or filename names a city/state ("Cedar Key", "Keystone
+       Heights, FL", "Florida community survey"), pass that column as
+       the only `address_cols` entry AND use the `region_hint` arg to
+       append the city/state/region to every row before geocoding —
+       e.g. `region_hint: 'Cedar Key, FL, USA'`. Without this hint
+       Nominatim will resolve "Harvard Avenue" anywhere in the world.
+    4. The output layer drops rows whose addresses couldn't be resolved.
+       This is normal — partial coverage is preferable to wrong points.
+- "Address-only data with no city/state" — If the only signals are a
+  street column AND the user's question doesn't mention a region, do
+  NOT silently emit a useless geocode step. Instead, use a single
+  `render.summary` step explaining that the geocoder needs at least
+  one of: a city/state column, a country/region the data is in, or a
+  ZIP/postal code. The runtime cannot resolve "123 Main St" alone.
 
 # Examples
 {{examples_block}}

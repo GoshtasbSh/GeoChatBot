@@ -20,6 +20,12 @@ interface MapInputLayer {
   geometry: GeometryEncoding;
 }
 
+/** A pre-built GeoJSON FeatureCollection to render directly (e.g. from render.map). */
+export interface GeoJsonInputLayer {
+  name: string;
+  geojson: { type: 'FeatureCollection'; features: unknown[] };
+}
+
 const MAX_GEOJSON_FEATURES = 50_000;
 
 /**
@@ -65,6 +71,8 @@ export class GcbMap extends LitElement {
 
   /** One or more Arrow tables to render. */
   @property({ attribute: false }) layers: MapInputLayer[] = [];
+  /** Pre-built GeoJSON FeatureCollections to render (e.g. from render.map results). */
+  @property({ attribute: false }) geojsonLayers: GeoJsonInputLayer[] = [];
 
   @state() private err: string | null = null;
 
@@ -90,7 +98,7 @@ export class GcbMap extends LitElement {
   }
 
   protected updated(changed: Map<string, unknown>) {
-    if (changed.has('layers') && this.mapLoaded) {
+    if ((changed.has('layers') || changed.has('geojsonLayers')) && this.mapLoaded) {
       this.syncSafely();
     }
   }
@@ -133,7 +141,11 @@ export class GcbMap extends LitElement {
   private syncLayers() {
     if (!this.overlay || !this.map) return;
 
-    if (!this.layers.length) {
+    // Early-out only when BOTH input sources are empty. The original
+    // `this.layers.length` check skipped past geojsonLayers entirely, so
+    // result-canvas (which only sets geojsonLayers) silently rendered an
+    // empty map even though MapLibre's basemap was visible.
+    if (!this.layers.length && !this.geojsonLayers.length) {
       this.overlay.setProps({ layers: [] });
       return;
     }
@@ -144,6 +156,27 @@ export class GcbMap extends LitElement {
     for (const input of this.layers) {
       const built = buildLayer(input, bbox);
       if (built) deckLayers.push(built);
+    }
+
+    for (const src of this.geojsonLayers) {
+      const raw = src.geojson as { type: string; features: GeoJSON.Feature[] };
+      const features = Array.isArray(raw?.features) ? raw.features : [];
+      deckLayers.push(new GeoJsonLayer({
+        id: `gcb-geojson-result-${src.name}`,
+        data: { type: 'FeatureCollection', features: features.slice(0, MAX_GEOJSON_FEATURES) },
+        stroked: true,
+        filled: true,
+        pointRadiusMinPixels: 4,
+        getLineColor: [67, 56, 202, 255],
+        getFillColor: [67, 56, 202, 64],
+        getLineWidth: 1.5,
+        lineWidthMinPixels: 1.5,
+        getPointRadius: 4,
+        pickable: true,
+      }));
+      for (const feat of features as GeoJSON.Feature[]) {
+        if (feat?.geometry) expandBboxFromGeoJSON(feat.geometry, bbox);
+      }
     }
 
     this.overlay.setProps({ layers: deckLayers });

@@ -56,21 +56,55 @@ import type { AskInputDisabledReason } from './ui/ask-input.js';
 // so the initial bundle stays lean (PLAN §3 hard rule: ≤ 100 KB gzipped).
 
 /**
+ * Pick up to 3 representative example values per column from the
+ * already-computed profile. We never go back to the raw rows — only
+ * profile-derived summaries are exposed:
+ *   - string columns: the 3 most-frequent distinct values
+ *   - numeric/date columns: the min and max bounds
+ *   - others: nothing (would expose opaque binary / other types)
+ */
+function deriveColumnSamples(c: import('./data/contracts.js').ColumnProfile): unknown[] {
+  if (c.kind === 'string' && c.categorical?.top?.length) {
+    return c.categorical.top.slice(0, 3).map((t) => t.value);
+  }
+  if ((c.kind === 'integer' || c.kind === 'float') && c.numeric) {
+    return [c.numeric.min, c.numeric.max];
+  }
+  if ((c.kind === 'date' || c.kind === 'timestamp') && c.range) {
+    return [c.range.min, c.range.max];
+  }
+  return [];
+}
+
+/**
  * Map an ingest-side {@link DatasetProfile} (from data/contracts) into the
- * Planner-side profile shape. Sample rows are not extracted here — the
- * planner gets schema + row count but not raw values, so prompt injection
- * via dataset content cannot piggyback on a regular file drop.
+ * Planner-side profile shape.
+ *
+ * Per-column representative samples ARE included — but only ones already
+ * synthesized by the profiler (top-frequency string values, numeric/date
+ * range bounds), never arbitrary row content. The samples are rendered
+ * inside the UNTRUSTED_DATASET_PROFILE fence in `planner.ts`, so the
+ * planner treats every byte as opaque data. They exist because the
+ * planner system prompt instructs the LLM to inspect sample values to
+ * identify columns (e.g., distinguishing an "Address" column from a
+ * generic "Notes" column when both are typed as Utf8) — without samples
+ * the planner had to guess from column names alone, which is fragile.
  */
 function toPlannerDatasetProfile(
   name: string,
   profile: DatasetProfile,
 ): PlannerDatasetProfile {
   const kind: 'table' | 'layer' = profile.geometry ? 'layer' : 'table';
-  const columns = profile.columns.map((c) => ({
-    name: c.name,
-    type: c.arrowType,
-    nulls: c.nullCount,
-  }));
+  const columns = profile.columns.map((c) => {
+    const out: PlannerDatasetProfile['columns'][number] = {
+      name: c.name,
+      type: c.arrowType,
+      nulls: c.nullCount,
+    };
+    const samples = deriveColumnSamples(c);
+    if (samples.length > 0) out.samples = samples;
+    return out;
+  });
   const planner: PlannerDatasetProfile = {
     name,
     kind,
@@ -292,6 +326,91 @@ export class GeoChatBotElement extends LitElement {
       }
       .geom { color: var(--gcb-accent); font-weight: 500; }
       gcb-map { margin-top: 12px; }
+
+      /* ─── Topbar (combined design) ────────────────────────────── */
+      .tb-row {
+        display: flex; align-items: center; gap: 10px;
+        height: 100%; padding: 0 14px 0 10px;
+      }
+      .tb-rail-spacer { width: 38px; flex-shrink: 0; }
+      .logo-mark {
+        width: 22px; height: 22px; border-radius: 6px;
+        background: var(--gcb-accent);
+        display: grid; place-items: center; flex-shrink: 0;
+      }
+      .logo-mark svg { color: var(--gcb-accent-fg); }
+      .logo-text {
+        font-size: 15px; font-weight: 700;
+        letter-spacing: -.02em; color: var(--gcb-ink);
+      }
+      .tb-gap { flex: 1; }
+
+      .tb-icon-btn {
+        width: 32px; height: 32px; border-radius: var(--gcb-radius-sm);
+        border: 1px solid var(--gcb-line); background: transparent;
+        color: var(--gcb-ink-muted);
+        display: grid; place-items: center; cursor: pointer;
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+        flex-shrink: 0;
+      }
+      .tb-icon-btn:hover {
+        background: var(--gcb-bg-3); color: var(--gcb-ink);
+        border-color: var(--gcb-line-strong);
+      }
+      .tb-icon-btn:focus-visible {
+        outline: 2px solid var(--gcb-accent); outline-offset: 2px;
+      }
+
+      .upload-wrap { position: relative; }
+
+      /* ─── Icon rail ───────────────────────────────────────────── */
+      .ir {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 8px 0; gap: 2px; height: 100%;
+      }
+      .ir-btn {
+        width: 36px; height: 36px; border-radius: var(--gcb-radius-sm);
+        border: 0; background: transparent; color: var(--gcb-ink-muted);
+        display: grid; place-items: center; cursor: pointer;
+        position: relative; flex-shrink: 0;
+        transition: background 120ms ease, color 120ms ease;
+      }
+      .ir-btn:hover { background: var(--gcb-accent-soft); color: var(--gcb-ink); }
+      .ir-btn.active { color: var(--gcb-accent); }
+      .ir-btn.active::before {
+        content: ''; position: absolute;
+        left: -7px; top: 7px; bottom: 7px; width: 3px;
+        background: var(--gcb-accent); border-radius: 0 2px 2px 0;
+      }
+      .ir-btn:focus-visible {
+        outline: 2px solid var(--gcb-accent); outline-offset: 2px;
+      }
+      .ir-gap { flex: 1; }
+
+      /* ─── Status chip refinements ─────────────────────────────── */
+      .status-chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 3px 10px; border-radius: 999px;
+        background: var(--gcb-accent-soft);
+        border: 1px solid var(--gcb-accent-ring);
+        color: var(--gcb-accent-ink);
+        font-size: 11px; font-weight: 500;
+      }
+      .status-chip .dot {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--gcb-accent);
+        animation: gcb-pulse 2s ease-in-out infinite;
+      }
+      @keyframes gcb-pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.45; transform: scale(0.85); }
+      }
+
+      .err {
+        margin: 12px 20px; padding: 10px 12px; border-radius: var(--gcb-radius-sm);
+        background: var(--gcb-error-bg);
+        color: var(--gcb-error-fg); font-size: 13px;
+      }
     `,
   ];
 
@@ -328,6 +447,33 @@ export class GeoChatBotElement extends LitElement {
    */
   @property({ type: Boolean, attribute: 'dangerously-allow-browser', reflect: true })
   dangerouslyAllowBrowser = false;
+
+  /**
+   * Plan generation mode:
+   *   - `'single-shot'` (default): one forced-tool LLM call → Plan. Cheapest.
+   *   - `'agentic'`: multi-turn ReAct loop. The LLM may call inspection tools
+   *     (sample_rows, distinct_values, column_pattern, probe_sql) against the
+   *     loaded data BEFORE committing to a Plan via finalize_plan. Strictly
+   *     better quality on unfamiliar datasets at the cost of 3-8× latency.
+   *
+   * Set via the `agentic-mode` attribute. Today the agentic loop only
+   * supports OpenAI-compatible providers (Groq + OpenAI + OpenRouter +
+   * Together) — Anthropic / Gemini fall back to single-shot.
+   */
+  @property({ reflect: true, attribute: 'agentic-mode' })
+  agenticMode: 'single-shot' | 'agentic' = 'single-shot';
+
+  /**
+   * RAG retrieval mode:
+   *   - `'auto'` (default): on in browser, off in Node tests.
+   *   - `'on'` / `'off'`: explicit override.
+   *
+   * When on, the planner retrieves top-K most-relevant docs + similar past
+   * accepted plans for each question, replacing the static few-shot block
+   * with a dynamically-tailored one.
+   */
+  @property({ reflect: true, attribute: 'retrieval' })
+  retrievalMode: 'auto' | 'on' | 'off' = 'auto';
 
   /** Active LLM provider, set via {@link setProvider}. Survives {@link clear}. */
   private provider: ChatProvider | undefined = undefined;
@@ -406,6 +552,16 @@ export class GeoChatBotElement extends LitElement {
   /* -------------------------------------------------------------------- */
   /** localStorage-backed saves for this widget instance. */
   saves = new SavesStore();
+  /** Most recent question asked; embedded in save origins so saved results are labelled. */
+  private _lastQuestion = '';
+  /**
+   * Layers derived from agent execution (e.g. render.map results). Shown in
+   * the Contents panel's "Layers" section with a NEW badge until a new
+   * execution lands.
+   */
+  @state() private _derivedLayers: ReadonlyArray<{
+    id: string; name: string; features: number; visible: boolean; isNew: boolean;
+  }> = [];
 
   @state() private _savesList: ReadonlyArray<SavedResultV1> = [];
 
@@ -434,6 +590,8 @@ export class GeoChatBotElement extends LitElement {
     apiKey: 'geochatbot:apiKey',
     model: 'geochatbot:model',
     dangerouslyAllowBrowser: 'geochatbot:dangerouslyAllowBrowser',
+    agenticMode: 'geochatbot:agenticMode',
+    retrievalMode: 'geochatbot:retrievalMode',
   } as const;
 
   /** Provider ids the persistence layer knows about. Anything else is ignored. */
@@ -443,6 +601,31 @@ export class GeoChatBotElement extends LitElement {
     'openai',
     'gemini',
   ]);
+
+  /**
+   * Invalidate cached planner state on attribute changes that affect
+   * planner construction. The planner caches things like the static
+   * cached-prefix and the agentic endpoint at construction time, so a
+   * runtime swap of `agentic-mode` or `retrieval` would otherwise be
+   * silently ignored until the next `clear()`. Lit calls willUpdate
+   * before render whenever a reactive property changes.
+   */
+  protected override willUpdate(changed: Map<string, unknown>): void {
+    // Skip the FIRST render — Lit passes every reactive property's
+    // initial-undefined → default-value transition through `changed`,
+    // which would otherwise wipe the just-built _planner immediately
+    // after ask() created it. We only want to invalidate when a
+    // human-driven config change happens (settings drawer save, host
+    // setAttribute), all of which happen post-first-render.
+    if (!this.hasUpdated) return;
+    if (
+      changed.has('agenticMode') ||
+      changed.has('retrievalMode') ||
+      changed.has('dangerouslyAllowBrowser')
+    ) {
+      delete this._planner;
+    }
+  }
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -478,6 +661,18 @@ export class GeoChatBotElement extends LitElement {
       }
       if (model) this._model = model;
       if (dangerous) this.dangerouslyAllowBrowser = true;
+      const persistedAgentic = localStorage.getItem(k.agenticMode);
+      if (persistedAgentic === 'agentic' || persistedAgentic === 'single-shot') {
+        this.agenticMode = persistedAgentic;
+      }
+      const persistedRetrieval = localStorage.getItem(k.retrievalMode);
+      if (
+        persistedRetrieval === 'auto' ||
+        persistedRetrieval === 'on' ||
+        persistedRetrieval === 'off'
+      ) {
+        this.retrievalMode = persistedRetrieval;
+      }
     } catch {
       // localStorage unavailable — remain in-memory only.
     }
@@ -506,9 +701,12 @@ export class GeoChatBotElement extends LitElement {
     this._apiKey = detail.apiKey;
     this._model = detail.model;
     this.dangerouslyAllowBrowser = detail.dangerouslyAllowBrowser;
+    if (detail.agenticMode) this.agenticMode = detail.agenticMode;
+    if (detail.retrievalMode) this.retrievalMode = detail.retrievalMode;
     this._maskedKey = this._maskKey(detail.apiKey);
-    // Force planner rebuild so the next ask() picks up the new
-    // provider/model/key tuple.
+    // Force planner rebuild so the next ask() picks up the new tuple.
+    // (willUpdate also drops _planner when agenticMode/retrievalMode
+    // change, but we drop here too in case only the key/model changed.)
     delete this._planner;
     try {
       const k = GeoChatBotElement._STORAGE_KEYS;
@@ -516,6 +714,8 @@ export class GeoChatBotElement extends LitElement {
       localStorage.setItem(k.apiKey, detail.apiKey);
       localStorage.setItem(k.model, detail.model);
       localStorage.setItem(k.dangerouslyAllowBrowser, detail.dangerouslyAllowBrowser ? '1' : '0');
+      if (detail.agenticMode) localStorage.setItem(k.agenticMode, detail.agenticMode);
+      if (detail.retrievalMode) localStorage.setItem(k.retrievalMode, detail.retrievalMode);
     } catch {
       // Persistence is best-effort; in-memory state above is authoritative.
     }
@@ -524,6 +724,37 @@ export class GeoChatBotElement extends LitElement {
 
   private _openSettings = () => { this._settingsOpen = true; };
   private _closeSettings = () => { this._settingsOpen = false; };
+
+  /** Open the upload popover when the panel-footer "Add data" button is clicked. */
+  private _onAddDataClicked = (): void => {
+    this._uploadOpen = true;
+  };
+
+  /** Toggle a layer's visibility (Slice 2 will wire to <gcb-map> filter). */
+  private _onLayerToggle = (e: CustomEvent<{ id: string }>): void => {
+    const id = e.detail.id;
+    this._derivedLayers = this._derivedLayers.map((l) =>
+      l.id === id ? { ...l, visible: !l.visible } : l,
+    );
+  };
+
+  /**
+   * Resolve the effective theme. Used by the topbar toggle to flip between
+   * light/dark — `auto` resolves against `prefers-color-scheme`.
+   */
+  private _resolvedTheme(): 'light' | 'dark' {
+    if (this.theme === 'light' || this.theme === 'dark') return this.theme;
+    return typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  }
+
+  /** Toggle theme between light and dark; auto becomes the opposite of OS. */
+  private _toggleTheme = (): void => {
+    this.theme = this._resolvedTheme() === 'dark' ? 'light' : 'dark';
+  };
 
   private _onSaveSelect = (e: CustomEvent<string>): void => {
     this._activeSaveId = e.detail;
@@ -568,6 +799,7 @@ export class GeoChatBotElement extends LitElement {
   render() {
     if (this.mode === 'headless') return html``;
     const disabledReason = this._askDisabledReason();
+    const isDark = this._resolvedTheme() === 'dark';
     return html`
       <gcb-shell
         .activeTab=${this._activeTab}
@@ -575,38 +807,107 @@ export class GeoChatBotElement extends LitElement {
         .savedCount=${this._savesList.length}
         @gcb:tab=${(e: CustomEvent<ShellTab>) => (this._activeTab = e.detail)}
       >
-        <div slot="topbar" style="display:flex; align-items:center; gap:10px; height:100%; padding:0 14px;">
-          <strong style="font-family: var(--gcb-font-display); font-style: italic; font-size: 18px;">GeoChatBot</strong>
+        <!-- TOPBAR -->
+        <div slot="topbar" class="tb-row">
+          <div class="tb-rail-spacer" aria-hidden="true"></div>
+
+          <div class="logo-mark" aria-hidden="true">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1L11 4.5v3L6 11 1 7.5v-3L6 1Z" fill="currentColor" fill-opacity=".9"/>
+            </svg>
+          </div>
+          <span class="logo-text">GeoChatBot</span>
+
           ${this._maskedKey
             ? html`<span class="status-chip" title="API key configured">
                 <span class="dot"></span>${this._providerLabel()} · ${this._maskedKey}
               </span>`
-            : html`<span class="status-chip muted" title="No API key set">
-                <span class="dot dot-muted"></span>not connected
+            : html`<span class="status-chip" title="No API key set" style="background:transparent;border-color:var(--gcb-line);color:var(--gcb-ink-muted);">
+                <span class="dot" style="background:var(--gcb-ink-dim);animation:none;"></span>not connected
               </span>`}
-          <span style="margin-left:auto; position:relative;">
-            <button
-              class="icon-btn"
-              type="button"
-              aria-label="Add data"
-              title="Add data"
-              @click=${(e: MouseEvent) => { e.stopPropagation(); this._uploadOpen = !this._uploadOpen; }}
-            >+ Add data</button>
-            <gcb-upload-popover
-              ?open=${this._uploadOpen}
-              @gcb:files=${this._onFilesFromPopover}
-              @gcb:popover-close=${() => (this._uploadOpen = false)}
-            ></gcb-upload-popover>
-          </span>
+
+          <div class="tb-gap"></div>
+
+          <!-- Theme toggle -->
           <button
-            class="icon-btn"
+            class="tb-icon-btn"
+            type="button"
+            aria-label="Toggle light or dark theme"
+            title=${isDark ? 'Switch to light' : 'Switch to dark'}
+            @click=${this._toggleTheme}
+          >
+            ${isDark
+              ? html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
+              : html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`}
+          </button>
+
+          <!-- Settings -->
+          <button
+            class="tb-icon-btn"
             type="button"
             aria-label="Open settings"
             title="Settings"
             @click=${this._openSettings}
-          >⚙</button>
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+            </svg>
+          </button>
         </div>
 
+        <!-- ICON RAIL -->
+        <nav slot="iconRail" class="ir" aria-label="Workspace navigation">
+          <button
+            class="ir-btn ${this._activeTab === 'map' ? 'active' : ''}"
+            type="button"
+            aria-label="Map view"
+            title="Map view"
+            @click=${() => (this._activeTab = 'map')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
+              <line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
+            </svg>
+          </button>
+          <button
+            class="ir-btn ${this._activeTab === 'results' ? 'active' : ''}"
+            type="button"
+            aria-label="Chat"
+            title="Chat"
+            @click=${() => (this._activeTab = 'results')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+            </svg>
+          </button>
+          <button
+            class="ir-btn"
+            type="button"
+            aria-label="Saved results"
+            title="Saved results"
+            @click=${() => (this._activeTab = 'detail')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>
+            </svg>
+          </button>
+          <div class="ir-gap"></div>
+          <button
+            class="ir-btn"
+            type="button"
+            aria-label="Settings"
+            title="Settings"
+            @click=${this._openSettings}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+            </svg>
+          </button>
+        </nav>
+
+        <!-- CONTENTS PANEL -->
         <gcb-rail
           slot="rail"
           .datasets=${this.loaded.map((r) => ({
@@ -615,26 +916,33 @@ export class GeoChatBotElement extends LitElement {
             hasGeometry: !!r.geometry,
           }))}
           .saves=${this._savesList}
+          .layers=${this._derivedLayers}
           .activeSaveId=${this._activeSaveId}
           @gcb:save-select=${this._onSaveSelect}
           @gcb:save-remove=${(e: CustomEvent<string>) => this.saves.remove(e.detail)}
-          @gcb:dataset-toggle=${() => { /* visibility toggle: Slice 2 */ }}
+          @gcb:dataset-toggle=${() => { /* visibility toggle handled by host map renderer */ }}
+          @gcb:layer-toggle=${this._onLayerToggle}
+          @gcb:add-data=${this._onAddDataClicked}
         ></gcb-rail>
 
-        <div slot="main" style="height:100%; overflow:auto; padding: 14px;">
+        <!-- MAIN: chat history -->
+        <div slot="main" style="height:100%; overflow:hidden; display:flex; flex-direction:column;"
+          @gcb:save-result=${this._onSaveResult}>
           ${this.error ? html`<div class="err">${this.error}</div>` : null}
-          ${this._activeTab === 'map'
-            ? html`
-                ${this._mapModuleLoaded && this.geometryLayers().length
-                  ? html`<gcb-map .layers=${this.geometryLayers()}></gcb-map>` : null}
-                <div class="tables">
-                  ${this.loaded.map((r) => this.renderTable(r))}
-                </div>`
-            : html`<div style="padding: 32px; color: var(--gcb-ink-muted); font-size: 13px;">
-                ${this._activeTab === 'results' ? 'Saved results gallery — Slice 2.' : 'Detail drill-down — Slice 2.'}
-              </div>`}
+          <result-canvas style="flex:1; min-height:0;"></result-canvas>
+          <!-- Upload popover anchored under the topbar — opens via Add data button -->
+          ${this._uploadOpen
+            ? html`<div style="position:absolute;top:50px;right:20px;z-index:50;">
+                <gcb-upload-popover
+                  ?open=${this._uploadOpen}
+                  @gcb:files=${this._onFilesFromPopover}
+                  @gcb:popover-close=${() => (this._uploadOpen = false)}
+                ></gcb-upload-popover>
+              </div>`
+            : null}
         </div>
 
+        <!-- DOCK: chat input -->
         <div slot="dock" style="height:100%; display:flex; align-items:center; padding: 0 14px;">
           <gcb-ask-input
             style="flex:1;"
@@ -654,6 +962,8 @@ export class GeoChatBotElement extends LitElement {
               model: this._model,
               apiKey: this._apiKey ?? '',
               dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
+              agenticMode: this.agenticMode,
+              retrievalMode: this.retrievalMode,
             } as SettingsValue}
             @gcb:settings=${this._onSaveSettings}
             @gcb:settings-close=${this._closeSettings}
@@ -885,6 +1195,12 @@ export class GeoChatBotElement extends LitElement {
    * The plan is held pending until {@link approvePlan} or {@link rejectPlan}.
    */
   async ask(question: string): Promise<void> {
+    this._lastQuestion = question.trim();
+    // Begin a new chat turn so the user's question shows immediately as a
+    // bubble, even before the planner returns.
+    if (this.mode !== 'headless' && this._lastQuestion) {
+      this._beginCanvasTurn(this._lastQuestion);
+    }
     if (typeof question !== 'string' || !question.trim()) {
       // Empty / whitespace-only questions otherwise reach Anthropic and
       // get an opaque HTTP 400 response. Surface a clean code so the
@@ -927,12 +1243,38 @@ export class GeoChatBotElement extends LitElement {
       return;
     }
     if (!this._planner) {
+      // Build the inspection-context for agentic mode lazily — it depends
+      // on the executor engine, which is shared with the regular plan
+      // execution path. We build it here so the planner picks it up on
+      // first use; subsequent `ask()` calls reuse the same Planner.
+      const agenticCtx = this._buildAgenticCtx();
+      const agenticEndpoint = this._agenticEndpointForActiveProvider();
+      const wantAgentic = this.agenticMode === 'agentic';
+      const agenticActive = wantAgentic && !!agenticEndpoint && !!agenticCtx;
+      // If the host asked for agentic mode but it can't be honored
+      // (Anthropic / Gemini providers, or no engine yet), surface a
+      // warning event so the host UI can show a one-line note instead
+      // of the user wondering why the inspection trace never appears.
+      // Re-fired on every Planner rebuild so attribute toggles get
+      // immediate feedback.
+      if (wantAgentic && !agenticActive) {
+        const reason = !agenticEndpoint
+          ? `agentic mode is not supported for provider "${this._llmProvider}" — falling back to single-shot. Use Groq or OpenAI for the multi-turn loop.`
+          : `agentic mode requires a loaded dataset (the inspection tools query DuckDB) — falling back to single-shot until you add data.`;
+        // Dispatch as a non-blocking warning so the host can surface it
+        // in a toast/banner without aborting the user's question.
+        this.dispatch('error', { code: 'AGENTIC_FALLBACK', message: reason });
+      }
       this._planner = new Planner({
         provider: this._llmProvider,
         apiKey: this._apiKey,
         model: this._model,
         dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
         ...(this._llmCall ? { llmCall: this._llmCall } : {}),
+        mode: agenticActive ? 'agentic' : 'single-shot',
+        retrieval: this.retrievalMode,
+        ...(agenticEndpoint ? { agenticEndpoint } : {}),
+        ...(agenticCtx ? { agenticCtx } : {}),
       });
     }
     // Capture the generation BEFORE awaiting the planner. If `clear()`
@@ -1080,7 +1422,10 @@ export class GeoChatBotElement extends LitElement {
           this.dispatch('result', e);
           if (this.mode !== 'headless') this._mountResult(e);
         },
-        onError: (e) => this.dispatch('error', e),
+        onError: (e) => {
+          this.dispatch('error', e);
+          this.error = e.message;
+        },
         ...(critic
           ? {
               onStepError: async (ctx: StepErrorContext) => {
@@ -1112,6 +1457,38 @@ export class GeoChatBotElement extends LitElement {
     }
   }
 
+  /**
+   * Build the inspection context for agentic mode. Returns undefined when
+   * the engine isn't available (e.g. tests that haven't installed an
+   * executor stub) — the planner falls back to single-shot in that case.
+   */
+  private _buildAgenticCtx(): { engine: ExecutorEngine; datasets: Map<string, ExecDatasetEntry> } | undefined {
+    const engine = this._resolveExecutorEngine();
+    if (!engine) return undefined;
+    const datasets = new Map<string, ExecDatasetEntry>();
+    for (const d of this._execDatasets) datasets.set(d.name, d);
+    return { engine, datasets };
+  }
+
+  /**
+   * Pick the OpenAI-compat /chat/completions endpoint for the active
+   * provider, or undefined if the active provider doesn't speak the
+   * OpenAI tool-call schema (Anthropic, Gemini today). When undefined,
+   * agentic mode degrades to single-shot at planner construction.
+   */
+  private _agenticEndpointForActiveProvider(): string | undefined {
+    switch (this._llmProvider) {
+      case 'groq':
+        return 'https://api.groq.com/openai/v1/chat/completions';
+      case 'openai':
+        return 'https://api.openai.com/v1/chat/completions';
+      // Anthropic + Gemini have different multi-turn shapes; we don't
+      // run an agentic loop against them in this version.
+      default:
+        return undefined;
+    }
+  }
+
   /** Resolve the engine handle: test override → main-thread DuckDB → null. */
   private _resolveExecutorEngine(): ExecutorEngine | null {
     if (this._executorEngine) return this._executorEngine;
@@ -1129,43 +1506,73 @@ export class GeoChatBotElement extends LitElement {
 
   /** Mount a result payload into <result-canvas> in full mode. */
   private _mountResult(e: ExecResultEvent): void {
-    interface CanvasEl extends HTMLElement {
-      setResult(p: { kind: string; [k: string]: unknown }): void;
-      clear(): void;
-    }
-    let canvas = this.shadowRoot!.querySelector('result-canvas') as CanvasEl | null;
-    if (!canvas) {
-      canvas = document.createElement('result-canvas') as CanvasEl;
-      this.shadowRoot!.appendChild(canvas);
-    }
-    // Strip planId/stepId before handing to the canvas — it only cares
-    // about the payload shape.
+    const canvas = this._canvas();
+    if (!canvas) return;
+    // Pass origin metadata so the canvas's per-panel save buttons have context.
+    canvas.setOrigin({
+      planId: e.planId,
+      stepId: e.stepId,
+      question: this._lastQuestion,
+    });
+    // Strip planId/stepId before handing to the canvas — it only cares about the payload.
     const { planId: _p, stepId: _s, ...payload } = e;
     void _p; void _s;
     canvas.setResult(payload as { kind: string; [k: string]: unknown });
 
-    // Overlay a "Save" button if not already present, so the user can pin
-    // this result to the rail. Idempotent — re-creates on every mount.
-    const host = this.shadowRoot!;
-    let saveBtn = host.querySelector('.gcb-save-btn') as HTMLButtonElement | null;
-    if (!saveBtn) {
-      saveBtn = document.createElement('button');
-      saveBtn.className = 'gcb-save-btn icon-btn';
-      saveBtn.style.cssText = 'position:absolute; top:8px; right:8px; z-index:5;';
-      saveBtn.textContent = '☆ Save';
-      host.appendChild(saveBtn);
+    // When a render.map result lands, surface it as a derived layer in the
+    // Contents panel. The most recent one keeps its NEW badge until the
+    // user runs another execution.
+    if (e.kind === 'layer') {
+      const name = (e as { name?: string }).name ?? 'result';
+      const features = Array.isArray(e.geojson?.features) ? e.geojson.features.length : 0;
+      const id = `layer_${e.planId}_${e.stepId}`;
+      this._derivedLayers = [
+        { id, name, features, visible: true, isNew: true },
+        ...this._derivedLayers
+          .filter((l) => l.id !== id)
+          .map((l) => ({ ...l, isNew: false })),
+      ];
     }
-    saveBtn.onclick = (): void => {
-      const saveKind: SavedResultV1['kind'] =
-        e.kind === 'layer' ? 'map' : (e.kind as SavedResultV1['kind']);
-      this.saves.add({
-        title: e.kind === 'summary' ? 'Summary' : `${e.kind} · ${new Date().toLocaleTimeString()}`,
-        kind: saveKind,
-        origin: { planId: e.planId, stepId: e.stepId, question: '' },
-        payload: payload as Record<string, unknown>,
-      });
-    };
   }
+
+  /** Open a new chat turn on the canvas (shows the user's question bubble). */
+  private _beginCanvasTurn(question: string): void {
+    const canvas = this._canvas();
+    canvas?.beginTurn(question);
+  }
+
+  /** Find the result-canvas in shadow DOM (declared in the template, so always present in full mode). */
+  private _canvas(): {
+    setResult(p: { kind: string; [k: string]: unknown }): void;
+    setOrigin(o: { planId: string; stepId: string; question: string }): void;
+    beginTurn(q: string): void;
+    clear(): void;
+  } | null {
+    return (this.shadowRoot?.querySelector('result-canvas') as unknown as {
+      setResult(p: { kind: string; [k: string]: unknown }): void;
+      setOrigin(o: { planId: string; stepId: string; question: string }): void;
+      beginTurn(q: string): void;
+      clear(): void;
+    } | null) ?? null;
+  }
+
+  /** Handle save-result event bubbled up from <result-canvas> panel save buttons. */
+  private _onSaveResult = (e: Event): void => {
+    const detail = (e as CustomEvent<{
+      kind: string;
+      payload: Record<string, unknown>;
+      title: string;
+      origin: { planId: string; stepId: string; question: string };
+    }>).detail;
+    const saveKind: SavedResultV1['kind'] =
+      detail.kind === 'layer' ? 'map' : (detail.kind as SavedResultV1['kind']);
+    this.saves.add({
+      title: detail.title,
+      kind: saveKind,
+      origin: detail.origin,
+      payload: detail.payload,
+    });
+  };
 
   private _buildCritic():
     | { diagnose: (ctx: StepErrorContext, signal?: AbortSignal) => Promise<CriticDecision> }

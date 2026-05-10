@@ -5,8 +5,8 @@ import '../../../src/agent/tools/index.js'; // register all tools
 import { validatePlan } from '../../../src/agent/validate-plan.js';
 
 describe('few-shot examples', () => {
-  it('contains exactly 20 examples', () => {
-    expect(EXAMPLES.length).toBe(20);
+  it('contains exactly 22 examples', () => {
+    expect(EXAMPLES.length).toBe(22);
   });
 
   it('every example has a question and a plan that parses against PlanSchema', () => {

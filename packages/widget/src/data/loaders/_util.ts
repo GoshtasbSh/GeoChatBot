@@ -133,16 +133,28 @@ export function detectLatLon(
 
 /**
  * Normalize rows so every row has every column key (apache-arrow's tableFromJSON
- * infers schema from the first row). Coerces undefined → null.
+ * infers schema from the first row). Coerces undefined → null. Also drops
+ * synthetic columns produced by spreadsheet loaders for blank header cells —
+ * loaders.gl's ExcelLoader emits keys like "" or "__EMPTY_5" when an Excel
+ * sheet has a column with no header label, and those would otherwise become
+ * unaddressable Arrow columns the planner cannot reference safely.
  */
 export function normalizeRows(rows: ReadonlyArray<Record<string, unknown>>): Array<Record<string, unknown>> {
   if (!rows || rows.length === 0) return [];
   const keys = new Set<string>();
   for (const r of rows) for (const k of Object.keys(r)) keys.add(k);
-  const cols = Array.from(keys);
+  const cols = Array.from(keys).filter(isUsableColumnName);
   return rows.map((r) => {
     const out: Record<string, unknown> = {};
     for (const k of cols) out[k] = r[k] ?? null;
     return out;
   });
+}
+
+function isUsableColumnName(k: string): boolean {
+  if (typeof k !== 'string') return false;
+  if (k.trim().length === 0) return false;
+  // loaders.gl placeholder for blank header cells in xlsx.
+  if (/^__EMPTY(_\d+)?$/i.test(k)) return false;
+  return true;
 }

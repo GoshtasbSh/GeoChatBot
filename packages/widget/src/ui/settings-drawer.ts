@@ -28,6 +28,10 @@ export interface SettingsValue {
   model: string;
   apiKey: string;
   dangerouslyAllowBrowser: boolean;
+  /** Multi-turn ReAct loop with inspection tools. Default off. */
+  agenticMode?: 'single-shot' | 'agentic';
+  /** RAG retrieval over corpus + examples + memory. Default 'auto'. */
+  retrievalMode?: 'auto' | 'on' | 'off';
 }
 
 @customElement('gcb-settings-drawer')
@@ -172,6 +176,8 @@ export class GcbSettingsDrawer extends LitElement {
     model: defaultModelFor(DEFAULT_PROVIDER_ID),
     apiKey: '',
     dangerouslyAllowBrowser: false,
+    agenticMode: 'single-shot',
+    retrievalMode: 'auto',
   };
 
   @state() private _draft: SettingsValue = this.value;
@@ -212,6 +218,16 @@ export class GcbSettingsDrawer extends LitElement {
   private _onDangerous = (e: Event) => {
     const target = e.target as HTMLInputElement;
     this._draft = { ...this._draft, dangerouslyAllowBrowser: target.checked };
+  };
+
+  private _onAgentic = (e: Event) => {
+    const checked = (e.target as HTMLInputElement).checked;
+    this._draft = { ...this._draft, agenticMode: checked ? 'agentic' : 'single-shot' };
+  };
+
+  private _onRetrieval = (e: Event) => {
+    const checked = (e.target as HTMLInputElement).checked;
+    this._draft = { ...this._draft, retrievalMode: checked ? 'on' : 'off' };
   };
 
   private _onSave = () => {
@@ -298,6 +314,33 @@ export class GcbSettingsDrawer extends LitElement {
               @change=${this._onDangerous}
             />
             <span>I acknowledge that calling ${providerInfo.label} from the browser exposes my API key to scripts on this page.</span>
+          </label>
+
+          <label class="toggle">
+            <input
+              type="checkbox"
+              .checked=${this._draft.agenticMode === 'agentic'}
+              @change=${this._onAgentic}
+            />
+            <span>
+              <b>Agentic mode</b> — the model runs a multi-turn ReAct loop
+              with inspection tools (sample_rows, distinct_values, …) before
+              committing to a plan. Slower but much better on unfamiliar
+              datasets. Requires Groq or OpenAI.
+            </span>
+          </label>
+
+          <label class="toggle">
+            <input
+              type="checkbox"
+              .checked=${(this._draft.retrievalMode ?? 'auto') !== 'off'}
+              @change=${this._onRetrieval}
+            />
+            <span>
+              <b>RAG retrieval</b> — embed each question and pull the most
+              relevant docs + past plans from a local IndexedDB vector
+              store. First call downloads a small embedding model (~22 MB).
+            </span>
           </label>
 
           <div class="privacy">

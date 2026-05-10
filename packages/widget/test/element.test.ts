@@ -44,11 +44,18 @@ describe('defineGeoChatBot', () => {
 });
 
 describe('GeoChatBotElement shadow DOM', () => {
-  it('renders a top-right "Add data" button after first update', async () => {
+  it('renders an "Add data" button in the Contents panel footer', async () => {
     const el = document.createElement('geo-chatbot');
     document.body.appendChild(el);
     await (el as any).updateComplete;
-    const btn = el.shadowRoot?.querySelector('button[aria-label="Add data"]');
+    // The Add data button now lives inside <gcb-rail> (the Contents panel),
+    // pinned to the panel footer per the combined-design layout.
+    const rail = el.shadowRoot?.querySelector('gcb-rail') as
+      | (HTMLElement & { updateComplete: Promise<unknown> })
+      | null;
+    expect(rail).not.toBeNull();
+    await rail!.updateComplete;
+    const btn = rail!.shadowRoot!.querySelector('button[aria-label="Add data"]');
     expect(btn).not.toBeNull();
     expect(btn!.textContent).toMatch(/Add data/);
   });
@@ -126,6 +133,29 @@ describe('setProvider / clear', () => {
 
     el.setProvider(stubProvider);
     expect(el.getProvider()).toBe(stubProvider);
+  });
+
+  it('toggling agenticMode invalidates the cached _planner so the next ask() rebuilds it', async () => {
+    // Without this, runtime config swaps via the settings drawer (or
+    // attribute) would silently miss until the next clear() — the user
+    // sees stale single-shot behaviour even after enabling agentic mode.
+    const el = mountElement() as any;
+    await flushUpdates(el);
+    el.__setLlmCall(async () => ({
+      goal: 'g',
+      assumptions: [],
+      dataset_refs: ['s'],
+      steps: [{ id: 's1', tool: 'render.summary', args: { text: 'ok' }, why: 'final' }],
+    }));
+    el.setProvider(stubProvider);
+    el._apiKey = 'k';
+    await el.pushData({ name: 's', kind: 'table', rows: 1, columns: [], sample: [] });
+    await el.ask('q');
+    expect(el._planner).toBeDefined();
+    el.agenticMode = 'agentic';
+    await el.updateComplete;
+    expect(el._planner).toBeUndefined();
+    if (el._pendingPlan) el.rejectPlan({ id: el._pendingPlan.id });
   });
 
   it('clear() wipes the provider as a multi-tenant safety boundary', async () => {
@@ -497,7 +527,14 @@ describe('clear-race regression (kept)', () => {
     el.on('error', (d) => errors.push(d));
 
     const askPromise = el.ask('q');
-    el.clear(); // racing clear() while the planner is still pending
+    // The planner now performs an async RAG retrieval pass before reaching
+    // the LLM stub, so we drain microtasks until `resolvePlan` is assigned
+    // by the stub. Without this, `clear()` races AHEAD of the LLM call and
+    // `resolvePlan` is undefined when we try to use it below.
+    for (let i = 0; i < 50 && typeof resolvePlan !== 'function'; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    el.clear(); // racing clear() while the planner's LLM call is in flight
     resolvePlan({
       goal: 'g',
       assumptions: [],

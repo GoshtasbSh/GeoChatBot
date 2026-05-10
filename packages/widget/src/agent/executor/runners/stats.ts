@@ -125,14 +125,18 @@ export async function runDistanceMatrix(
   const { a, b, k } = DistanceMatrixArgs.parse(args);
   const va = resolveTable(a, ctx);
   const vb = resolveTable(b, ctx);
-  const baseSql = `SELECT a.rowid AS a_id, b.rowid AS b_id, ST_Distance(a.geom, b.geom) AS distance
-    FROM ${quoteIdent(va)} a CROSS JOIN ${quoteIdent(vb)} b`;
+  // rowid is unavailable on DuckDB views; use ROW_NUMBER() for stable surrogate ids.
+  const baseSql = `WITH
+      _a AS (SELECT ROW_NUMBER() OVER () AS _gcb_rid, * FROM ${quoteIdent(va)}),
+      _b AS (SELECT ROW_NUMBER() OVER () AS _gcb_rid, * FROM ${quoteIdent(vb)})
+    SELECT a._gcb_rid AS a_id, b._gcb_rid AS b_id,
+           ST_Distance(a.geom, b.geom) AS distance
+    FROM _a a CROSS JOIN _b b`;
   let sql = baseSql;
   if (k !== undefined) {
-    sql = `WITH pairs AS (
-        ${baseSql}
-      ), ranked AS (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY a_id ORDER BY distance) AS rn FROM pairs
+    sql = `WITH base AS (${baseSql}),
+      ranked AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY a_id ORDER BY distance) AS rn FROM base
       )
       SELECT a_id, b_id, distance FROM ranked WHERE rn <= ${k}`;
   }
@@ -159,4 +163,4 @@ registerRunner('stats.density_grid', deferred('stats.density_grid'));
 registerRunner('stats.morans_i', deferred('stats.morans_i'));
 registerRunner('stats.getis_ord_gi', deferred('stats.getis_ord_gi'));
 registerRunner('geometry.voronoi', deferred('geometry.voronoi'));
-registerRunner('geometry.reproject', deferred('geometry.reproject'));
+// geometry.reproject is now a passthrough in geometry.ts (not deferred).

@@ -4,6 +4,7 @@ import './joins.js';
 import './stats.js';
 import './render.js';
 import './sql.js';
+import './geocode.js';
 
 export { registerTool, getTool, listTools } from './registry.js';
 export type { ToolDef } from './types.js';

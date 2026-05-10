@@ -38,7 +38,17 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
       throw new PlanValidationError(`duplicate dataset_refs entry: ${d}`);
     }
     seenRefs.add(d);
-    if (!loaded.has(d)) throw new PlanValidationError(`dataset_refs contains missing dataset: ${d}`);
+    if (!loaded.has(d)) {
+      // Including the available dataset names in the error message lets
+      // the planner's retry loop self-correct: the second LLM call sees
+      // the validation message and can pick the canonical name.
+      const available = loadedDatasets.length
+        ? `available: ${loadedDatasets.map((n) => `"${n}"`).join(', ')}`
+        : 'no datasets loaded';
+      throw new PlanValidationError(
+        `dataset_refs contains missing dataset: "${d}" (${available})`,
+      );
+    }
   }
 
   // Layer 2: tool existence + args parse

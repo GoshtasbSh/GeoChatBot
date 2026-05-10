@@ -89,18 +89,20 @@ export async function runNearestNeighbor(
   const { a, b, k } = NearestArgs.parse(args);
   const va = resolveLayer(a, ctx);
   const vb = resolveLayer(b, ctx);
-  // Window-function approach: rank b candidates by distance for each a row,
-  // keep the top k. Works on any DuckDB ≥0.10 (qualify clause supported).
-  const sql = `WITH pairs AS (
-      SELECT
-        a.rowid AS a_id,
-        b.rowid AS b_id,
-        ST_Distance(a.geom, b.geom) AS distance,
-        ROW_NUMBER() OVER (
-          PARTITION BY a.rowid ORDER BY ST_Distance(a.geom, b.geom)
-        ) AS rn
-      FROM ${quoteIdent(va)} a CROSS JOIN ${quoteIdent(vb)} b
-    )
+  // rowid is unavailable on DuckDB views; materialise surrogate ids first.
+  const sql = `WITH
+      _a AS (SELECT ROW_NUMBER() OVER () AS _gcb_rid, * FROM ${quoteIdent(va)}),
+      _b AS (SELECT ROW_NUMBER() OVER () AS _gcb_rid, * FROM ${quoteIdent(vb)}),
+      pairs AS (
+        SELECT
+          a._gcb_rid AS a_id,
+          b._gcb_rid AS b_id,
+          ST_Distance(a.geom, b.geom) AS distance,
+          ROW_NUMBER() OVER (
+            PARTITION BY a._gcb_rid ORDER BY ST_Distance(a.geom, b.geom)
+          ) AS rn
+        FROM _a a CROSS JOIN _b b
+      )
     SELECT a_id, b_id, distance FROM pairs WHERE rn <= ${k}`;
   const out = await materializeView(ctx, 'nearest', sql);
   return { output: { kind: 'table', ref: out } };

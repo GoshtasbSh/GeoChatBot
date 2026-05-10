@@ -16,6 +16,10 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     exclude: ['**/node_modules/**', 'test/loaders/parquet.test.ts'],
     reporters: ['default'],
-    setupFiles: ['test/__stubs__/drag-event-polyfill.ts'],
+    setupFiles: [
+      'test/__stubs__/drag-event-polyfill.ts',
+      'test/__stubs__/indexeddb-polyfill.ts',
+      'test/__stubs__/embedder-polyfill.ts',
+    ],
   },
 });
