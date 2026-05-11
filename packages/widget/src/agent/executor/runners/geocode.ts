@@ -70,6 +70,14 @@ export async function runGeocodeAddress(
 	const hits: GeocodeHit[] = [];
 	let attempts = 0;
 	for (let i = 0; i < rows.length; i++) {
+		// Honor the host's abort signal between rows so a Stop click during a
+		// 100-row pass interrupts within one rate-limit tick (~1.1s) instead
+		// of running to completion (~110s).
+		if (ctx.signal?.aborted) {
+			const err = new Error("geocode aborted");
+			err.name = "AbortError";
+			throw err;
+		}
 		const row = rows[i];
 		if (!row) continue;
 		const rid = Number(row._gcb_rid);
@@ -89,10 +97,10 @@ export async function runGeocodeAddress(
 			addr = `${addr}, ${region_hint.trim()}`;
 		}
 		attempts++;
-		const hit = await geocodeOne(addr, country_code);
+		const hit = await geocodeOne(addr, country_code, ctx.signal);
 		if (hit) hits.push({ rid, lon: hit.lon, lat: hit.lat });
 		// Pause between requests except after the last one to respect Nominatim's free-tier policy.
-		if (i < rows.length - 1) await sleep(RATE_LIMIT_MS);
+		if (i < rows.length - 1) await sleep(RATE_LIMIT_MS, ctx.signal);
 	}
 
 	if (hits.length === 0) {
@@ -131,12 +139,15 @@ registerRunner("geocode.address", runGeocodeAddress);
 async function geocodeOne(
 	addr: string,
 	countryCode: string | undefined,
+	signal?: AbortSignal,
 ): Promise<{ lon: number; lat: number } | null> {
 	try {
 		const params = new URLSearchParams({ format: "json", limit: "1", q: addr });
 		if (countryCode) params.set("countrycodes", countryCode.toLowerCase());
 		const url = `${NOMINATIM_URL}?${params.toString()}`;
-		const resp = await fetch(url, { headers: { Accept: "application/json" } });
+		const init: RequestInit = { headers: { Accept: "application/json" } };
+		if (signal) init.signal = signal;
+		const resp = await fetch(url, init);
 		if (!resp.ok) return null;
 		const body = (await resp.json()) as Array<{ lat?: string; lon?: string }>;
 		const first = body[0];
@@ -145,13 +156,35 @@ async function geocodeOne(
 		const lon = Number.parseFloat(first.lon);
 		if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 		return { lat, lon };
-	} catch {
+	} catch (err) {
+		// Re-throw aborts so the caller halts the loop instead of treating
+		// the cancellation as a per-row "failed to resolve" outcome.
+		if (err instanceof Error && err.name === "AbortError") throw err;
 		// Network errors / CORS / JSON parse failures are non-fatal —
 		// we drop the row and let the caller see partial results.
 		return null;
 	}
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const t = setTimeout(() => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, ms);
+		const onAbort = (): void => {
+			clearTimeout(t);
+			const err = new Error("geocode aborted during rate-limit pause");
+			err.name = "AbortError";
+			reject(err);
+		};
+		if (signal) {
+			if (signal.aborted) {
+				clearTimeout(t);
+				onAbort();
+				return;
+			}
+			signal.addEventListener("abort", onAbort, { once: true });
+		}
+	});
 }

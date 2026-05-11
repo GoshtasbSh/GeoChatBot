@@ -6,89 +6,159 @@
     <title>GeoChatBot — demo</title>
     <style>
       :root { color-scheme: light; }
+      html, body { height: 100%; margin: 0; padding: 0; }
       body {
-        margin: 0;
-        padding: 32px 24px;
         font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
         background: #f7f7fb;
         color: #111;
-        min-height: 100vh;
+        overflow: hidden;
       }
-      header.page {
-        max-width: 960px;
-        margin: 0 auto 16px;
+      /* Widget fills the whole viewport, edge-to-edge. Border-radius and
+       * box-shadow make sense when the widget is embedded in a page; for
+       * the standalone demo we strip them so the chrome is gone. */
+      geo-chatbot {
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
       }
-      header.page h1 { margin: 0 0 4px; font-size: 22px; }
-      header.page p { margin: 0; color: #555; font-size: 14px; }
-      main { max-width: 960px; margin: 0 auto; }
-      footer {
-        max-width: 960px; margin: 32px auto 0; color: #888; font-size: 12px;
+      /* Sample-loader floating chip in the top-right. Click → drop a sample
+       * file. Stays out of the widget's way. */
+      .samples {
+        position: fixed;
+        top: 8px;
+        right: 12px;
+        z-index: 10;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
       }
-      .samples { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
       .samples button {
-        font: inherit; font-size: 12px;
-        padding: 6px 10px; border: 1px solid #d4d4d8;
-        background: #fff; border-radius: 6px; cursor: pointer;
+        font: inherit; font-size: 11px;
+        padding: 4px 8px; border: 1px solid rgba(0,0,0,0.08);
+        background: rgba(255,255,255,0.9); border-radius: 999px;
+        cursor: pointer; backdrop-filter: blur(6px);
       }
-      .samples button:hover { background: #eef2ff; border-color: #4338ca; color: #4338ca; }
-      .log {
-        margin-top: 16px;
+      .samples button:hover { background: #fff; border-color: #4338ca; color: #4338ca; }
+      /* Bottom drawer for events. Collapsed by default; click the strip
+       * to expand. */
+      .log-drawer {
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        z-index: 10;
+        background: rgba(15,15,15,0.92);
+        color: #d1d5db;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 11px;
-        background: #111;
-        color: #d1d5db;
-        padding: 10px 12px;
-        border-radius: 6px;
-        max-height: 160px;
+        backdrop-filter: blur(8px);
+      }
+      .log-drawer summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 4px 12px;
+        font-size: 11px;
+        color: #9ca3af;
+        user-select: none;
+      }
+      .log-drawer summary::-webkit-details-marker { display: none; }
+      .log-drawer summary::before { content: "▸ "; }
+      .log-drawer[open] summary::before { content: "▾ "; }
+      .log-drawer pre {
+        margin: 0;
+        padding: 0 12px 8px;
+        max-height: 30vh;
         overflow: auto;
         white-space: pre-wrap;
       }
+      .log-drawer .err-flash { color: #fca5a5; font-weight: 600; }
     </style>
   </head>
   <body>
-    <header class="page">
-      <h1>GeoChatBot demo</h1>
-      <p>Drop a CSV (with lat/lon), GeoJSON, Shapefile zip, Excel, or Parquet file. Or click a sample below.</p>
-      <div class="samples">
-        <button data-sample="/samples/points.csv">points.csv</button>
-        <button data-sample="/samples/no_geo.csv">no_geo.csv</button>
-        <button data-sample="/samples/points.geojson">points.geojson</button>
-      </div>
-    </header>
+    <div class="samples">
+      <button data-sample="/samples/points.csv">points.csv</button>
+      <button data-sample="/samples/no_geo.csv">no_geo.csv</button>
+      <button data-sample="/samples/points.geojson">points.geojson</button>
+    </div>
 
-    <main>
-      <geo-chatbot id="bot"></geo-chatbot>
-      <div class="log" id="log">events:\n</div>
-    </main>
+    <!-- agentic-mode="agentic" enables the ReAct reasoning loop so the bot
+         inspects column types / sample rows / patterns before committing to
+         a plan. Without this, a "show points on map" question against an
+         unfamiliar dataset produces a blind plan that often fails. The
+         loop only activates for Groq / OpenAI providers; Anthropic /
+         Gemini fall back to single-shot automatically. -->
+    <geo-chatbot id="bot" agentic-mode="agentic"></geo-chatbot>
 
-    <footer>
-      Built with Lit · Apache Arrow · Loaders.gl · DuckDB-WASM · deck.gl · MapLibre
-    </footer>
+    <details class="log-drawer" id="logDrawer">
+      <summary id="logSummary">events</summary>
+      <pre id="log"></pre>
+    </details>
 
     <script type="module">
       import '@geochatbot/widget';
 
       const bot = document.getElementById('bot');
       const log = document.getElementById('log');
+      const drawer = document.getElementById('logDrawer');
+      const summary = document.getElementById('logSummary');
+      let errCount = 0;
+
+      function append(line, isError = false) {
+        const time = new Date().toTimeString().slice(0, 8);
+        const span = document.createElement('span');
+        if (isError) span.className = 'err-flash';
+        span.textContent = `[${time}] ${line}\n`;
+        log.appendChild(span);
+        log.scrollTop = log.scrollHeight;
+        if (isError) {
+          errCount++;
+          summary.textContent = `events · ${errCount} error${errCount > 1 ? 's' : ''}`;
+          drawer.open = true;
+        }
+      }
 
       bot.addEventListener('geochatbot:layer-loaded', (e) => {
         const d = e.detail;
         const p = d.profile;
-        const line =
-          `✓ ${d.name} [${d.source}] — ${p.rowCount} rows × ${p.columns.length} cols` +
-          (p.geometry ? ` · geom=${p.geometry.encoding}/${p.geometry.crsGuess}` : '') +
-          ` · engine=${d.engineRegistered ? 'registered' : 'skipped'}\n`;
-        log.textContent += line;
-        log.scrollTop = log.scrollHeight;
+        const geom = p.geometry
+          ? `geom=${p.geometry.encoding}/${p.geometry.crsGuess ?? '?'}`
+          : 'no-geometry';
+        append(`✓ ${d.name} [${d.source}] · ${p.rowCount}r × ${p.columns.length}c · ${geom}`);
       });
 
-      // Sample-file buttons: fetch the file, wrap as File, hand to widget.
+      // Surface every agent-loop event so a slow / stuck "Thinking…" is
+      // diagnosable without opening DevTools.
+      bot.addEventListener('plan', (e) => {
+        const steps = e.detail?.plan?.steps?.length ?? '?';
+        const tools = (e.detail?.plan?.steps ?? []).map((s) => s.tool).join(' → ');
+        append(`plan ← ${steps} steps: ${tools}`);
+      });
+      bot.addEventListener('progress', (e) => {
+        const d = e.detail || {};
+        const detail = d.error ? ` err=${d.error}` : '';
+        append(`progress: step=${d.stepId} status=${d.status}${detail}`, !!d.error);
+      });
+      bot.addEventListener('result', (e) => {
+        append(`result: kind=${e.detail?.kind}`);
+      });
+      bot.addEventListener('error', (e) => {
+        const d = e.detail || {};
+        append(`ERROR code=${d.code} msg=${d.message}`, true);
+      });
+      bot.addEventListener('critic', (e) => {
+        const d = e.detail || {};
+        append(`critic: step=${d.stepId} attempt=${d.attempt}/${d.maxAttempts} → ${d.decision}`);
+      });
+
+      // Sample-file buttons.
       document.querySelectorAll('.samples button').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const url = btn.dataset.sample;
           const res = await fetch(url);
           if (!res.ok) {
-            log.textContent += `✗ fetch ${url} failed: ${res.status}\n`;
+            append(`✗ fetch ${url} failed: ${res.status}`, true);
             return;
           }
           const blob = await res.blob();

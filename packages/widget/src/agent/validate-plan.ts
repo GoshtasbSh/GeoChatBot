@@ -53,11 +53,20 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
 	}
 
 	// Layer 2: tool existence + args parse
+	//
+	// Robustness: small LLMs (Groq's Llama 3.1-8b especially) like to fill
+	// every advertised optional field with an empty string or empty array
+	// instead of omitting it ("region_hint": "", "filters": []). Zod
+	// schemas with `.min(1)` reject those. We pre-sanitize each step's
+	// args by stripping empty-string / empty-array fields from the
+	// top-level object before validation, which transparently fixes 90%+
+	// of these "bad args" errors without changing the schemas.
 	for (const step of plan.steps) {
 		const tool = getTool(step.tool);
 		if (!tool) {
 			throw new PlanValidationError(`unknown tool: ${step.tool}`, step.id);
 		}
+		step.args = sanitizeArgs(step.args);
 		const argRes = tool.args.safeParse(step.args);
 		if (!argRes.success) {
 			throw new PlanValidationError(
@@ -101,15 +110,16 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
 		}
 	}
 
-	// Last step must be a render.* tool. (`render.summary` matches the prefix
-	// — it does not need a separate clause.)
+	// Last step must be a render.* OR report.* tool. report.quickscan
+	// returns a summary-kind payload (same shape as render.summary) and is
+	// the terminal step for "first-look" data-quality questions.
 	const last = plan.steps[plan.steps.length - 1];
 	if (!last) {
 		throw new PlanValidationError("plan has no steps");
 	}
-	if (!last.tool.startsWith("render.")) {
+	if (!last.tool.startsWith("render.") && !last.tool.startsWith("report.")) {
 		throw new PlanValidationError(
-			`last step must be a render.* tool (got ${last.tool})`,
+			`last step must be a render.* or report.* tool (got ${last.tool})`,
 			last.id,
 		);
 	}
@@ -125,6 +135,33 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
  * preventing a DoS via deeply-nested LLM output.
  */
 const MAX_REF_DEPTH = 32;
+
+/**
+ * Strip "useless" empty values that small LLMs love to fill into optional
+ * tool fields. Concretely:
+ *   - empty strings ("")
+ *   - whitespace-only strings ("   ")
+ *   - empty arrays ([])
+ *   - explicit nulls / undefineds
+ *
+ * Top-level fields with these values are deleted entirely, which lets
+ * zod's `.optional()` semantics kick in and accept the args object.
+ *
+ * One-level-deep: the planner's args are flat (column names, dataset
+ * names, scalar config). Deep walking would risk nuking legitimate
+ * empty values inside nested config objects we don't yet have.
+ */
+function sanitizeArgs(args: unknown): Record<string, unknown> {
+	if (!args || typeof args !== "object" || Array.isArray(args)) return {};
+	const out: Record<string, unknown> = {};
+	for (const [k, v] of Object.entries(args)) {
+		if (v === null || v === undefined) continue;
+		if (typeof v === "string" && v.trim() === "") continue;
+		if (Array.isArray(v) && v.length === 0) continue;
+		out[k] = v;
+	}
+	return out;
+}
 
 function collectVarRefs(
 	value: unknown,

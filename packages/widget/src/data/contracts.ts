@@ -73,6 +73,7 @@ export type BinaryInput =
 export type LoaderErrorCode =
 	| "UNSUPPORTED_FORMAT"
 	| "EMPTY_FILE"
+	| "FILE_TOO_LARGE"
 	| "PARSE_ERROR"
 	| "INVALID_GEOMETRY"
 	| "IO_ERROR";

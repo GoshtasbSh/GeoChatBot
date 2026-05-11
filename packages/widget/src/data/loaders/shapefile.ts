@@ -11,6 +11,7 @@ import type {
 } from "../contracts";
 import { LoaderError } from "../contracts";
 import {
+	MAX_UPLOAD_BYTES,
 	assertNonEmpty,
 	deriveTableName,
 	normalizeRows,
@@ -39,9 +40,28 @@ export const shapefileLoader: DataLoader = {
 			try {
 				const zip = await JSZip.loadAsync(buffer);
 				const entries: Array<[string, JSZip.JSZipObject]> = [];
+				let totalUncompressed = 0;
 				zip.forEach((path, entry) => {
-					if (!entry.dir) entries.push([path, entry]);
+					if (!entry.dir) {
+						entries.push([path, entry]);
+						// Sum uncompressed sizes BEFORE decompressing to detect zip
+						// bombs (a 1 KB zip that expands to 1 GB). Each ZipObject
+						// exposes the central-directory size unsourced from the
+						// payload, so this check is cheap.
+						type WithSize = { _data?: { uncompressedSize?: number } };
+						const sz = (entry as unknown as WithSize)._data?.uncompressedSize;
+						if (typeof sz === "number" && Number.isFinite(sz)) {
+							totalUncompressed += sz;
+						}
+					}
 				});
+				if (totalUncompressed > MAX_UPLOAD_BYTES) {
+					const mb = (totalUncompressed / (1024 * 1024)).toFixed(1);
+					throw new LoaderError(
+						"FILE_TOO_LARGE",
+						`${name}: zip uncompressed size is ${mb} MB, which exceeds the upload cap. Likely a zip bomb or oversized shapefile.`,
+					);
+				}
 				const findExt = (ext: string) =>
 					entries.find(([p]) => p.toLowerCase().endsWith(ext))?.[1];
 				const shpEntry = findExt(".shp");

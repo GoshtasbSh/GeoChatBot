@@ -84,17 +84,18 @@ describe("<gcb-rail>", () => {
 		expect(select).not.toHaveBeenCalled();
 	});
 
-	it("emits gcb:dataset-toggle on eye icon click", async () => {
+	it("does NOT render dataset visibility eye buttons (currently dead controls)", async () => {
+		// Visibility eyes were removed because the rail's `_derivedLayers`
+		// state is decoupled from the actual rendered map (gcb-map reads
+		// `geojsonLayers` from result-canvas turns, not the rail's list).
+		// Toggling a dead eye misled users into thinking the layer was
+		// hidden when in fact the map was unchanged. Re-add when the
+		// rail's list and gcb-map share a single source of truth.
 		const el = mount({
 			datasets: [{ name: "ports.csv", rows: 842, hasGeometry: true }],
 		});
 		await el.updateComplete;
-		const spy = vi.fn();
-		el.addEventListener("gcb:dataset-toggle", spy);
-		(el.shadowRoot?.querySelector(".dataset-row .eye") as HTMLElement).click();
-		expect(spy).toHaveBeenCalledTimes(1);
-		expect((spy.mock.calls[0][0] as CustomEvent<string>).detail).toBe(
-			"ports.csv",
-		);
+		const eye = el.shadowRoot?.querySelector(".dataset-row .eye");
+		expect(eye).toBeNull();
 	});
 });

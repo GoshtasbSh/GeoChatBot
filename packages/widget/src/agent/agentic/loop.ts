@@ -138,8 +138,16 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 		systemPrompt,
 		question,
 		ctx,
-		maxIterations = 8,
-		maxTokensPerCall = 1024,
+		// Lowered from 8 → 5 because Groq's free-tier 12k TPM cap is the
+		// bottleneck for most users. With a ~3k-token system prompt
+		// (preamble + tool catalog + dataset profile + 22 examples), each
+		// iteration eats ~1.5–3k tokens; 5 iterations stays under quota
+		// while still giving the LLM 4 inspection probes + finalize.
+		maxIterations = 5,
+		// Lowered from 1024 → 512: tool-arg JSON + a short reasoning span
+		// fit easily in 512; 1024 was leftover headroom that mostly
+		// translated to padded output tokens against the TPM ceiling.
+		maxTokensPerCall = 512,
 		signal,
 		dangerouslyAllowBrowser,
 		llmCall = defaultOpenAICompatCall,
@@ -154,6 +162,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 	];
 
 	let consecutiveUnknown = 0;
+	let consecutiveFreeText = 0;
 	for (let iter = 0; iter < maxIterations; iter++) {
 		// Abort fast-path. Without this an aborted clear() during an
 		// in-flight inspection round only takes effect at the *next* fetch
@@ -192,8 +201,19 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 					"You must call a tool — either an inspect.* tool to gather more info, " +
 					"or finalize_plan to commit a final Plan. Do not answer in free text.",
 			});
+			consecutiveFreeText++;
+			// Symmetric to the unknown-tool cap: if a model keeps producing
+			// free text despite the prod, fail fast instead of burning the
+			// full iteration budget. Smaller models (Groq Llama-3.1-8B) are
+			// the usual offenders. Cap matches the unknown-tool cap.
+			if (consecutiveFreeText >= 3) {
+				throw new Error(
+					"agent loop: model produced free text 3 times in a row instead of calling a tool",
+				);
+			}
 			continue;
 		}
+		consecutiveFreeText = 0;
 
 		// Append the assistant turn (tool_calls) BEFORE we run the tools, so
 		// the OpenAI-compat tool_call_id wiring is preserved.
@@ -260,10 +280,18 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 				args: tc.args,
 				observation,
 			});
+			// Cap each observation in the LLM-visible message history at
+			// ~600 chars so a probe_sql returning a wide row dump doesn't
+			// eat the entire TPM budget on the next iteration. The full
+			// observation still flows through onStep → UI for the user.
+			const truncated =
+				observation.length > 600
+					? `${observation.slice(0, 600)}\n…(observation truncated; see full output in UI trace)`
+					: observation;
 			messages.push({
 				role: "tool",
 				tool_call_id: tc.id,
-				content: observation,
+				content: truncated,
 			});
 		}
 
@@ -295,8 +323,14 @@ async function defaultOpenAICompatCall(
 		max_tokens: req.maxTokens ?? 1024,
 		messages: req.messages,
 		tools: req.tools,
-		// Let the model choose any tool (including finalize_plan).
-		tool_choice: "auto",
+		// "required" forces the model to call SOME registered tool (any of
+		// inspect.* OR finalize_plan) but not a specific one — the model
+		// still chooses which. Stricter than "auto", which on smaller models
+		// (Groq Llama-3.1-8B) is more likely to be ignored, leading to
+		// free-text replies that burn iterations without progress. The free-
+		// text cap in runAgentLoop catches the residual cases where a
+		// provider doesn't honor "required".
+		tool_choice: "required",
 	};
 
 	const init: RequestInit = {
@@ -312,6 +346,24 @@ async function defaultOpenAICompatCall(
 	const res = await fetch(req.endpoint, init);
 	if (!res.ok) {
 		const txt = await res.text().catch(() => "");
+		// Surface 429s with a more actionable hint. Groq's free tier (12k
+		// TPM) is the most common 429 source for this widget; a typed
+		// "RATE_LIMIT" error code lets the host fold a retry-suggestion
+		// into the UI instead of dumping a raw HTTP body on the user.
+		if (res.status === 429) {
+			const err = new Error(
+				`Rate limit hit (HTTP 429). Wait a few seconds and try again, switch to a smaller model in Settings, or use a paid provider. Provider response: ${txt.slice(0, 200)}`,
+			);
+			(err as { code?: string }).code = "RATE_LIMIT";
+			throw err;
+		}
+		if (res.status === 401 || res.status === 403) {
+			const err = new Error(
+				`Auth failed (HTTP ${res.status}). Re-enter your API key in Settings.`,
+			);
+			(err as { code?: string }).code = "AUTH";
+			throw err;
+		}
 		throw new Error(
 			`agent loop LLM call failed: HTTP ${res.status} ${txt.slice(0, 240)}`,
 		);

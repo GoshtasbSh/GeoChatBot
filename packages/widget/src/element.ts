@@ -11,11 +11,13 @@ import {
 	type ResultEvent as ExecResultEvent,
 	Executor,
 	type ExecutorEngine,
+	type ResultPayload,
 } from "./agent/executor/index.js";
 import {
 	Critic,
 	DEFAULT_PROVIDER_ID,
 	Planner,
+	clearUserMemory,
 	defaultModelFor,
 } from "./agent/index.js";
 import type {
@@ -155,6 +157,15 @@ function toExecutorEngine(eng: DuckDBEngine): ExecutorEngine {
 
 /** Stable error code for an arbitrary thrown value, never the raw object. */
 function errCode(err: unknown): string {
+	// Prefer an explicit `code` property when present (set by provider
+	// adapters and the agentic loop for typed cases like RATE_LIMIT,
+	// AUTH, NETWORK). These codes are what surfaces to the host's UI
+	// and the demo log, so a user hitting Groq's 12k TPM ceiling sees
+	// "RATE_LIMIT" rather than the generic "Error".
+	if (err && typeof err === "object" && "code" in err) {
+		const c = (err as { code?: unknown }).code;
+		if (typeof c === "string" && c) return c;
+	}
 	if (
 		err &&
 		typeof err === "object" &&
@@ -238,6 +249,24 @@ export type GeoChatBotEvents = {
 		/** Patched args, only when decision==='patch'. */
 		afterArgs?: Record<string, unknown>;
 	};
+	/**
+	 * Agentic-loop reasoning event. Fires once per iteration in agentic
+	 * mode. Hosts can subscribe to surface live "thinking" in their own
+	 * UI (the built-in result-canvas already does this via the
+	 * `<gcb-thinking>` panel).
+	 */
+	"agentic-step":
+		| { kind: "reason"; iteration: number; text: string | null }
+		| {
+				kind: "tool";
+				iteration: number;
+				toolId: string;
+				args: Record<string, unknown>;
+				observation: string;
+		  }
+		| { kind: "finalize"; iteration: number; plan: Plan }
+		| { kind: "budget-exhausted"; iteration: number }
+		| { kind: "unknown-tool"; iteration: number; toolId: string };
 };
 
 const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
@@ -247,6 +276,7 @@ const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
 	progress: "geochatbot:progress",
 	error: "geochatbot:error",
 	critic: "geochatbot:critic",
+	"agentic-step": "geochatbot:agentic-step",
 };
 
 /**
@@ -286,6 +316,12 @@ export class GeoChatBotElement extends LitElement {
         --gcb-map-height: 360px;
 
         display: block;
+        /* Sensible default size when the host doesn't constrain us. Hosts
+         * that explicitly set 'height' (e.g. fullscreen demo with
+         * height: 100vh) override this. */
+        min-height: 640px;
+        height: 100%;
+        box-sizing: border-box;
         font-family: var(--gcb-font);
         color: var(--gcb-ink);
         background: var(--gcb-bg);
@@ -477,15 +513,23 @@ export class GeoChatBotElement extends LitElement {
 
 	/**
 	 * Plan generation mode:
-	 *   - `'single-shot'` (default): one forced-tool LLM call → Plan. Cheapest.
-	 *   - `'agentic'`: multi-turn ReAct loop. The LLM may call inspection tools
-	 *     (sample_rows, distinct_values, column_pattern, probe_sql) against the
-	 *     loaded data BEFORE committing to a Plan via finalize_plan. Strictly
-	 *     better quality on unfamiliar datasets at the cost of 3-8× latency.
+	 *   - `'single-shot'` (default): one forced-tool LLM call → Plan. Cheapest,
+	 *     works on every provider (Anthropic/Gemini/Groq/OpenAI).
+	 *   - `'agentic'`: multi-turn ReAct loop. The LLM probes the loaded data
+	 *     with inspection tools (sample_rows, distinct_values, column_pattern,
+	 *     probe_sql) BEFORE committing to a Plan, so it can reason about which
+	 *     columns are spatial / address-like / etc. This is the value-prop
+	 *     over a generic chatbot — without it, unfamiliar datasets produce
+	 *     blind plans. Recommended for any non-trivial dataset.
 	 *
-	 * Set via the `agentic-mode` attribute. Today the agentic loop only
-	 * supports OpenAI-compatible providers (Groq + OpenAI + OpenRouter +
-	 * Together) — Anthropic / Gemini fall back to single-shot.
+	 * The agentic loop only supports OpenAI-compatible providers (Groq +
+	 * OpenAI + OpenRouter + Together). On Anthropic/Gemini the planner
+	 * automatically falls back to single-shot and dispatches an
+	 * `AGENTIC_FALLBACK` warning event.
+	 *
+	 * Set via the `agentic-mode` attribute. The fullscreen demo
+	 * (packages/demo/index.html) and the embedded /app standalone both
+	 * default to "agentic" because they target the reasoning use-case.
 	 */
 	@property({ reflect: true, attribute: "agentic-mode" })
 	agenticMode: "single-shot" | "agentic" = "single-shot";
@@ -501,6 +545,22 @@ export class GeoChatBotElement extends LitElement {
 	 */
 	@property({ reflect: true, attribute: "retrieval" })
 	retrievalMode: "auto" | "on" | "off" = "auto";
+
+	/**
+	 * Persist approved (question, plan) pairs into IndexedDB so the next
+	 * session retrieves them as few-shots. **Default: false (opt-in).**
+	 *
+	 * The user's question text — which can include PII like addresses or
+	 * names typed inline — is stored verbatim. This contradicts the
+	 * "browser-only, no data leaves your device" framing if it persists
+	 * silently, so the toggle defaults off. When true, hosts SHOULD
+	 * surface a settings UI affordance to wipe history; this widget's
+	 * built-in settings drawer renders one.
+	 *
+	 * Use {@link clearMemory} to wipe at any time.
+	 */
+	@property({ type: Boolean, attribute: "memory-enabled", reflect: true })
+	memoryEnabled = false;
 
 	/** Active LLM provider, set via {@link setProvider}. Survives {@link clear}. */
 	private provider: ChatProvider | undefined = undefined;
@@ -642,6 +702,7 @@ export class GeoChatBotElement extends LitElement {
 		dangerouslyAllowBrowser: "geochatbot:dangerouslyAllowBrowser",
 		agenticMode: "geochatbot:agenticMode",
 		retrievalMode: "geochatbot:retrievalMode",
+		memoryEnabled: "geochatbot:memoryEnabled",
 	} as const;
 
 	/** Provider ids the persistence layer knows about. Anything else is ignored. */
@@ -671,6 +732,7 @@ export class GeoChatBotElement extends LitElement {
 		if (
 			changed.has("agenticMode") ||
 			changed.has("retrievalMode") ||
+			changed.has("memoryEnabled") ||
 			changed.has("dangerouslyAllowBrowser")
 		) {
 			this._planner = undefined;
@@ -728,6 +790,10 @@ export class GeoChatBotElement extends LitElement {
 			) {
 				this.retrievalMode = persistedRetrieval;
 			}
+			const persistedMemory = localStorage.getItem(k.memoryEnabled);
+			if (persistedMemory === "1" || persistedMemory === "0") {
+				this.memoryEnabled = persistedMemory === "1";
+			}
 		} catch {
 			// localStorage unavailable — remain in-memory only.
 		}
@@ -762,6 +828,8 @@ export class GeoChatBotElement extends LitElement {
 		this.dangerouslyAllowBrowser = detail.dangerouslyAllowBrowser;
 		if (detail.agenticMode) this.agenticMode = detail.agenticMode;
 		if (detail.retrievalMode) this.retrievalMode = detail.retrievalMode;
+		if (typeof detail.memoryEnabled === "boolean")
+			this.memoryEnabled = detail.memoryEnabled;
 		this._maskedKey = this._maskKey(detail.apiKey);
 		// Force planner rebuild so the next ask() picks up the new tuple.
 		// (willUpdate also drops _planner when agenticMode/retrievalMode
@@ -794,10 +862,18 @@ export class GeoChatBotElement extends LitElement {
 				localStorage.setItem(k.agenticMode, detail.agenticMode);
 			if (detail.retrievalMode)
 				localStorage.setItem(k.retrievalMode, detail.retrievalMode);
+			if (typeof detail.memoryEnabled === "boolean")
+				localStorage.setItem(k.memoryEnabled, detail.memoryEnabled ? "1" : "0");
 		} catch {
 			// Persistence is best-effort; in-memory state above is authoritative.
 		}
 		this._settingsOpen = false;
+	};
+
+	private _onClearMemoryFromDrawer = (): void => {
+		// Fire-and-forget; surface failures only on the public clearMemory()
+		// promise (callers who want the result use the public API).
+		void this.clearMemory();
 	};
 
 	private _openSettings = () => {
@@ -839,8 +915,41 @@ export class GeoChatBotElement extends LitElement {
 	};
 
 	private _onSaveSelect = (e: CustomEvent<string>): void => {
-		this._activeSaveId = e.detail;
+		const id = e.detail;
+		this._activeSaveId = id;
 		this._activeTab = "detail";
+		// Replay the saved payload as a new turn in the canvas so a click in
+		// the rail produces a visible "I just opened this saved result"
+		// outcome. The save's payload is exactly a ResultPayload; the
+		// outer SavedResultV1.kind ("map") is metadata for the rail icon
+		// and is unrelated to the payload's own discriminator ("layer").
+		const save = this.saves.get(id);
+		if (!save) return;
+		const payload = save.payload as { kind?: string } | undefined;
+		// Defensive: corrupt or hand-edited localStorage may yield payloads
+		// without a kind discriminator. Drop those silently rather than
+		// crashing the canvas; the rail row stays selected as a hint.
+		if (
+			!payload ||
+			(payload.kind !== "layer" &&
+				payload.kind !== "chart" &&
+				payload.kind !== "table" &&
+				payload.kind !== "summary")
+		) {
+			return;
+		}
+		if (this.shadowRoot) {
+			const canvas = this.shadowRoot.querySelector("result-canvas") as
+				| (HTMLElement & {
+						beginTurn(q: string): void;
+						setResult(p: ResultPayload): void;
+				  })
+				| null;
+			if (canvas) {
+				canvas.beginTurn(`Saved: ${save.title}`);
+				canvas.setResult(save.payload as ResultPayload);
+			}
+		}
 	};
 
 	/**
@@ -868,8 +977,29 @@ export class GeoChatBotElement extends LitElement {
 		const q = (e as CustomEvent<string>).detail;
 		if (!q || this._agentBusy) return;
 		this._agentBusy = true;
+		const gen = this.generation;
 		try {
 			await this.ask(q);
+			// After the planner resolves, the plan-review modal is mounted
+			// and the user must approve/reject/dismiss before the turn ends.
+			// Hold busy across that interaction and the subsequent execution
+			// so a second Enter cannot fire a concurrent ask() (which would
+			// either trip PLAN_PENDING silently or — once the modal is gone
+			// after approve — race the executor on the same canvas).
+			//
+			// Polling on Lit reactive state avoids a complex promise registry
+			// in the rejectPlan/_cancelPendingPlanByDismiss paths. The poll is
+			// light (100ms) and bounded by user attention; clear()/disconnect
+			// bumps `generation` so we drop out of the wait promptly.
+			while (gen === this.generation && this._pendingPlan) {
+				await new Promise((r) => setTimeout(r, 100));
+			}
+			if (gen !== this.generation) return;
+			// approvePlan() set __lastExecution; await it so the input stays
+			// disabled while runners write to the canvas. Errors are surfaced
+			// via 'error' events, so we swallow rejections here.
+			const exec = this.__lastExecution;
+			if (exec) await exec.catch(() => undefined);
 		} finally {
 			this._agentBusy = false;
 		}
@@ -1063,10 +1193,12 @@ export class GeoChatBotElement extends LitElement {
 								dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
 								agenticMode: this.agenticMode,
 								retrievalMode: this.retrievalMode,
+								memoryEnabled: this.memoryEnabled,
 							} as SettingsValue
 						}
             @gcb:settings=${this._onSaveSettings}
             @gcb:settings-close=${this._closeSettings}
+            @gcb:clear-memory=${this._onClearMemoryFromDrawer}
           ></gcb-settings-drawer>`
 					: null
 			}
@@ -1255,6 +1387,18 @@ export class GeoChatBotElement extends LitElement {
 		}
 	}
 
+	/**
+	 * Wipe the user-memory store (questions + plans persisted via
+	 * `memoryEnabled`). Static corpus and example RAG are unaffected.
+	 *
+	 * Surfaces as `clearMemory()` on the public element API so a host can
+	 * wire a "Forget my history" button into a parent menu. The widget's
+	 * own settings drawer also calls this.
+	 */
+	async clearMemory(): Promise<void> {
+		await clearUserMemory();
+	}
+
 	/** Set the active LLM provider used by future agent turns. */
 	setProvider(provider: ChatProvider): void {
 		this.provider = provider;
@@ -1379,8 +1523,17 @@ export class GeoChatBotElement extends LitElement {
 				...(this._llmCall ? { llmCall: this._llmCall } : {}),
 				mode: agenticActive ? "agentic" : "single-shot",
 				retrieval: this.retrievalMode,
+				memoryEnabled: this.memoryEnabled,
 				...(agenticEndpoint ? { agenticEndpoint } : {}),
 				...(agenticCtx ? { agenticCtx } : {}),
+				// Stream the agent's reasoning to the host AND to the built-in
+				// chat canvas so users see the bot "thinking" in real time.
+				// Without this, agentic mode is a 30-second silent stare at
+				// "Thinking…" — exactly what the user complained about.
+				onAgenticStep: (e) => {
+					this.dispatch("agentic-step", e as GeoChatBotEvents["agentic-step"]);
+					if (this.mode !== "headless") this._pushAgenticThought(e);
+				},
 			});
 		}
 		// Capture the generation BEFORE awaiting the planner. If `clear()`
@@ -1577,43 +1730,48 @@ export class GeoChatBotElement extends LitElement {
 		const abort = new AbortController();
 		this._execAbort = abort;
 		try {
-			await exec.execute(plan, planId, {
-				onProgress: (e: ExecProgressEvent) => {
-					this.dispatch("progress", e);
-					if (this.mode !== "headless") this._pushPlanStatus(e);
+			await exec.execute(
+				plan,
+				planId,
+				{
+					onProgress: (e: ExecProgressEvent) => {
+						this.dispatch("progress", e);
+						if (this.mode !== "headless") this._pushPlanStatus(e);
+					},
+					onResult: (e: ExecResultEvent) => {
+						this.dispatch("result", e);
+						if (this.mode !== "headless") this._mountResult(e);
+					},
+					onError: (e) => {
+						this.dispatch("error", e);
+						this.error = e.message;
+					},
+					...(critic
+						? {
+								onStepError: async (ctx: StepErrorContext) => {
+									const decision = await critic.diagnose(ctx, abort.signal);
+									const detail: GeoChatBotEvents["critic"] = {
+										planId: ctx.planId,
+										stepId: ctx.step.id,
+										attempt: ctx.retryCount + 1,
+										maxAttempts: ctx.maxRetries + 1,
+										decision: decision.action,
+										errorMessage: ctx.error.message,
+										beforeArgs: ctx.resolvedArgs,
+									};
+									if (decision.action === "patch") {
+										detail.afterArgs = decision.patchedStep.args;
+									}
+									this.dispatch("critic", detail);
+									if (this.mode !== "headless")
+										this._pushCriticAttempt(detail, decision);
+									return decision;
+								},
+							}
+						: {}),
 				},
-				onResult: (e: ExecResultEvent) => {
-					this.dispatch("result", e);
-					if (this.mode !== "headless") this._mountResult(e);
-				},
-				onError: (e) => {
-					this.dispatch("error", e);
-					this.error = e.message;
-				},
-				...(critic
-					? {
-							onStepError: async (ctx: StepErrorContext) => {
-								const decision = await critic.diagnose(ctx, abort.signal);
-								const detail: GeoChatBotEvents["critic"] = {
-									planId: ctx.planId,
-									stepId: ctx.step.id,
-									attempt: ctx.retryCount + 1,
-									maxAttempts: ctx.maxRetries + 1,
-									decision: decision.action,
-									errorMessage: ctx.error.message,
-									beforeArgs: ctx.resolvedArgs,
-								};
-								if (decision.action === "patch") {
-									detail.afterArgs = decision.patchedStep.args;
-								}
-								this.dispatch("critic", detail);
-								if (this.mode !== "headless")
-									this._pushCriticAttempt(detail, decision);
-								return decision;
-							},
-						}
-					: {}),
-			}, abort.signal);
+				abort.signal,
+			);
 		} finally {
 			// Only clear our reference if THIS execution still owns the controller.
 			// A clear() mid-flight may have already swapped in a new one (or
@@ -1775,6 +1933,72 @@ export class GeoChatBotElement extends LitElement {
 	 *  in headless mode (no shadow DOM children) or before the first plan. */
 	private _planReview(): PlanReview | null {
 		return this.shadowRoot?.querySelector("gcb-modal plan-review") ?? null;
+	}
+
+	/**
+	 * Stream an agentic-loop step into the result canvas as a "thought"
+	 * entry so the user can watch the bot reason in real time. Truncates
+	 * long observations so a probe_sql returning a wide row dump doesn't
+	 * blow out the UI.
+	 */
+	private _pushAgenticThought(e: GeoChatBotEvents["agentic-step"]): void {
+		if (this.mode === "headless") return;
+		const canvas = this.shadowRoot?.querySelector("result-canvas") as
+			| (HTMLElement & {
+					appendThought(t: {
+						kind: string;
+						iteration: number;
+						text: string;
+						observation?: string;
+					}): void;
+			  })
+			| null;
+		if (!canvas) return;
+		const trunc = (s: string, n = 240): string =>
+			s.length > n ? `${s.slice(0, n)}…` : s;
+		switch (e.kind) {
+			case "reason": {
+				const txt = (e.text ?? "").trim();
+				if (!txt) return;
+				canvas.appendThought({
+					kind: "reason",
+					iteration: e.iteration,
+					text: trunc(txt, 600),
+				});
+				return;
+			}
+			case "tool": {
+				const argsLine = JSON.stringify(e.args);
+				canvas.appendThought({
+					kind: "tool",
+					iteration: e.iteration,
+					text: `${e.toolId}(${trunc(argsLine, 120)})`,
+					observation: trunc(e.observation, 480),
+				});
+				return;
+			}
+			case "finalize":
+				canvas.appendThought({
+					kind: "finalize",
+					iteration: e.iteration,
+					text: `Plan ready · ${e.plan.steps.length} step${e.plan.steps.length === 1 ? "" : "s"}: ${e.plan.steps.map((s) => s.tool).join(" → ")}`,
+				});
+				return;
+			case "unknown-tool":
+				canvas.appendThought({
+					kind: "unknown-tool",
+					iteration: e.iteration,
+					text: `Model called unknown tool: ${e.toolId}`,
+				});
+				return;
+			case "budget-exhausted":
+				canvas.appendThought({
+					kind: "budget-exhausted",
+					iteration: e.iteration,
+					text: "Iteration budget exhausted before finalize_plan",
+				});
+				return;
+		}
 	}
 
 	private _pushPlanStatus(e: ExecProgressEvent): void {

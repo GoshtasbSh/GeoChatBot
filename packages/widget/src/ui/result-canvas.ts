@@ -22,11 +22,28 @@ import type { ResultPayload } from "../agent/executor/types.js";
 import type { GeoJsonInputLayer } from "./MapView.js";
 import { tokensCSS } from "./tokens.js";
 
+/**
+ * Streaming "thinking" entry from the agentic loop. One per iteration.
+ * Rendered as a collapsible reasoning trace above the final results so
+ * the user can watch the bot reason about which columns matter, what
+ * tools to call, and why — which is the whole value-prop over a
+ * generic chatbot.
+ */
+export interface AgenticThought {
+	kind: "reason" | "tool" | "finalize" | "budget-exhausted" | "unknown-tool";
+	iteration: number;
+	/** For 'reason': the LLM's free-text. For 'tool': human-readable summary. */
+	text: string;
+	/** For 'tool': observation snippet (truncated). */
+	observation?: string;
+}
+
 interface Turn {
 	id: string;
 	question: string;
 	text?: string;
 	results: ResultPayload[];
+	thoughts?: AgenticThought[];
 	origin: { planId: string; stepId: string; question: string };
 }
 
@@ -207,6 +224,17 @@ export class ResultCanvas extends LitElement {
 
       /* Map card */
       .map-bd { position: relative; }
+      .map-legend {
+        font-size: 11px;
+        color: var(--gcb-ink-muted);
+        margin-left: 6px;
+      }
+      .map-legend code {
+        background: var(--gcb-bg-3);
+        border: 1px solid var(--gcb-line);
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
       gcb-map { display: block; height: 260px; }
       .map-loading {
         font-size: 12px; color: var(--gcb-ink-muted);
@@ -219,6 +247,58 @@ export class ResultCanvas extends LitElement {
         padding: 4px 10px; border-radius: 999px;
         background: var(--gcb-accent); color: var(--gcb-accent-fg);
         font-size: 11px; font-weight: 600;
+      }
+
+      /* Agentic reasoning trace */
+      .thoughts {
+        margin: 6px 0 10px;
+        border: 1px dashed var(--gcb-line);
+        border-radius: 8px;
+        padding: 8px 12px;
+        background: var(--gcb-bg-3);
+      }
+      .thoughts[open] { background: var(--gcb-bg-2, var(--gcb-bg-3)); }
+      .thoughts-summary {
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--gcb-ink-muted);
+        list-style: none;
+        user-select: none;
+      }
+      .thoughts-summary::-webkit-details-marker { display: none; }
+      .thoughts-summary::before { content: "▸ "; }
+      .thoughts[open] .thoughts-summary::before { content: "▾ "; }
+      .thoughts-list {
+        list-style: none;
+        margin: 8px 0 2px;
+        padding: 0;
+      }
+      .thoughts-item {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        gap: 6px;
+        padding: 4px 0;
+        font-size: 12.5px;
+        line-height: 1.5;
+        color: var(--gcb-ink-soft);
+        border-top: 1px solid var(--gcb-line);
+      }
+      .thoughts-item:first-child { border-top: none; }
+      .thoughts-icon { line-height: 1; }
+      .thoughts-text { word-break: break-word; }
+      .thoughts-obs {
+        grid-column: 2;
+        margin: 4px 0 0;
+        padding: 6px 8px;
+        background: var(--gcb-bg);
+        border: 1px solid var(--gcb-line);
+        border-radius: 4px;
+        font-family: var(--gcb-font-mono);
+        font-size: 11px;
+        max-height: 140px;
+        overflow: auto;
+        white-space: pre-wrap;
       }
 
       ::-webkit-scrollbar { width: 6px; }
@@ -262,6 +342,23 @@ export class ResultCanvas extends LitElement {
 		this._turns = this._turns.map((t, i) =>
 			i === lastIdx ? { ...t, origin } : t,
 		);
+	}
+
+	/**
+	 * Append an agentic-loop thought to the latest turn so the reasoning
+	 * trace renders inline. Creates a turn lazily so an empty canvas can
+	 * still show "thinking..." while the planner works.
+	 */
+	appendThought(t: AgenticThought): void {
+		if (this._turns.length === 0) this.beginTurn("");
+		const last = this._turns[this._turns.length - 1];
+		if (!last) return;
+		const next: Turn = {
+			...last,
+			thoughts: [...(last.thoughts ?? []), t],
+		};
+		this._turns = [...this._turns.slice(0, -1), next];
+		this._scrollToBottomNextTick();
 	}
 
 	/** Append a result payload to the latest turn (or create one if none exists). */
@@ -326,9 +423,57 @@ export class ResultCanvas extends LitElement {
         <div class="body">
           <div class="who">GeoChatBot</div>
           ${t.text ? html`<div class="text">${t.text}</div>` : nothing}
+          ${
+						t.thoughts && t.thoughts.length > 0
+							? this._renderThoughts(t.thoughts, t.results.length === 0)
+							: nothing
+					}
           ${t.results.map((p) => this._renderResult(p, t))}
         </div>
       </div>
+    `;
+	}
+
+	/**
+	 * Render the agentic reasoning trace as a collapsible bullet list.
+	 * Auto-expanded while the loop is still running (no results yet);
+	 * collapsed once the final results arrive so the user sees the
+	 * answer first and can drill into "how did you get here?" on demand.
+	 */
+	private _renderThoughts(
+		thoughts: AgenticThought[],
+		stillRunning: boolean,
+	): TemplateResult {
+		const summary = stillRunning
+			? `Thinking… (${thoughts.length} step${thoughts.length === 1 ? "" : "s"})`
+			: `Reasoning trace · ${thoughts.length} step${thoughts.length === 1 ? "" : "s"}`;
+		return html`
+      <details class="thoughts" ?open=${stillRunning}>
+        <summary class="thoughts-summary">${summary}</summary>
+        <ol class="thoughts-list">
+          ${thoughts.map((th) => {
+						const icon =
+							th.kind === "reason"
+								? "💭"
+								: th.kind === "tool"
+									? "🔧"
+									: th.kind === "finalize"
+										? "✓"
+										: "⚠";
+						return html`
+              <li class="thoughts-item">
+                <span class="thoughts-icon">${icon}</span>
+                <span class="thoughts-text">${th.text}</span>
+                ${
+									th.observation
+										? html`<pre class="thoughts-obs">${th.observation}</pre>`
+										: nothing
+								}
+              </li>
+            `;
+					})}
+        </ol>
+      </details>
     `;
 	}
 
@@ -513,6 +658,34 @@ export class ResultCanvas extends LitElement {
 		const featCount = Array.isArray(fc?.features) ? fc.features.length : 0;
 		const layerName = p.name ?? "result";
 		const mapTitle = `map · ${layerName}`;
+		// Forward only the keys MapView knows about. Style is a free-form
+		// `Record<string, unknown>` on the ResultPayload contract, but
+		// MapView's GeoJsonInputLayer.style is typed — we narrow here so a
+		// future runner that adds a key doesn't silently break rendering.
+		const rawStyle = p.style as Record<string, unknown> | undefined;
+		const safeStyle: GeoJsonInputLayer["style"] | undefined = rawStyle
+			? {
+					...(typeof rawStyle.colorBy === "string"
+						? { colorBy: rawStyle.colorBy }
+						: {}),
+					...(typeof rawStyle.radiusBy === "string"
+						? { radiusBy: rawStyle.radiusBy }
+						: {}),
+					...(rawStyle.classification === "categorical" ||
+					rawStyle.classification === "quantile" ||
+					rawStyle.classification === "linear"
+						? { classification: rawStyle.classification }
+						: {}),
+				}
+			: undefined;
+		const inputLayer: GeoJsonInputLayer = {
+			name: layerName,
+			geojson: fc as { type: "FeatureCollection"; features: unknown[] },
+			...(safeStyle && Object.keys(safeStyle).length > 0 ? { style: safeStyle } : {}),
+		};
+		const legend = safeStyle?.colorBy
+			? html`<span class="map-legend">colored by <code>${safeStyle.colorBy}</code></span>`
+			: nothing;
 		return html`
       <div class="card">
         <div class="card-hdr">
@@ -521,12 +694,13 @@ export class ResultCanvas extends LitElement {
             <circle cx="12" cy="10" r="3"/>
           </svg>
           <span class="card-lbl">Map · ${layerName} · ${featCount} features</span>
+          ${legend}
           ${this._saveBtn("map", p, mapTitle, turn)}
         </div>
         <div class="map-bd">
           ${
 						this._mapLoaded
-							? html`<gcb-map .geojsonLayers=${[{ name: layerName, geojson: fc as { type: "FeatureCollection"; features: unknown[] } }] as GeoJsonInputLayer[]}></gcb-map>`
+							? html`<gcb-map .geojsonLayers=${[inputLayer]}></gcb-map>`
 							: html`<div class="map-loading">Loading map…</div>`
 					}
           <div class="layer-added">

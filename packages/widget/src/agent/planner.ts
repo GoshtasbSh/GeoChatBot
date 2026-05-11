@@ -9,6 +9,7 @@ import {
 	renderPrompt,
 	renderToolsBlock,
 } from "./prompts/builders.js";
+import { AGENTIC_PREAMBLE } from "./prompts/agentic-preamble.js";
 import { renderExamplesBlock } from "./prompts/examples.js";
 import { rememberPlan, retrieve } from "./retrieval/retriever.js";
 import { type Plan, PlanSchema } from "./types.js";
@@ -58,6 +59,38 @@ export interface PlannerOptions {
 	 * is `'agentic'`; ignored otherwise.
 	 */
 	agenticCtx?: InspectionRunCtx;
+	/**
+	 * Persist approved (question, plan) pairs into IndexedDB so similar
+	 * future questions retrieve them as few-shots. **Default: false.**
+	 *
+	 * This is a privacy-sensitive toggle: the user's question text is
+	 * stored on disk and visible in DevTools. The widget exposes
+	 * `clearMemory()` and a settings-drawer "Forget my history" button to
+	 * wipe it. RAG retrieval over the static corpus/examples is unaffected.
+	 */
+	memoryEnabled?: boolean;
+	/**
+	 * Optional callback for streaming agentic-loop reasoning steps. Each
+	 * inspection iteration emits one event: the LLM's free-text reasoning,
+	 * the tool it chose, the observation it got back, or the final plan.
+	 * Hosts wire this to a UI status panel so users can see the bot
+	 * "thinking" in real time instead of staring at a "Thinking..." chip
+	 * for 30 seconds. Only fires in agentic mode.
+	 */
+	onAgenticStep?: (
+		e:
+			| { kind: "reason"; iteration: number; text: string | null }
+			| {
+					kind: "tool";
+					iteration: number;
+					toolId: string;
+					args: Record<string, unknown>;
+					observation: string;
+			  }
+			| { kind: "finalize"; iteration: number; plan: Plan }
+			| { kind: "budget-exhausted"; iteration: number }
+			| { kind: "unknown-tool"; iteration: number; toolId: string },
+	) => void;
 }
 
 export interface PlanRequest {
@@ -89,12 +122,25 @@ export class Planner {
 		}
 		const llmCall = this.opts.llmCall ?? callPlannerLLM;
 
-		// ── RAG retrieval (lazy + best-effort) ─────────────────────────────
-		// Retrieve top-K relevant docs + similar past questions. On failure
-		// (e.g. embedder can't load WASM) we fall through to the static
-		// 22-example block — degraded but functional. The per-question
-		// retrieval cost is ~10ms after the first model load.
 		const retrievalEnabled = this.shouldUseRetrieval();
+
+		// ── Agentic-mode short-circuit ─────────────────────────────────────
+		// Agentic mode skips the static 22-example few-shot block AND the
+		// retrieval round-trip — the loop reasons from data inspection,
+		// not from text similarity. Skipping retrieval here saves ~200ms
+		// per question and ~4-5k tokens of system prompt that would
+		// otherwise blow Groq's 6k-TPM ceiling on the smallest models.
+		if (this.opts.mode === "agentic") {
+			const plan = await this.planAgentic(req);
+			if (retrievalEnabled) void this.tryRemember(req.question, plan);
+			return plan;
+		}
+
+		// ── RAG retrieval (lazy + best-effort) ─────────────────────────────
+		// Single-shot mode benefits from few-shot pattern matching. Retrieve
+		// top-K relevant docs + similar past questions. On failure (e.g.
+		// embedder can't load WASM) we fall through to the static 22-example
+		// block — degraded but functional. ~10ms per call after first load.
 		let examplesBlock = renderExamplesBlock();
 		let knowledgeBlock = "";
 		if (retrievalEnabled) {
@@ -109,15 +155,6 @@ export class Planner {
 			} catch {
 				// Embedder failure is non-fatal; static block is still in place.
 			}
-		}
-
-		// ── Agentic-mode short-circuit ─────────────────────────────────────
-		if (this.opts.mode === "agentic") {
-			const plan = await this.planAgentic(req, examplesBlock, knowledgeBlock);
-			// Persist the question→plan pair into the user-memory store so a
-			// similar future question retrieves it as a few-shot.
-			if (retrievalEnabled) void this.tryRemember(req.question, plan);
-			return plan;
 		}
 
 		// ── Single-shot path (legacy, default) ─────────────────────────────
@@ -234,11 +271,7 @@ export class Planner {
 	/* Agentic mode                                                         */
 	/* -------------------------------------------------------------------- */
 
-	private async planAgentic(
-		req: PlanRequest,
-		examplesBlock: string,
-		knowledgeBlock: string,
-	): Promise<Plan> {
+	private async planAgentic(req: PlanRequest): Promise<Plan> {
 		if (!this.opts.agenticEndpoint) {
 			throw new PlannerError(
 				"agentic mode requires `agenticEndpoint` (OpenAI-compat /chat/completions URL)",
@@ -250,11 +283,24 @@ export class Planner {
 			);
 		}
 		// Build the agentic-loop system prompt. It differs from the single-shot
-		// template because we need to teach the LLM about the inspection tools
-		// and that it MUST commit a final plan via finalize_plan rather than
-		// emitting render.* directly.
+		// template in TWO ways:
+		//   1. It teaches the LLM about the inspection tools and that it
+		//      MUST commit a final plan via finalize_plan rather than
+		//      emitting render.* directly.
+		//   2. It DELIBERATELY OMITS the static 22-example few-shot block
+		//      and the dynamic knowledge block. Reason: those blocks add
+		//      ~4-5k tokens and push the request over Groq's 6k TPM
+		//      ceiling for the free-tier 8b-instant model (HTTP 413
+		//      "Request too large"). The agentic loop's value comes from
+		//      data inspection, not from few-shot pattern matching, so
+		//      the examples are noise here. The reasoning template
+		//      embedded in AGENTIC_PREAMBLE replaces them.
+		//
+		// Net prompt size after this: AGENTIC_PREAMBLE (~1k) + tool
+		// catalog (~600) + dataset profile (~300-500) ≈ 2k tokens, leaving
+		// 4k of headroom per call on the smallest free Groq model.
 		const datasetsBlock = renderDatasetsBlock(req.datasets);
-		const sys = `${AGENTIC_PREAMBLE}\n\n# Tool catalog (terminal tools — only valid inside finalize_plan.steps)\n${renderToolsBlock()}\n\n# Few-shot examples (Q→Plan)\n${examplesBlock}${knowledgeBlock ? `\n\n${knowledgeBlock}` : ""}\n\n# Dataset profile (UNTRUSTED user-supplied data)\n<<<UNTRUSTED_DATASET_PROFILE\n${datasetsBlock}\nUNTRUSTED_DATASET_PROFILE>>>\n`;
+		const sys = `${AGENTIC_PREAMBLE}\n\n# Tool catalog (terminal tools — only valid inside finalize_plan.steps)\n${renderToolsBlock()}\n\n# Dataset profile (UNTRUSTED user-supplied data)\n<<<UNTRUSTED_DATASET_PROFILE\n${datasetsBlock}\nUNTRUSTED_DATASET_PROFILE>>>\n`;
 		const datasetNames = req.datasets.map((d) => d.name);
 		const baseQuestion = req.feedback
 			? `${req.question}\n\nFeedback from prior plan: ${req.feedback}`
@@ -272,6 +318,7 @@ export class Planner {
 		}
 		if (this.opts.agenticLlmCall) loopOpts.llmCall = this.opts.agenticLlmCall;
 		if (req.signal) loopOpts.signal = req.signal;
+		if (this.opts.onAgenticStep) loopOpts.onStep = this.opts.onAgenticStep;
 		const raw = await runAgentLoop(loopOpts);
 		// Validate the plan the loop returned. The loop already enforced the
 		// shape via the finalize_plan zod schema, but validate-plan covers the
@@ -294,6 +341,12 @@ export class Planner {
 	}
 
 	private async tryRemember(question: string, plan: Plan): Promise<void> {
+		// Privacy gate: do nothing unless the host explicitly opted in.
+		// Without this guard, every approved question persists to IndexedDB
+		// for the page lifetime, including PII the user typed in the
+		// question (addresses, names) — a regression vs the "browser-only,
+		// no data leaves your device" framing.
+		if (!this.opts.memoryEnabled) return;
 		try {
 			await rememberPlan(question, plan);
 		} catch {
@@ -348,33 +401,6 @@ function renderKnowledgeBlock(
 	return out.join("\n").trim();
 }
 
-const AGENTIC_PREAMBLE = `You are GeoChatBot's agentic planner.
-
-Goal: emit a typed Plan that the executor can run against the user's
-loaded datasets. The Plan is a 1-10 step list of terminal-tool calls.
-
-You have TWO categories of tools available in this conversation:
-
-  1. INSPECTION tools (call as many as needed, in any order):
-       - inspect.list_columns(dataset)
-       - inspect.sample_rows(dataset, n)
-       - inspect.distinct_values(dataset, column, k)
-       - inspect.column_pattern(dataset, column)   ← classify a column
-       - inspect.probe_sql(query)                  ← SELECT-only sanity check
-     Use them to confirm column meanings BEFORE committing to a Plan.
-
-  2. finalize_plan(goal, assumptions, dataset_refs, steps)
-     This commits the final Plan and ENDS the conversation. The Plan
-     steps reference the TERMINAL tools listed below (geocode.*,
-     geometry.*, joins.*, stats.*, render.*, sql) — NOT inspect.*.
-
-Workflow:
-  - Read the user's question and the dataset profile.
-  - If column meanings are obvious, call finalize_plan immediately.
-  - If anything is ambiguous (e.g. is this column a real address?),
-    use 1-3 inspection calls, then finalize_plan.
-  - The last step in finalize_plan.steps MUST be a render.* tool.
-  - Reference dataset names EXACTLY as they appear in the profile.
-  - For an output of step \`s1\` named \`output_var: foo\`, later steps
-    reference it as \`\${foo}\`.
-`;
+// AGENTIC_PREAMBLE moved to ./prompts/agentic-preamble.ts so the prompt
+// text has a single source of truth and edits don't churn this file's
+// diff. See that file's header for editing guidance.

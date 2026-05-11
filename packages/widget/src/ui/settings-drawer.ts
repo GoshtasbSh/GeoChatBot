@@ -32,6 +32,13 @@ export interface SettingsValue {
 	agenticMode?: "single-shot" | "agentic";
 	/** RAG retrieval over corpus + examples + memory. Default 'auto'. */
 	retrievalMode?: "auto" | "on" | "off";
+	/**
+	 * Persist approved (question, plan) pairs to IndexedDB so the next
+	 * session retrieves them as few-shots. Privacy-sensitive — defaults
+	 * to off. The drawer also surfaces a "Forget my history" button when
+	 * this is on.
+	 */
+	memoryEnabled?: boolean;
 }
 
 @customElement("gcb-settings-drawer")
@@ -126,6 +133,15 @@ export class GcbSettingsDrawer extends LitElement {
       color: var(--gcb-muted-fg, #555);
     }
     .toggle input[type='checkbox'] { margin: 0; transform: translateY(1px); }
+    button.clear-mem {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      border: 1px solid var(--gcb-border, #d0d0d0);
+      background: var(--gcb-bg, #fff);
+      border-radius: 4px;
+    }
     .privacy {
       font-size: 11px;
       background: var(--gcb-accent-soft-bg, #f5f3ff);
@@ -178,6 +194,7 @@ export class GcbSettingsDrawer extends LitElement {
 		dangerouslyAllowBrowser: false,
 		agenticMode: "single-shot",
 		retrievalMode: "auto",
+		memoryEnabled: false,
 	};
 
 	@state() private _draft: SettingsValue = this.value;
@@ -231,6 +248,19 @@ export class GcbSettingsDrawer extends LitElement {
 	private _onRetrieval = (e: Event) => {
 		const checked = (e.target as HTMLInputElement).checked;
 		this._draft = { ...this._draft, retrievalMode: checked ? "on" : "off" };
+	};
+
+	private _onMemory = (e: Event) => {
+		const checked = (e.target as HTMLInputElement).checked;
+		this._draft = { ...this._draft, memoryEnabled: checked };
+	};
+
+	private _onClearMemory = () => {
+		// Bubble + composed so the host element catches it across the shadow
+		// boundary. Host wires this to GeoChatBotElement.clearMemory().
+		this.dispatchEvent(
+			new CustomEvent("gcb:clear-memory", { bubbles: true, composed: true }),
+		);
 	};
 
 	private _onSave = () => {
@@ -328,19 +358,43 @@ export class GcbSettingsDrawer extends LitElement {
             <span>I acknowledge that calling ${providerInfo.label} from the browser exposes my API key to scripts on this page.</span>
           </label>
 
+          ${(() => {
+						// Agentic mode is OpenAI-compat only (Groq + OpenAI). Anthropic
+						// and Gemini use different multi-turn protocols that aren't
+						// implemented yet — gating the toggle here prevents the silent
+						// "AGENTIC_FALLBACK" warning the host fires for unsupported
+						// providers, which users were experiencing as a footgun.
+						const supportsAgentic =
+							this._draft.provider === "groq" ||
+							this._draft.provider === "openai";
+						return html`
           <label class="toggle">
             <input
               type="checkbox"
-              .checked=${this._draft.agenticMode === "agentic"}
+              ?disabled=${!supportsAgentic}
+              .checked=${
+								supportsAgentic && this._draft.agenticMode === "agentic"
+							}
               @change=${this._onAgentic}
             />
             <span>
               <b>Agentic mode</b> — the model runs a multi-turn ReAct loop
               with inspection tools (sample_rows, distinct_values, …) before
               committing to a plan. Slower but much better on unfamiliar
-              datasets. Requires Groq or OpenAI.
+              datasets.
+              ${
+								supportsAgentic
+									? html`<br /><i>Privacy note:</i> sample rows are sent to
+                  ${providerInfo.label} during inspection, before you approve
+                  any plan. Only enable on data you're comfortable sharing
+                  with the provider.`
+									: html`<br /><i>Not supported for ${providerInfo.label}.</i>
+                  Switch to Groq or OpenAI to enable.`
+							}
             </span>
           </label>
+        `;
+					})()}
 
           <label class="toggle">
             <input
@@ -352,6 +406,30 @@ export class GcbSettingsDrawer extends LitElement {
               <b>RAG retrieval</b> — embed each question and pull the most
               relevant docs + past plans from a local IndexedDB vector
               store. First call downloads a small embedding model (~22 MB).
+            </span>
+          </label>
+
+          <label class="toggle">
+            <input
+              type="checkbox"
+              .checked=${this._draft.memoryEnabled === true}
+              @change=${this._onMemory}
+            />
+            <span>
+              <b>Remember my history</b> — persist your approved questions
+              and plans to this browser's IndexedDB so similar future
+              questions can pull them as few-shots. Off by default;
+              questions can include sensitive text. Use the button below
+              to wipe at any time.
+              ${
+								this._draft.memoryEnabled === true
+									? html`<button
+											type="button"
+											class="clear-mem"
+											@click=${this._onClearMemory}
+										>Forget my history</button>`
+									: nothing
+							}
             </span>
           </label>
 

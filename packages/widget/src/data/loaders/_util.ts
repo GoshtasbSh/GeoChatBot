@@ -23,10 +23,38 @@ export function deriveTableName(filename: string, override?: string): string {
 	return sanitizeIdent(override ?? stripExt(filename));
 }
 
+/**
+ * Maximum upload size before the loaders bail out.
+ *
+ * Why 200 MB: the widget is browser-only with no streaming pipeline; every
+ * byte goes through `ArrayBuffer` → loaders.gl → Arrow → DuckDB. A 1 GB CSV
+ * (or a zip-bomb shapefile that decompresses to that) freezes the tab and
+ * can OOM low-memory devices. 200 MB covers realistic geospatial CSV /
+ * GeoJSON / Parquet workloads while keeping the cap noticeable enough to
+ * encourage downsampling on truly large datasets.
+ */
+export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
+
+function assertSize(byteLength: number, filename: string): void {
+	if (byteLength > MAX_UPLOAD_BYTES) {
+		const mb = (byteLength / (1024 * 1024)).toFixed(1);
+		throw new LoaderError(
+			"FILE_TOO_LARGE",
+			`${filename}: file is ${mb} MB, which exceeds the ${(
+				MAX_UPLOAD_BYTES / (1024 * 1024)
+			).toFixed(0)} MB upload cap. Downsample or split the file before retry.`,
+		);
+	}
+}
+
 export async function toArrayBuffer(
 	file: BinaryInput,
 ): Promise<{ name: string; buffer: ArrayBuffer }> {
 	if (typeof File !== "undefined" && file instanceof File) {
+		// Check size BEFORE materializing the bytes — file.arrayBuffer() on a
+		// 4 GB file would alloc the full buffer into memory before we could
+		// reject it.
+		assertSize(file.size, file.name);
 		const buf = await file.arrayBuffer();
 		return { name: file.name, buffer: buf };
 	}
@@ -41,6 +69,7 @@ export async function toArrayBuffer(
 		new Uint8Array(ab).set(u);
 		buffer = ab;
 	}
+	assertSize(buffer.byteLength, f.name);
 	return { name: f.name, buffer };
 }
 

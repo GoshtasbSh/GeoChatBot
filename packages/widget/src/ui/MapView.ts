@@ -27,6 +27,20 @@ interface MapInputLayer {
 export interface GeoJsonInputLayer {
 	name: string;
 	geojson: { type: "FeatureCollection"; features: unknown[] };
+	/** Optional rendering style. The planner emits this when the user
+	 *  asks for color-coded / sized maps ("color by category", "choropleth
+	 *  by population"). Fields are best-effort — unknown keys are ignored. */
+	style?: {
+		/** Feature property to color-code by. Categorical strings get a
+		 *  hash-based palette; numeric values get a quintile color scale. */
+		colorBy?: string;
+		/** Feature property to size point radius by (numeric only).
+		 *  Values are min-max normalized to a 3-12 px radius. */
+		radiusBy?: string;
+		/** Override the classification strategy (default: auto-detect
+		 *  from values). */
+		classification?: "categorical" | "quantile" | "linear";
+	};
 }
 
 const MAX_GEOJSON_FEATURES = 50_000;
@@ -172,22 +186,32 @@ export class GcbMap extends LitElement {
 		for (const src of this.geojsonLayers) {
 			const raw = src.geojson as { type: string; features: GeoJSON.Feature[] };
 			const features = Array.isArray(raw?.features) ? raw.features : [];
+			const limited = features.slice(0, MAX_GEOJSON_FEATURES);
+			const colorAccessor = buildColorAccessor(limited, src.style);
+			const radiusAccessor = buildRadiusAccessor(limited, src.style);
 			deckLayers.push(
 				new GeoJsonLayer({
 					id: `gcb-geojson-result-${src.name}`,
 					data: {
 						type: "FeatureCollection",
-						features: features.slice(0, MAX_GEOJSON_FEATURES),
+						features: limited,
 					},
 					stroked: true,
 					filled: true,
 					pointRadiusMinPixels: 4,
 					getLineColor: [67, 56, 202, 255],
-					getFillColor: [67, 56, 202, 64],
+					getFillColor: colorAccessor,
 					getLineWidth: 1.5,
 					lineWidthMinPixels: 1.5,
-					getPointRadius: 4,
+					getPointRadius: radiusAccessor,
 					pickable: true,
+					// updateTriggers ensures deck.gl recomputes per-feature colors
+					// when the colorBy column changes (e.g. user runs a new query
+					// against the same layer name).
+					updateTriggers: {
+						getFillColor: [src.style?.colorBy, src.style?.classification],
+						getPointRadius: [src.style?.radiusBy],
+					},
 				}),
 			);
 			for (const feat of features as GeoJSON.Feature[]) {
@@ -434,6 +458,149 @@ function expandPoint(coord: number[], bbox: Bbox): void {
 	if (y < bbox[1]) bbox[1] = y;
 	if (x > bbox[2]) bbox[2] = x;
 	if (y > bbox[3]) bbox[3] = y;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Color / size accessors for color-coded maps                                */
+/* -------------------------------------------------------------------------- */
+
+type Rgba = [number, number, number, number];
+
+/** A small, color-blind-friendly categorical palette (ColorBrewer Set2 / Set3
+ *  blended). Indexed via stable string-hash so the same category gets the same
+ *  color across re-renders. */
+const CATEGORICAL_PALETTE: ReadonlyArray<Rgba> = [
+	[31, 119, 180, 200],
+	[255, 127, 14, 200],
+	[44, 160, 44, 200],
+	[214, 39, 40, 200],
+	[148, 103, 189, 200],
+	[140, 86, 75, 200],
+	[227, 119, 194, 200],
+	[127, 127, 127, 200],
+	[188, 189, 34, 200],
+	[23, 190, 207, 200],
+];
+
+/** 5-class sequential quantile palette (viridis-ish). Lighter → darker as
+ *  values increase. The fixed-alpha (180-220) lets overlapping polygons
+ *  still read against the basemap. */
+const QUANTILE_PALETTE: ReadonlyArray<Rgba> = [
+	[253, 231, 37, 200], // q1 (lowest)  — yellow
+	[122, 209, 81, 200], // q2           — green
+	[33, 144, 141, 200], // q3           — teal
+	[59, 82, 139, 200],  // q4           — blue
+	[68, 1, 84, 220],    // q5 (highest) — purple
+];
+
+const DEFAULT_COLOR: Rgba = [67, 56, 202, 64];
+
+function stableHash(s: string): number {
+	let h = 0;
+	for (let i = 0; i < s.length; i++) {
+		h = (h * 31 + s.charCodeAt(i)) | 0;
+	}
+	return Math.abs(h);
+}
+
+function readNumericValues(
+	features: ReadonlyArray<GeoJSON.Feature>,
+	colorBy: string,
+): number[] {
+	const out: number[] = [];
+	for (const f of features) {
+		const v = (f.properties as Record<string, unknown> | null)?.[colorBy];
+		if (v === null || v === undefined) continue;
+		const n = typeof v === "string" ? Number(v) : (v as number);
+		if (Number.isFinite(n)) out.push(n);
+	}
+	return out;
+}
+
+/** Determine whether `colorBy` looks categorical or numeric on this
+ *  feature set. Honors an explicit `classification` override. */
+function pickStrategy(
+	features: ReadonlyArray<GeoJSON.Feature>,
+	style: GeoJsonInputLayer["style"],
+): "categorical" | "quantile" | "linear" | "none" {
+	if (!style?.colorBy) return "none";
+	if (style.classification) return style.classification;
+	const numeric = readNumericValues(features, style.colorBy);
+	const totalNonNull = features.filter(
+		(f) => (f.properties as Record<string, unknown> | null)?.[style.colorBy as string] != null,
+	).length;
+	// >= 80% of non-null values are numeric → treat as quantile.
+	return totalNonNull > 0 && numeric.length / totalNonNull >= 0.8
+		? "quantile"
+		: "categorical";
+}
+
+function computeQuantileBreaks(values: number[]): number[] {
+	if (values.length === 0) return [];
+	const sorted = [...values].sort((a, b) => a - b);
+	const breaks: number[] = [];
+	for (let i = 1; i < QUANTILE_PALETTE.length; i++) {
+		const q = i / QUANTILE_PALETTE.length;
+		const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length));
+		breaks.push(sorted[idx] as number);
+	}
+	return breaks;
+}
+
+function buildColorAccessor(
+	features: ReadonlyArray<GeoJSON.Feature>,
+	style: GeoJsonInputLayer["style"],
+): Rgba | ((f: GeoJSON.Feature) => Rgba) {
+	const strat = pickStrategy(features, style);
+	if (strat === "none" || !style?.colorBy) return DEFAULT_COLOR;
+	const col = style.colorBy;
+	if (strat === "categorical") {
+		return (f: GeoJSON.Feature) => {
+			const raw = (f.properties as Record<string, unknown> | null)?.[col];
+			if (raw === null || raw === undefined) return DEFAULT_COLOR;
+			const key = String(raw);
+			const idx = stableHash(key) % CATEGORICAL_PALETTE.length;
+			return CATEGORICAL_PALETTE[idx] ?? DEFAULT_COLOR;
+		};
+	}
+	// quantile or linear — both bucket numeric values into 5 classes
+	const nums = readNumericValues(features, col);
+	const breaks = computeQuantileBreaks(nums);
+	return (f: GeoJSON.Feature) => {
+		const raw = (f.properties as Record<string, unknown> | null)?.[col];
+		const n = typeof raw === "string" ? Number(raw) : (raw as number);
+		if (!Number.isFinite(n)) return DEFAULT_COLOR;
+		let bucket = 0;
+		for (const b of breaks) {
+			if (n >= b) bucket++;
+			else break;
+		}
+		const clamped = Math.min(QUANTILE_PALETTE.length - 1, bucket);
+		return QUANTILE_PALETTE[clamped] ?? DEFAULT_COLOR;
+	};
+}
+
+function buildRadiusAccessor(
+	features: ReadonlyArray<GeoJSON.Feature>,
+	style: GeoJsonInputLayer["style"],
+): number | ((f: GeoJSON.Feature) => number) {
+	if (!style?.radiusBy) return 4;
+	const col = style.radiusBy;
+	const nums = readNumericValues(features, col);
+	if (nums.length === 0) return 4;
+	const lo = Math.min(...nums);
+	const hi = Math.max(...nums);
+	const span = hi - lo;
+	if (span <= 0) return 4;
+	const MIN_R = 3;
+	const MAX_R = 12;
+	return (f: GeoJSON.Feature) => {
+		const raw = (f.properties as Record<string, unknown> | null)?.[col];
+		const n = typeof raw === "string" ? Number(raw) : (raw as number);
+		if (!Number.isFinite(n)) return MIN_R;
+		const t = (n - lo) / span;
+		return MIN_R + t * (MAX_R - MIN_R);
+	};
 }
 
 declare global {

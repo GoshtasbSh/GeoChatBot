@@ -241,20 +241,6 @@ export class GcbRail extends LitElement {
 											? html`<span class="new-badge">NEW</span>`
 											: html`<span class="count">${l.features} ft</span>`
 									}
-                  <button
-                    class="eye"
-                    type="button"
-                    aria-pressed=${l.visible ? "true" : "false"}
-                    aria-label="Toggle visibility for ${l.name}"
-                    @click=${(e: Event) => {
-											e.stopPropagation();
-											this._emit("gcb:layer-toggle", { id: l.id });
-										}}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                    </svg>
-                  </button>
                 </div>
               `,
 								)
@@ -322,19 +308,6 @@ export class GcbRail extends LitElement {
                   <span class="dot" style="background: var(--gcb-ink-muted)"></span>
                   <span class="name" title=${d.name}>${d.name}</span>
                   <span class="count">${d.rows.toLocaleString()} r</span>
-                  <button
-                    class="eye"
-                    type="button"
-                    aria-label="Toggle visibility for ${d.name}"
-                    @click=${(e: Event) => {
-											e.stopPropagation();
-											this._emit("gcb:dataset-toggle", d.name);
-										}}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                    </svg>
-                  </button>
                 </div>
               `,
 								)

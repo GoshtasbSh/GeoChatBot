@@ -72,14 +72,17 @@ export async function runListColumns(
 	const { dataset } = INSPECT_TOOLS.list_columns.args.parse(args);
 	const d = resolveDataset(dataset, ctx);
 	const view = d.geomView ?? d.tableName;
+	// `notnull` is a DuckDB-reserved identifier and the parser balks even
+	// on `(notnull = 0) AS …`. The simplest robust fix is to skip the
+	// nullable flag entirely — the LLM doesn't need it for spatial
+	// reasoning; column name + type is what matters. If a future user
+	// asks "which columns are nullable?" we can route through a separate
+	// inspect.column_pattern call against pragma_table_info.
 	const t = await ctx.engine.query(
-		`SELECT name, type, "null" AS nullable FROM pragma_table_info(${quoteIdent(view)})`,
+		`SELECT name, type FROM pragma_table_info(${quoteIdent(view)})`,
 	);
 	const rows = arrowToObjs(t);
-	const lines = rows.map(
-		(r) =>
-			`${String(r.name)}: ${String(r.type)}${r.nullable ? " (nullable)" : ""}`,
-	);
+	const lines = rows.map((r) => `${String(r.name)}: ${String(r.type)}`);
 	return clip(`columns of "${dataset}":\n${lines.join("\n")}`);
 }
 

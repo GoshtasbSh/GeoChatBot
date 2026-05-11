@@ -6,14 +6,34 @@ const ChartKind = z.enum(["bar", "line", "scatter", "pie", "grouped_bar"]);
 registerTool({
 	id: "render.map",
 	description:
-		"Render a layer on a map. The user (or host) sees the result. Always the last step when the answer is geographic.",
+		'Render a layer on a map (the user sees it). Always the last step when the answer is geographic. Optional `style` controls visual encoding: `style.colorBy` is a property name to color features by — strings get a discrete palette, numerics get a quintile gradient. `style.radiusBy` is a numeric property for graduated point sizes. Use `style.classification` to force "categorical" or "quantile" when auto-detection picks wrong.',
 	args: z.object({
 		layer: z.string(),
-		style: z.record(z.unknown()).optional(),
+		style: z
+			.object({
+				colorBy: z.string().optional(),
+				radiusBy: z.string().optional(),
+				classification: z
+					.enum(["categorical", "quantile", "linear"])
+					.optional(),
+			})
+			.passthrough()
+			.optional(),
 	}),
 	output_kind: "rendered",
 	examples: [
 		{ when: "Show buffered hospitals on the map", args: { layer: "buffered" } },
+		{
+			when: "Color points by category column",
+			args: { layer: "trees", style: { colorBy: "species" } },
+		},
+		{
+			when: "Choropleth: color polygons by population density",
+			args: {
+				layer: "tracts",
+				style: { colorBy: "pop_density", classification: "quantile" },
+			},
+		},
 	],
 });
 

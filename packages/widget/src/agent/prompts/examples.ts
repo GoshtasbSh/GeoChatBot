@@ -877,6 +877,382 @@ export const EXAMPLES: Example[] = [
 			],
 		},
 	},
+	// 23 — First-look data-quality report (the "vague question" pattern)
+	{
+		question: "What's in this dataset?",
+		plan: {
+			goal: "Produce a one-shot data-quality report so the user can decide whether the dataset is usable",
+			assumptions: [
+				"user did not ask for analysis; they want a first-look summary",
+			],
+			dataset_refs: ["data"],
+			steps: [
+				{
+					id: "s1",
+					tool: "report.quickscan",
+					args: { dataset: "data" },
+					why: "Single-call schema + completeness + spatial extent + verdict; no further steps needed",
+				},
+			],
+		},
+	},
+	// 24 — Direct map from lat/lon when no geocoding is needed
+	{
+		question: "Show the points on the map.",
+		plan: {
+			goal: "Render the dataset as point features given existing lat/lon columns",
+			assumptions: [
+				'data already has a "Latitude" column in [-90,90] and a "Longitude" column in [-180,180]',
+				"no geocoding needed",
+			],
+			dataset_refs: ["data"],
+			steps: [
+				{
+					id: "s1",
+					tool: "render.map",
+					args: { layer: "data" },
+					why: "Loader already attached a geom view from the lat/lon pair; render directly",
+				},
+			],
+		},
+	},
+	// 25 — Count points per polygon (choropleth)
+	{
+		question: "How many incidents occurred in each neighborhood?",
+		plan: {
+			goal: "Aggregate incident points by neighborhood polygon",
+			assumptions: [
+				"incidents has point geometry and an `id` column",
+				'neighborhoods has polygon geometry with a "name" column',
+			],
+			dataset_refs: ["incidents", "neighborhoods"],
+			steps: [
+				{
+					id: "s1",
+					tool: "joins.spatial_join",
+					args: { a: "incidents", b: "neighborhoods", predicate: "within" },
+					output_var: "tagged",
+					why: "Tag each incident with its containing neighborhood",
+				},
+				{
+					id: "s2",
+					tool: "stats.aggregate",
+					args: {
+						layer: "${tagged}",
+						group_by: "name",
+						agg_fn: "count",
+						value_col: "id",
+					},
+					output_var: "totals",
+					why: "Count incidents per neighborhood name (value_col is required by the schema; any non-null column works for COUNT)",
+				},
+				{
+					id: "s3",
+					tool: "render.chart",
+					args: {
+						table: "${totals}",
+						kind: "bar",
+						x: "name",
+						y: "count_id",
+					},
+					why: "Bar chart of incident counts per neighborhood",
+				},
+			],
+		},
+	},
+	// 26 — Color-coded points by a categorical attribute
+	{
+		question: "Show the trees on the map colored by species.",
+		plan: {
+			goal: "Render the tree dataset as point features color-coded by the `species` attribute",
+			assumptions: [
+				"trees has point geometry and a `species` string column",
+				"species is a categorical column with low-to-medium cardinality",
+			],
+			dataset_refs: ["trees"],
+			steps: [
+				{
+					id: "s1",
+					tool: "render.map",
+					args: { layer: "trees", style: { colorBy: "species" } },
+					why: "Categorical palette is auto-applied per distinct species",
+				},
+			],
+		},
+	},
+	// 27 — Choropleth: color polygons by a numeric attribute
+	{
+		question: "Show a choropleth of census tracts by median household income.",
+		plan: {
+			goal: "Render tracts polygons color-coded by the median_hh_income value using a quantile scale",
+			assumptions: [
+				"tracts has polygon geometry and a numeric `median_hh_income` column",
+			],
+			dataset_refs: ["tracts"],
+			steps: [
+				{
+					id: "s1",
+					tool: "render.map",
+					args: {
+						layer: "tracts",
+						style: {
+							colorBy: "median_hh_income",
+							classification: "quantile",
+						},
+					},
+					why: "Quantile classification gives 5 equal-population color bins, the standard choropleth approach",
+				},
+			],
+		},
+	},
+	// 28 — "Worst street by X" ranking (the canonical concept-question pattern)
+	{
+		question: "What street has the worst walkability score?",
+		plan: {
+			goal: "Identify the 10 streets with the worst (lowest) mean walkability score",
+			assumptions: [
+				"data has a `street` column and a numeric `walk_score` column",
+				'"worst" = lowest mean score on each street; we use mean (not min) so a single outlier row does not dominate',
+			],
+			dataset_refs: ["data"],
+			steps: [
+				{
+					id: "s1",
+					tool: "stats.aggregate",
+					args: {
+						layer: "data",
+						group_by: "street",
+						agg_fn: "mean",
+						value_col: "walk_score",
+					},
+					output_var: "by_street",
+					why: "Average walkability per street",
+				},
+				{
+					id: "s2",
+					tool: "sql",
+					args: {
+						query:
+							"SELECT * FROM by_street ORDER BY mean_walk_score ASC LIMIT 10",
+					},
+					output_var: "worst",
+					why: "Sort ascending, take the bottom 10",
+				},
+				{
+					id: "s3",
+					tool: "render.table",
+					args: { table: "${worst}" },
+					why: "Show the worst-10 ranking as a table",
+				},
+			],
+		},
+	},
+	// 29 — Bad-coordinate / null-island detection
+	{
+		question: "Are there any bad coordinates in this dataset?",
+		plan: {
+			goal: "Detect rows whose lat/lon are sentinel null-island (0,0) or fall outside WGS84 range",
+			assumptions: [
+				"data has numeric `lat` and `lon` columns (or close equivalents)",
+				"valid WGS84: lat ∈ [-90,90] and lon ∈ [-180,180]; (0,0) is suspicious sentinel",
+			],
+			dataset_refs: ["data"],
+			steps: [
+				{
+					id: "s1",
+					tool: "sql",
+					args: {
+						query:
+							"SELECT *, CASE WHEN lat = 0 AND lon = 0 THEN 'null_island' WHEN lat < -90 OR lat > 90 OR lon < -180 OR lon > 180 THEN 'out_of_range' ELSE 'ok' END AS coord_status FROM data WHERE lat = 0 AND lon = 0 OR lat < -90 OR lat > 90 OR lon < -180 OR lon > 180",
+					},
+					output_var: "bad_coords",
+					why: "Flag rows with sentinel (0,0) or out-of-range coordinates",
+				},
+				{
+					id: "s2",
+					tool: "render.table",
+					args: { table: "${bad_coords}" },
+					why: "Show suspect rows so the user can decide whether to drop them",
+				},
+			],
+		},
+	},
+	// 30 — User asks about a concept not present in the data
+	{
+		question: "Show the area with the highest air pollution.",
+		plan: {
+			goal: "Explain that the loaded dataset has no pollution column and list available columns",
+			assumptions: [
+				"inspect.list_columns confirmed there is no air-quality / pollution / AQI column",
+				"the dataset has the survey columns: Address, First_attempt, Second_attempt, notes",
+			],
+			dataset_refs: ["survey"],
+			steps: [
+				{
+					id: "s1",
+					tool: "render.summary",
+					args: {
+						text: "I don't see a pollution-related column in `survey` (available columns: Address, First_attempt, Second_attempt, notes). To answer this, upload a dataset with an air-quality measure (AQI, PM2.5, NO2, etc.), or rephrase the question to use one of the existing columns.",
+					},
+					why: "Avoid fabricating a non-existent value; surface what data we DO have and let the user redirect",
+				},
+			],
+		},
+	},
+	// 31 — Duplicate-geometry detection (data quality)
+	{
+		question: "Are there duplicate geometries in this layer?",
+		plan: {
+			goal: "Surface rows whose geometry hash repeats — often a join bug or true duplicate field collection",
+			assumptions: ["layer has a `geom` column"],
+			dataset_refs: ["incidents"],
+			steps: [
+				{
+					id: "s1",
+					tool: "sql",
+					args: {
+						query:
+							"SELECT ST_AsHEXWKB(geom) AS geom_key, COUNT(*) AS dup_count FROM incidents WHERE geom IS NOT NULL GROUP BY 1 HAVING COUNT(*) > 1 ORDER BY dup_count DESC LIMIT 100",
+					},
+					output_var: "dups",
+					why: "Hash geometry bytes; group by hash to find exact repeats",
+				},
+				{
+					id: "s2",
+					tool: "render.table",
+					args: { table: "${dups}" },
+					why: "Show the user the top-100 duplicated geometries with their repeat count",
+				},
+			],
+		},
+	},
+	// 32 — Invalid-geometry detection (data quality)
+	{
+		question: "Are my polygons valid?",
+		plan: {
+			goal: "List polygons that fail ST_IsValid with their reasons",
+			assumptions: ["layer has polygon geometry"],
+			dataset_refs: ["parcels"],
+			steps: [
+				{
+					id: "s1",
+					tool: "sql",
+					args: {
+						query:
+							"SELECT *, ST_IsValidReason(geom) AS reason FROM parcels WHERE NOT ST_IsValid(geom)",
+					},
+					output_var: "bad",
+					why: "ST_IsValid + ST_IsValidReason surfaces self-intersections, unclosed rings, ring-order errors",
+				},
+				{
+					id: "s2",
+					tool: "render.table",
+					args: { table: "${bad}" },
+					why: "Tabular list of offending features; user can decide whether to ST_MakeValid them",
+				},
+			],
+		},
+	},
+	// 33 — k-NN: find the 5 nearest X to each Y
+	{
+		question: "Find the 5 nearest hospitals to each household.",
+		plan: {
+			goal: "Compute the 5 nearest hospitals for each household point",
+			assumptions: [
+				"households has point geometry and id column",
+				"hospitals has point geometry and id+name columns",
+			],
+			dataset_refs: ["households", "hospitals"],
+			steps: [
+				{
+					id: "s1",
+					tool: "sql",
+					args: {
+						query:
+							"WITH ranked AS (SELECT h.id AS hh_id, hosp.id AS hosp_id, hosp.name AS hosp_name, ST_Distance(h.geom, hosp.geom) AS dist_m, ROW_NUMBER() OVER (PARTITION BY h.id ORDER BY ST_Distance(h.geom, hosp.geom)) AS rn FROM households h CROSS JOIN hospitals hosp) SELECT hh_id, hosp_id, hosp_name, dist_m FROM ranked WHERE rn <= 5 ORDER BY hh_id, dist_m",
+					},
+					output_var: "knn",
+					why: "ROW_NUMBER partitioned by household, ordered by distance, take top 5",
+				},
+				{
+					id: "s2",
+					tool: "render.table",
+					args: { table: "${knn}" },
+					why: "Show the 5×N rows of household→hospital pairs sorted",
+				},
+			],
+		},
+	},
+	// 34 — Spatial autocorrelation: Global Moran's I
+	{
+		question: "Are the housing prices spatially clustered?",
+		plan: {
+			goal: "Compute Global Moran's I with a binary distance-band weights matrix to test for spatial clustering of prices",
+			assumptions: [
+				"sales has point geometry and a numeric `price` column",
+				"distance threshold D = 500m is reasonable for the city scale of this dataset",
+				"row cap: 5000 features to keep the cross-join tractable in DuckDB-WASM",
+			],
+			dataset_refs: ["sales"],
+			steps: [
+				{
+					id: "s1",
+					tool: "sql",
+					args: {
+						query:
+							"WITH lim AS (SELECT row_number() OVER () AS rid, price, geom FROM sales WHERE price IS NOT NULL LIMIT 5000), stats AS (SELECT AVG(price) AS mu, SUM((price - (SELECT AVG(price) FROM lim)) * (price - (SELECT AVG(price) FROM lim))) AS sse, COUNT(*) AS n FROM lim), pairs AS (SELECT (a.price - (SELECT mu FROM stats)) * (b.price - (SELECT mu FROM stats)) AS num, CASE WHEN ST_Distance(a.geom, b.geom) <= 500 AND a.rid <> b.rid THEN 1 ELSE 0 END AS w FROM lim a, lim b) SELECT ((SELECT n FROM stats) * SUM(num * w)) / (SUM(w) * (SELECT sse FROM stats)) AS morans_i FROM pairs",
+					},
+					output_var: "mi",
+					why: "Global Moran's I on price with 500m distance-band weights; positive I = clustered, ~0 = random, negative = dispersed",
+				},
+				{
+					id: "s2",
+					tool: "render.summary",
+					args: {
+						text: "Moran's I computed (see ${mi}). Interpretation: I > 0.3 strongly clustered, |I| < 0.1 essentially random, I < -0.3 strongly dispersed. The 500m distance band assumes city-scale data; for regional data use a larger threshold.",
+					},
+					why: "Explain the result and provide guidance on interpretation",
+				},
+			],
+		},
+	},
+	// 35 — Equity / disparate-impact analysis
+	{
+		question:
+			"Which demographic group has the worst access to grocery stores?",
+		plan: {
+			goal: "For each demographic-tract polygon, compute distance to the nearest grocery store, then aggregate distance by demographic class",
+			assumptions: [
+				"tracts has polygon geometry + a `dominant_race` categorical column + a `median_income` numeric column",
+				"stores has point geometry",
+				'"worst access" = highest mean distance to nearest store within each demographic group',
+			],
+			dataset_refs: ["tracts", "stores"],
+			steps: [
+				{
+					id: "s1",
+					tool: "sql",
+					args: {
+						query:
+							"WITH nearest AS (SELECT t.dominant_race, MIN(ST_Distance(ST_Centroid(t.geom), s.geom)) AS dist_to_store FROM tracts t, stores s GROUP BY t.dominant_race, t.geom) SELECT dominant_race, AVG(dist_to_store) AS mean_dist_m, MEDIAN(dist_to_store) AS median_dist_m, COUNT(*) AS n_tracts FROM nearest GROUP BY dominant_race ORDER BY mean_dist_m DESC",
+					},
+					output_var: "equity",
+					why: "For each tract, nearest-store distance; aggregate by dominant_race to surface disparate access",
+				},
+				{
+					id: "s2",
+					tool: "render.chart",
+					args: {
+						table: "${equity}",
+						kind: "bar",
+						x: "dominant_race",
+						y: "mean_dist_m",
+					},
+					why: "Bar chart makes the disparity visible at a glance",
+				},
+			],
+		},
+	},
 ];
 
 export function renderExamplesBlock(): string {

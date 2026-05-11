@@ -119,6 +119,11 @@ test("Phase 4 — inline edit updates step args", async ({ page }) => {
 	// Approve and assert progress+result fire without an error event.
 	await planReview.locator("button.run").click();
 
+	// 15 s timeout (vs the 5 s default elsewhere in this file) accommodates
+	// DuckDB-WASM's cold-load on the first execution after page navigation —
+	// the SQL step needs an initialized engine, and the .wasm + Worker setup
+	// can take 3-8 seconds on a fresh tab. The other polls in this test
+	// don't touch the engine so they keep the tighter 5 s budget.
 	await expect
 		.poll(
 			async () =>
@@ -132,7 +137,7 @@ test("Phase 4 — inline edit updates step args", async ({ page }) => {
 						error: trace.some((e) => e.kind === "error"),
 					};
 				}),
-			{ timeout: 5_000, intervals: [50, 100, 250] },
+			{ timeout: 15_000, intervals: [100, 250, 500] },
 		)
 		.toMatchObject({ result: true, error: false });
 });

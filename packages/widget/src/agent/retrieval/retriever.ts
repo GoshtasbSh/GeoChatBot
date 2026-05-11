@@ -253,5 +253,15 @@ export async function __resetRetrieverForTests(): Promise<void> {
 	]);
 }
 
+/**
+ * Public: drop only the user-memory store (questions + plans the user has
+ * approved in past sessions). The static corpus and example store stay
+ * intact so RAG continues to work. Use from the host element's
+ * `clearMemory()` method or a settings-drawer "Forget my history" button.
+ */
+export async function clearUserMemory(): Promise<void> {
+	await memoryStore.clear();
+}
+
 /** Re-export the meta types so callers can narrow without poking internals. */
 export type { AnyMeta };
