@@ -235,4 +235,36 @@ describe("validatePlan", () => {
 			),
 		).toThrow(/duplicate output_var/i);
 	});
+
+	// AUDIT-021: an output_var that shadows a loaded dataset name causes
+	// silent confusion downstream — the executor builds a temporary view
+	// alias under that name, and subsequent `FROM <name>` SQL hits the
+	// alias instead of the dataset's geom view. Reject up-front.
+	it("AUDIT-021: rejects an output_var that collides with a loaded dataset name", () => {
+		expect(() =>
+			validatePlan(
+				{
+					goal: "g",
+					assumptions: [],
+					dataset_refs: ["sales"],
+					steps: [
+						{
+							id: "s1",
+							tool: "sql",
+							args: { query: "SELECT * FROM sales" },
+							why: "a",
+							output_var: "sales",
+						},
+						{
+							id: "s2",
+							tool: "render.summary",
+							args: { text: "done" },
+							why: "show",
+						},
+					],
+				},
+				["sales"],
+			),
+		).toThrow(/collides with loaded dataset name/i);
+	});
 });

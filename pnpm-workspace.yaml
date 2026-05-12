@@ -1,3 +1,4 @@
 packages:
-  - 'packages/widget'
-  - 'packages/site'
+  - 'packages/*'
+  - 'examples/*'
+  - 'e2e'

@@ -3,13 +3,13 @@ import type { InspectionRunCtx } from "./agentic/inspect-runners.js";
 import { type LoopLLMCall, runAgentLoop } from "./agentic/loop.js";
 import type { ProviderId } from "./forced-tool/index.js";
 import { type PlannerLLMInput, callPlannerLLM } from "./llm.js";
+import { AGENTIC_PREAMBLE } from "./prompts/agentic-preamble.js";
 import type { DatasetProfile } from "./prompts/builders.js";
 import {
 	renderDatasetsBlock,
 	renderPrompt,
 	renderToolsBlock,
 } from "./prompts/builders.js";
-import { AGENTIC_PREAMBLE } from "./prompts/agentic-preamble.js";
 import { renderExamplesBlock } from "./prompts/examples.js";
 import { rememberPlan, retrieve } from "./retrieval/retriever.js";
 import { type Plan, PlanSchema } from "./types.js";
@@ -89,7 +89,14 @@ export interface PlannerOptions {
 			  }
 			| { kind: "finalize"; iteration: number; plan: Plan }
 			| { kind: "budget-exhausted"; iteration: number }
-			| { kind: "unknown-tool"; iteration: number; toolId: string },
+			| { kind: "unknown-tool"; iteration: number; toolId: string }
+			// AUDIT-K4: rate-limit countdown event for UI surfacing.
+			| {
+					kind: "rate-limit-wait";
+					iteration: number;
+					attempt: number;
+					waitMs: number;
+			  },
 	) => void;
 }
 
@@ -145,7 +152,14 @@ export class Planner {
 		let knowledgeBlock = "";
 		if (retrievalEnabled) {
 			try {
-				const r = await retrieve(req.question, { maxExamples: 5, maxDocs: 5 });
+				const r = await retrieve(req.question, {
+					maxExamples: 5,
+					maxDocs: 5,
+					// SEC-008: read-gate on memoryEnabled so stale entries
+					// from a previous memory-on session don't leak back as
+					// few-shots after the user toggled memory off.
+					includeMemory: this.opts.memoryEnabled === true,
+				});
 				if (r.examples.length > 0) {
 					examplesBlock = renderRetrievedExamples(r.examples);
 				}
@@ -305,25 +319,56 @@ export class Planner {
 		const baseQuestion = req.feedback
 			? `${req.question}\n\nFeedback from prior plan: ${req.feedback}`
 			: req.question;
-		const loopOpts: Parameters<typeof runAgentLoop>[0] = {
-			endpoint: this.opts.agenticEndpoint,
-			apiKey: this.opts.apiKey,
-			model: this.opts.model,
-			systemPrompt: sys,
-			question: baseQuestion,
-			ctx: this.opts.agenticCtx,
+
+		// AUDIT-K1 (2026-05-11) — recovery UX: when validatePlan rejects the
+		// agentic loop's first finalize_plan output, give the model ONE more
+		// shot with the validation error appended as feedback. The same
+		// dual-attempt pattern already lives in the single-shot path above;
+		// not having it in agentic was the dead-end the user hit (the loop
+		// would finalize a `region_hint:""` plan, validate would throw, and
+		// the error would bubble straight to the events log instead of
+		// driving a corrective turn).
+		const runLoop = async (question: string): Promise<Plan> => {
+			const loopOpts: Parameters<typeof runAgentLoop>[0] = {
+				endpoint: this.opts.agenticEndpoint as string,
+				apiKey: this.opts.apiKey,
+				model: this.opts.model,
+				systemPrompt: sys,
+				question,
+				ctx: this.opts.agenticCtx as InspectionRunCtx,
+			};
+			if (this.opts.dangerouslyAllowBrowser !== undefined) {
+				loopOpts.dangerouslyAllowBrowser = this.opts.dangerouslyAllowBrowser;
+			}
+			if (this.opts.agenticLlmCall) loopOpts.llmCall = this.opts.agenticLlmCall;
+			if (req.signal) loopOpts.signal = req.signal;
+			if (this.opts.onAgenticStep) loopOpts.onStep = this.opts.onAgenticStep;
+			const raw = await runAgentLoop(loopOpts);
+			return validatePlan(raw as unknown, datasetNames);
 		};
-		if (this.opts.dangerouslyAllowBrowser !== undefined) {
-			loopOpts.dangerouslyAllowBrowser = this.opts.dangerouslyAllowBrowser;
+
+		try {
+			return await runLoop(baseQuestion);
+		} catch (err) {
+			if (!(err instanceof PlanValidationError)) throw err;
+			// Abort propagates as AbortError above; here we know the plan
+			// passed the loop's finalize_plan zod gate but failed cross-
+			// cutting validation (sanitized-still-invalid args, dangling
+			// ${var}, last-step-not-render, etc). One retry with the error
+			// message as feedback, then surface.
+			const retryQuestion = `${baseQuestion}\n\nYour previous plan failed validation: ${err.message}. Produce a corrected plan. Pay close attention to: omitting optional fields when you don't have a real value (NEVER pass "", "null", "NA"), keeping every \${var} backward-referencing only, and ending with a render.* or report.* tool.`;
+			try {
+				return await runLoop(retryQuestion);
+			} catch (err2) {
+				if (err2 instanceof PlanValidationError) {
+					throw new PlannerError(
+						`agentic planner produced an invalid plan even after one retry: ${err2.message}. Try rephrasing the question or switch to a larger model.`,
+						err2,
+					);
+				}
+				throw err2;
+			}
 		}
-		if (this.opts.agenticLlmCall) loopOpts.llmCall = this.opts.agenticLlmCall;
-		if (req.signal) loopOpts.signal = req.signal;
-		if (this.opts.onAgenticStep) loopOpts.onStep = this.opts.onAgenticStep;
-		const raw = await runAgentLoop(loopOpts);
-		// Validate the plan the loop returned. The loop already enforced the
-		// shape via the finalize_plan zod schema, but validate-plan covers the
-		// cross-cutting rules (var refs, last-step-must-be-render, dedup).
-		return validatePlan(raw as unknown, datasetNames);
 	}
 
 	/* -------------------------------------------------------------------- */

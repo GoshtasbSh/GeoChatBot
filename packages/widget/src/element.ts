@@ -266,7 +266,15 @@ export type GeoChatBotEvents = {
 		  }
 		| { kind: "finalize"; iteration: number; plan: Plan }
 		| { kind: "budget-exhausted"; iteration: number }
-		| { kind: "unknown-tool"; iteration: number; toolId: string };
+		| { kind: "unknown-tool"; iteration: number; toolId: string }
+		// AUDIT-K4 (2026-05-11): forwarded from the agentic loop while it
+		// waits on a 429 backoff. Hosts wire this to a countdown card.
+		| {
+				kind: "rate-limit-wait";
+				iteration: number;
+				attempt: number;
+				waitMs: number;
+		  };
 };
 
 const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
@@ -703,6 +711,9 @@ export class GeoChatBotElement extends LitElement {
 		agenticMode: "geochatbot:agenticMode",
 		retrievalMode: "geochatbot:retrievalMode",
 		memoryEnabled: "geochatbot:memoryEnabled",
+		// AUDIT-K2 (2026-05-11): theme persistence so a dark-mode reload
+		// stays dark. Cycles auto → light → dark → auto.
+		theme: "geochatbot:theme",
 	} as const;
 
 	/** Provider ids the persistence layer knows about. Anything else is ignored. */
@@ -793,6 +804,17 @@ export class GeoChatBotElement extends LitElement {
 			const persistedMemory = localStorage.getItem(k.memoryEnabled);
 			if (persistedMemory === "1" || persistedMemory === "0") {
 				this.memoryEnabled = persistedMemory === "1";
+			}
+			// AUDIT-K2 (2026-05-11): restore theme. Reflected to attribute via
+			// @property({reflect: true}) so the :host[theme="dark"] +
+			// :host-context([theme="dark"]) rules in tokensCSS pick it up.
+			const persistedTheme = localStorage.getItem(k.theme);
+			if (
+				persistedTheme === "light" ||
+				persistedTheme === "dark" ||
+				persistedTheme === "auto"
+			) {
+				this.theme = persistedTheme;
 			}
 		} catch {
 			// localStorage unavailable — remain in-memory only.
@@ -909,9 +931,27 @@ export class GeoChatBotElement extends LitElement {
 			: "light";
 	}
 
-	/** Toggle theme between light and dark; auto becomes the opposite of OS. */
+	/**
+	 * AUDIT-K2 (2026-05-11): cycle theme auto → light → dark → auto and
+	 * persist to localStorage so the setting survives reload.
+	 *
+	 * Previously the toggle just bounced between light and dark, so a
+	 * user who wanted "follow OS" could never get back to auto without
+	 * editing markup. Three-state cycle matches the audit's B2 spec.
+	 */
 	private _toggleTheme = (): void => {
-		this.theme = this._resolvedTheme() === "dark" ? "light" : "dark";
+		const next: ThemeMode =
+			this.theme === "auto"
+				? "light"
+				: this.theme === "light"
+					? "dark"
+					: "auto";
+		this.theme = next;
+		try {
+			localStorage.setItem(GeoChatBotElement._STORAGE_KEYS.theme, next);
+		} catch {
+			// localStorage unavailable — toggle still works in-memory.
+		}
 	};
 
 	private _onSaveSelect = (e: CustomEvent<string>): void => {
@@ -1407,7 +1447,34 @@ export class GeoChatBotElement extends LitElement {
 		// does not carry these fields, but the concrete Anthropic/Gemini/OpenAI
 		// option objects do — read them through a structural narrowing rather
 		// than `as any`.
-		const opts = provider as { apiKey?: unknown; model?: unknown };
+		const opts = provider as {
+			apiKey?: unknown;
+			model?: unknown;
+			name?: unknown;
+			id?: unknown;
+		};
+		// Sync the internal provider id so agentic-mode endpoint selection,
+		// agentic/single-shot routing, and the error-message provider label
+		// all reflect the host's choice. Hosts pass the public
+		// `{ name: 'anthropic'|'groq'|'openai'|'gemini', apiKey, model }`
+		// shape (documented in PLAN.md §dev API and used by every e2e
+		// spec); the typed ChatProvider interface uses `id`, so accept
+		// either. Without this sync, `_llmProvider` keeps its constructor
+		// default ("groq") and `<geo-chatbot agentic-mode="agentic">` with
+		// an Anthropic provider mistakenly drives the agentic loop against
+		// Groq's /chat/completions endpoint.
+		const providerKey =
+			typeof opts.name === "string" && opts.name
+				? opts.name
+				: typeof opts.id === "string" && opts.id
+					? opts.id
+					: undefined;
+		if (
+			providerKey &&
+			GeoChatBotElement._KNOWN_PROVIDERS.has(providerKey as ProviderId)
+		) {
+			this._llmProvider = providerKey as ProviderId;
+		}
 		if (typeof opts.apiKey === "string" && opts.apiKey)
 			this._apiKey = opts.apiKey;
 		if (typeof opts.model === "string" && opts.model) this._model = opts.model;
@@ -1721,6 +1788,28 @@ export class GeoChatBotElement extends LitElement {
 			canvas?.clear?.();
 		}
 
+		// AUDIT-W (2026-05-11) — execution-path decision recorded:
+		//   We deliberately call the in-process Executor here even though
+		//   `agent/executor/client.ts` exposes a worker-backed alternative
+		//   (`createWorkerExecutor`) for environments where
+		//   `canUseExecutorWorker()` returns true.
+		//
+		//   Why in-process is the default:
+		//   1. DuckDB-WASM already runs in its OWN worker (the
+		//      @duckdb/duckdb-wasm package spawns one internally) — the
+		//      bulk of CPU + I/O is therefore already off the main thread.
+		//   2. The executor's main-thread work is plan-step orchestration
+		//      (resolve var refs, call runner, emit progress events). That
+		//      work is small (μs per step) and benefits little from a
+		//      second worker hop. Moving it would also DOUBLE the Arrow
+		//      IPC traffic (main → executor-worker → DuckDB-worker).
+		//   3. The worker path adds two cross-thread postMessage hops per
+		//      runner call, which slows small plans noticeably on
+		//      lower-spec hardware.
+		//
+		//   The worker module + test/agent/executor/worker-abort.test.ts
+		//   remain as an opt-in surface for future use cases that DO need
+		//   long-running CPU-bound work isolated from the main thread.
 		const exec = new Executor({ engine, datasets: this._execDatasets });
 		const critic = this._buildCritic();
 		// Fresh controller per execution. clear() / a new ask() before this
@@ -1998,6 +2087,17 @@ export class GeoChatBotElement extends LitElement {
 					text: "Iteration budget exhausted before finalize_plan",
 				});
 				return;
+			case "rate-limit-wait": {
+				// AUDIT-K4 (2026-05-11): surface a clear countdown line so
+				// the user knows the bot is parked on a 429, not hung.
+				const secs = Math.ceil(e.waitMs / 1000);
+				canvas.appendThought({
+					kind: "rate-limit-wait",
+					iteration: e.iteration,
+					text: `Rate limit hit — waiting ${secs}s before retry ${e.attempt} (provider Retry-After respected)`,
+				});
+				return;
+			}
 		}
 	}
 
@@ -2239,6 +2339,13 @@ export class GeoChatBotElement extends LitElement {
 		this._agentBusy = false;
 		this._maskedKey = null;
 		this._activeSaveId = null;
+		// AUDIT-022: wipe per-session state the rail / canvas may still
+		// reference after `clear()`. Without these resets a click on an
+		// old saved-layer row (rail) would re-mount a card whose
+		// `_origin` carries the pre-clear planId/stepId — confusing the
+		// canvas's turn bookkeeping and the saves-store correlation.
+		this._lastQuestion = "";
+		this._derivedLayers = [];
 		if (this.shadowRoot) {
 			const canvas = this.shadowRoot.querySelector("result-canvas") as
 				| (HTMLElement & { clear(): void })

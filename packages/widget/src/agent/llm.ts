@@ -47,7 +47,10 @@ export class PlannerLLMError extends Error {
 		| "NETWORK"
 		| "BAD_RESPONSE"
 		| "NO_TOOL_USE"
-		| "ABORTED";
+		| "ABORTED"
+		// AUDIT-017: bubble UNSUPPORTED so the UI distinguishes a
+		// browser-key-guard refusal from a transient network failure.
+		| "UNSUPPORTED";
 	readonly status?: number;
 	constructor(code: PlannerLLMError["code"], message: string, status?: number) {
 		super(message);

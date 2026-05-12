@@ -15,3 +15,9 @@ docs/superpowers/plans/
 .playwright-mcp/
 e2e/test-results/
 
+# This is a pnpm workspace (see pnpm-workspace.yaml + packageManager
+# field in package.json). The npm lockfile would conflict with the
+# workspace:* protocol used in packages/site/package.json and break
+# CI for anyone running `npm install`.
+package-lock.json
+

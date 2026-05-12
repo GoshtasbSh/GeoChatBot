@@ -139,4 +139,103 @@ describe("detectLatLon", () => {
 			lonColumn: "x_coord",
 		});
 	});
+
+	// ── AUDIT-002 column-intelligence expansion ─────────────────────────────
+	// Regression suite for the "any file added to the bot can be parsed"
+	// requirement. Each block exercises a real-world column-naming
+	// convention the bot encountered in shared datasets but used to miss.
+
+	it("detects GBIF / iNaturalist `decimalLatitude` / `decimalLongitude`", () => {
+		expect(
+			detectLatLon([{ decimalLatitude: 29.6, decimalLongitude: -82.3 }]),
+		).toEqual({
+			kind: "lonlat",
+			latColumn: "decimalLatitude",
+			lonColumn: "decimalLongitude",
+		});
+	});
+
+	it("detects snake_case `decimal_latitude` / `decimal_longitude`", () => {
+		expect(
+			detectLatLon([{ decimal_latitude: 29.6, decimal_longitude: -82.3 }]),
+		).toEqual({
+			kind: "lonlat",
+			latColumn: "decimal_latitude",
+			lonColumn: "decimal_longitude",
+		});
+	});
+
+	it("detects GPS-prefixed columns from device exports", () => {
+		expect(detectLatLon([{ gps_lat: 29.6, gps_lon: -82.3 }])).toEqual({
+			kind: "lonlat",
+			latColumn: "gps_lat",
+			lonColumn: "gps_lon",
+		});
+		expect(
+			detectLatLon([{ gps_latitude: 29.6, gps_longitude: -82.3 }]),
+		).toEqual({
+			kind: "lonlat",
+			latColumn: "gps_latitude",
+			lonColumn: "gps_longitude",
+		});
+	});
+
+	it("detects geo-prefixed and pos-prefixed columns", () => {
+		expect(detectLatLon([{ geo_lat: 29.6, geo_lon: -82.3 }])).toEqual({
+			kind: "lonlat",
+			latColumn: "geo_lat",
+			lonColumn: "geo_lon",
+		});
+		expect(detectLatLon([{ pos_lat: 29.6, pos_lng: -82.3 }])).toEqual({
+			kind: "lonlat",
+			latColumn: "pos_lat",
+			lonColumn: "pos_lng",
+		});
+	});
+
+	it("falls back to substring match when no exact alias is present", () => {
+		// `Site_Latitude_DD_NAD83` is not in the alias list, but it contains
+		// 'latitude' so tier-2 fallback picks it up; range validation passes.
+		expect(
+			detectLatLon([
+				{ Site_Latitude_DD_NAD83: 29.6, Site_Longitude_DD_NAD83: -82.3 },
+			]),
+		).toEqual({
+			kind: "lonlat",
+			latColumn: "Site_Latitude_DD_NAD83",
+			lonColumn: "Site_Longitude_DD_NAD83",
+		});
+	});
+
+	it("substring fallback still respects range validation", () => {
+		// `longitudinal_study_id` contains 'longitud' substring but the
+		// values aren't geographic — range check rejects.
+		expect(
+			detectLatLon([
+				{ patient_latitude_score: 0.95, longitudinal_study_id: 1024 },
+			]),
+		).toBeUndefined();
+	});
+
+	it("never returns the same column for both lat and lon", () => {
+		// A pathological case where one column matches both regexes
+		// (shouldn't happen with real data, but defends against future
+		// regex changes).
+		const enc = detectLatLon([{ latlong_combined: 1.0 }]);
+		expect(enc).toBeUndefined();
+	});
+
+	it("tier-1 exact match wins over tier-2 substring when both present", () => {
+		// `latitude` (exact) and `geo_latitude_str` (substring) both exist;
+		// the exact-alias match should be preferred. This is implicit but
+		// worth pinning so a future refactor doesn't silently swap priority.
+		const enc = detectLatLon([
+			{ latitude: 29.6, longitude: -82.3, geo_latitude_str: "x" },
+		]);
+		expect(enc?.kind).toBe("lonlat");
+		if (enc?.kind === "lonlat") {
+			expect(enc.latColumn).toBe("latitude");
+			expect(enc.lonColumn).toBe("longitude");
+		}
+	});
 });

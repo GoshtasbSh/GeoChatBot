@@ -6,23 +6,31 @@
 	"license": "MIT",
 	"workspaces": ["packages/*", "examples/*", "e2e"],
 	"scripts": {
-		"dev": "npm run dev --workspace=@geochatbot/widget",
-		"demo": "npm run dev --workspace=@geochatbot/demo",
-		"build": "npm run build --workspaces --if-present",
-		"build:widget": "npm run build --workspace=@geochatbot/widget",
-		"typecheck": "npm run typecheck --workspaces --if-present",
-		"test": "npm run test --workspaces --if-present",
+		"dev": "pnpm --filter @geochatbot/widget dev",
+		"demo": "pnpm --filter @geochatbot/demo dev",
+		"build": "pnpm -r --if-present run build",
+		"build:widget": "pnpm --filter @geochatbot/widget build",
+		"typecheck": "pnpm -r --if-present run typecheck",
+		"test": "pnpm -r --if-present run test",
 		"lint": "biome ci package.json packages/widget/src packages/widget/test packages/widget/vite.config.ts packages/widget/vitest.config.ts packages/demo/vite.config.ts examples/react/src examples/react/vite.config.ts e2e/tests e2e/playwright.config.ts mockups packages/site/app packages/site/components packages/site/lib packages/site/next.config.ts",
 		"format": "biome format --write package.json packages/widget/src packages/widget/test packages/widget/vite.config.ts packages/widget/vitest.config.ts packages/demo/vite.config.ts examples/react/src examples/react/vite.config.ts e2e/tests e2e/playwright.config.ts mockups packages/site/app packages/site/components packages/site/lib packages/site/next.config.ts",
-		"e2e": "npm run test:e2e --workspace=@geochatbot/e2e",
-		"e2e:install": "npm run test:install --workspace=@geochatbot/e2e",
+		"e2e": "pnpm --filter @geochatbot/e2e test:e2e",
+		"e2e:install": "pnpm --filter @geochatbot/e2e test:install",
 		"hello": "echo \"GeoChatBot widget v0.0.0\""
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^1.9.4"
+		"@biomejs/biome": "^1.9.4",
+		"tsx": "^4.21.0"
 	},
 	"engines": {
 		"node": ">=20"
 	},
-	"packageManager": "pnpm@9.15.0+sha512.76e2379760a4328ec4415815bcd6628dee727af3779aaa4c914e3944156c4299921a89f976381ee107d41f12cfa4b66681ca9c718f0668fa0831ed4c6d8ba56c"
+	"packageManager": "pnpm@9.15.0+sha512.76e2379760a4328ec4415815bcd6628dee727af3779aaa4c914e3944156c4299921a89f976381ee107d41f12cfa4b66681ca9c718f0668fa0831ed4c6d8ba56c",
+	"pnpm": {
+		"overrides": {
+			"protobufjs": ">=7.5.5",
+			"xlsx": "npm:@e965/xlsx@^0.20.3",
+			"thrift": ">=0.23.0"
+		}
+	}
 }

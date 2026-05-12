@@ -98,7 +98,12 @@ export class PlanReview extends LitElement {
 	override render() {
 		if (!this.plan) return nothing;
 		return html`
-      <article class="glass" role="region" aria-label="Agent plan review">
+      <article
+        class="glass"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Agent plan review"
+      >
         <header class="head">
           <h2 class="title">${this.plan.goal}</h2>
           <div class="meta">

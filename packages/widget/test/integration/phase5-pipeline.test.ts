@@ -190,7 +190,13 @@ describe("Phase 5 — 4-step plan end-to-end", () => {
 		expect(/ST_Buffer\(geom, 50000\)/.test(allSql)).toBe(true);
 		expect(/FROM "gcb_sql_s1_/.test(allSql)).toBe(true);
 		expect(/FROM "gcb_buffer_s2_/.test(allSql)).toBe(true);
-		expect(/COUNT\("value"\)/.test(allSql)).toBe(true);
+		// AUDIT-008: count semantics use COUNT(*) (group size). The
+		// previous COUNT("value") was sample-size of non-null value, not
+		// the canonical "rows in group". The plan still passes value_col
+		// for the output alias name (`count_value`), but the SQL counts
+		// rows.
+		expect(/COUNT\(\*\)/.test(allSql)).toBe(true);
+		expect(/AS "count_value"/.test(allSql)).toBe(true);
 	});
 
 	it("halts on the first step failure and reports it", async () => {

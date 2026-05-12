@@ -14,6 +14,7 @@ import {
 	ForcedToolError,
 	type ForcedToolInput,
 	type ProviderId,
+	parseRetryAfter,
 } from "./types.js";
 
 export async function callOpenAICompat(
@@ -23,8 +24,9 @@ export async function callOpenAICompat(
 ): Promise<Record<string, unknown>> {
 	const inBrowser = typeof window !== "undefined";
 	if (inBrowser && input.dangerouslyAllowBrowser !== true) {
+		// AUDIT-017: UNSUPPORTED, not NETWORK — config must change.
 		throw new ForcedToolError(
-			"NETWORK",
+			"UNSUPPORTED",
 			provider,
 			`Direct-from-browser ${provider} calls leak the API key. Pass dangerouslyAllowBrowser:true to acknowledge, or proxy through your own server.`,
 		);
@@ -86,10 +88,25 @@ export async function callOpenAICompat(
 			);
 		}
 		if (res.status === 429) {
+			// AUDIT-K4 (2026-05-11): surface Retry-After so the host can show
+			// a countdown card instead of leaving the user guessing.
+			const retryAfterMs = parseRetryAfter(res.headers.get("Retry-After"));
 			throw new ForcedToolError(
 				"RATE_LIMIT",
 				provider,
-				"rate limited (429)",
+				retryAfterMs !== undefined
+					? `rate limited (429), retry after ${Math.ceil(retryAfterMs / 1000)}s`
+					: "rate limited (429)",
+				res.status,
+				retryAfterMs,
+			);
+		}
+		if (res.status >= 500) {
+			// AUDIT-018: 5xx is transient — NETWORK so the UI offers retry.
+			throw new ForcedToolError(
+				"NETWORK",
+				provider,
+				`upstream ${res.status}`,
 				res.status,
 			);
 		}
@@ -126,8 +143,11 @@ export async function callOpenAICompat(
  * Find the first tool_calls entry that matches `toolName` and parse its
  * arguments string into an object. OpenAI/Groq return arguments as a
  * JSON-encoded STRING; small-and-cheap models occasionally hand back
- * malformed JSON, which we surface as BAD_RESPONSE rather than silently
- * coercing.
+ * malformed JSON. We treat the whole call as "no tool was successfully
+ * invoked" (returns null → caller raises NO_TOOL_USE) rather than
+ * BAD_RESPONSE, because the planner's retry / fallback path already
+ * handles NO_TOOL_USE cleanly. AUDIT-027: doc-string was inconsistent
+ * with implementation; aligned in this audit pass.
  */
 function extractToolCallArguments(
 	json: unknown,

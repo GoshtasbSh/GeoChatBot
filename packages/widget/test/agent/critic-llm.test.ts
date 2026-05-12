@@ -88,7 +88,8 @@ describe("callCriticLLM", () => {
 		vi.stubGlobal("window", { document: {} });
 		await expect(callCriticLLM(baseInput)).rejects.toMatchObject({
 			name: "CriticLLMError",
-			code: "NETWORK",
+			// AUDIT-017: refusal is UNSUPPORTED (configuration), not NETWORK.
+			code: "UNSUPPORTED",
 		});
 	});
 

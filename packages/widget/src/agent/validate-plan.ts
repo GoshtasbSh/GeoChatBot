@@ -105,6 +105,17 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
 					step.id,
 				);
 			}
+			// AUDIT-021: an output_var that shadows a loaded dataset name
+			// causes silent confusion downstream — the executor creates a
+			// temporary view alias under that name (executor.ts:158), and
+			// subsequent `FROM <name>` SQL hits the alias instead of the
+			// dataset's geom view. Reject up-front with a clear message.
+			if (loaded.has(step.output_var)) {
+				throw new PlanValidationError(
+					`output_var "${step.output_var}" collides with loaded dataset name; pick a different output_var`,
+					step.id,
+				);
+			}
 			seenOutputVars.add(step.output_var);
 			definedSoFar.add(step.output_var);
 		}
@@ -137,28 +148,72 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
 const MAX_REF_DEPTH = 32;
 
 /**
- * Strip "useless" empty values that small LLMs love to fill into optional
- * tool fields. Concretely:
+ * Strip "useless empty" values that smaller LLMs (Groq Llama-3.1-8B,
+ * Gemini Flash) emit into optional fields instead of omitting them.
+ * Concretely:
+ *
  *   - empty strings ("")
- *   - whitespace-only strings ("   ")
- *   - empty arrays ([])
+ *   - whitespace-only strings ("   ", "\t", " ")
+ *   - sentinel placeholder strings: "null", "NA", "N/A", "none",
+ *     "undefined" (case-insensitive, surrounding whitespace tolerated)
  *   - explicit nulls / undefineds
+ *   - empty arrays ([])
+ *   - arrays whose every entry is itself a sentinel (collapse → drop)
  *
- * Top-level fields with these values are deleted entirely, which lets
- * zod's `.optional()` semantics kick in and accept the args object.
+ * Each surviving array entry is itself sanitized — a single real value
+ * mixed with sentinels (`["", "Address", "null"]`) survives as
+ * `["Address"]`, which lets the row reach the per-tool .min(1) gate
+ * with the legitimate value intact instead of dead-ending on a sibling.
  *
- * One-level-deep: the planner's args are flat (column names, dataset
- * names, scalar config). Deep walking would risk nuking legitimate
- * empty values inside nested config objects we don't yet have.
+ * Nested-object walking is limited to one extra level (`SANITIZE_DEPTH`)
+ * — deep enough for `render.map.style.{colorBy,radiusBy}` but shallow
+ * enough that we don't trespass into legitimately-empty payload
+ * structures the executor may carry (e.g. sql.args.query is a string,
+ * never an object, so this is safe).
+ *
+ * AUDIT-K1 (2026-05-11): widened from "empty string only" to the full
+ * sentinel set after the agentic loop dead-ended on
+ * `region_hint: "null"` and `address_cols: ["", "column1"]` from
+ * Groq's free-tier Llama. Both single-shot and agentic planner paths
+ * eventually call validatePlan(), so this is the single point of fix.
  */
-function sanitizeArgs(args: unknown): Record<string, unknown> {
+const SANITIZE_DEPTH = 2;
+
+const SENTINEL_RE = /^\s*(null|na|n\/a|none|undefined)\s*$/i;
+
+function isUselessString(v: string): boolean {
+	if (v.trim() === "") return true;
+	return SENTINEL_RE.test(v);
+}
+
+function sanitizeValue(v: unknown, depth: number): unknown {
+	if (v === null || v === undefined) return undefined;
+	if (typeof v === "string") return isUselessString(v) ? undefined : v;
+	if (Array.isArray(v)) {
+		const cleaned: unknown[] = [];
+		for (const item of v) {
+			const c = sanitizeValue(item, depth + 1);
+			if (c !== undefined) cleaned.push(c);
+		}
+		return cleaned.length === 0 ? undefined : cleaned;
+	}
+	if (typeof v === "object" && depth < SANITIZE_DEPTH) {
+		const obj: Record<string, unknown> = {};
+		for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+			const c = sanitizeValue(val, depth + 1);
+			if (c !== undefined) obj[k] = c;
+		}
+		return Object.keys(obj).length === 0 ? undefined : obj;
+	}
+	return v;
+}
+
+export function sanitizeArgs(args: unknown): Record<string, unknown> {
 	if (!args || typeof args !== "object" || Array.isArray(args)) return {};
 	const out: Record<string, unknown> = {};
 	for (const [k, v] of Object.entries(args)) {
-		if (v === null || v === undefined) continue;
-		if (typeof v === "string" && v.trim() === "") continue;
-		if (Array.isArray(v) && v.length === 0) continue;
-		out[k] = v;
+		const c = sanitizeValue(v, 1);
+		if (c !== undefined) out[k] = c;
 	}
 	return out;
 }

@@ -88,12 +88,68 @@ export async function runBuffer(
 	const { layer, distance, units } = BufferArgs.parse(args);
 	const view = resolveLayer(layer, ctx);
 	const meters = distanceInMeters(distance, units);
-	// ST_Buffer in DuckDB-Spatial expects degrees for EPSG:4326 inputs and
-	// meters for projected. Phase 5 v1 documents the meters conversion;
-	// accuracy on geographic CRS is approximate (~1 deg ≈ 111 km at equator).
-	const sql = `SELECT * REPLACE (ST_Buffer(geom, ${meters}) AS geom) FROM ${quoteIdent(view)}`;
+	// AUDIT-012 (math): ST_Buffer in DuckDB-Spatial uses the geometry's
+	// native CRS units — meters for projected, *degrees* for EPSG:4326.
+	// Passing `500` for a 500-metre buffer against lat/lon data
+	// produces a 500-degree buffer (the entire planet). Detect this
+	// case at runtime by sampling the view's bbox; if every sampled
+	// coord lives in [-180,180]×[-90,90] we treat it as geographic and
+	// convert metres → approximate degrees (1° ≈ 111_320 m at equator)
+	// with a console hint so the user knows the result is approximate.
+	// The planner's "Reproject before distance" rule should have caught
+	// this in agentic mode, but the runtime guard catches LLM mistakes
+	// and direct host calls that bypass the planner.
+	const bbox = await bboxForView(ctx, view);
+	const looksGeographic =
+		bbox !== null &&
+		Math.abs(bbox.minX) <= 180 &&
+		Math.abs(bbox.maxX) <= 180 &&
+		Math.abs(bbox.minY) <= 90 &&
+		Math.abs(bbox.maxY) <= 90;
+	const distanceInQueryUnits = looksGeographic ? meters / 111_320 : meters;
+	if (looksGeographic) {
+		// eslint-disable-next-line no-console
+		console.warn(
+			`[geochatbot] geometry.buffer: input CRS looks geographic (bbox fits in WGS84); converting ${meters} m to ~${distanceInQueryUnits.toFixed(6)}° for ST_Buffer. For accurate distances reproject to a metric CRS first.`,
+		);
+	}
+	const sql = `SELECT * REPLACE (ST_Buffer(geom, ${distanceInQueryUnits}) AS geom) FROM ${quoteIdent(view)}`;
 	const out = await materializeView(ctx, "buffer", sql);
 	return { output: { kind: "layer", ref: out } };
+}
+
+async function bboxForView(
+	ctx: ExecCtx,
+	view: string,
+): Promise<{ minX: number; minY: number; maxX: number; maxY: number } | null> {
+	try {
+		const t = await ctx.engine.query(
+			`SELECT
+        MIN(ST_XMin(geom)) AS minX,
+        MIN(ST_YMin(geom)) AS minY,
+        MAX(ST_XMax(geom)) AS maxX,
+        MAX(ST_YMax(geom)) AS maxY
+      FROM ${quoteIdent(view)}
+      WHERE geom IS NOT NULL`,
+		);
+		const row = t.toArray()[0] as Record<string, unknown> | undefined;
+		if (!row) return null;
+		const minX = Number(row.minX);
+		const minY = Number(row.minY);
+		const maxX = Number(row.maxX);
+		const maxY = Number(row.maxY);
+		if (
+			!Number.isFinite(minX) ||
+			!Number.isFinite(minY) ||
+			!Number.isFinite(maxX) ||
+			!Number.isFinite(maxY)
+		) {
+			return null;
+		}
+		return { minX, minY, maxX, maxY };
+	} catch {
+		return null;
+	}
 }
 
 registerRunner("geometry.buffer", runBuffer);
@@ -130,11 +186,14 @@ export async function runIntersect(
 	const { a, b } = TwoLayerArgs.parse(args);
 	const va = resolveLayer(a, ctx);
 	const vb = resolveLayer(b, ctx);
-	// Pairwise intersection: every (a_i, b_j) where they intersect, output
-	// the intersection geometry plus carrying both feature ids.
+	// AUDIT-009 (math/SQL): when `a` and `b` share any column name
+	// (`id`, `name`, `value` — extremely common) the naive
+	// `SELECT a.* EXCLUDE (geom), b.* EXCLUDE (geom)` produces a
+	// DuckDB "duplicate column name" binder error. We introspect both
+	// views and emit per-side `a_<col>` / `b_<col>` aliases.
+	const projection = await buildPrefixedProjection(ctx, va, vb);
 	const sql = `SELECT
-      a.* EXCLUDE (geom),
-      b.* EXCLUDE (geom),
+      ${projection},
       ST_Intersection(a.geom, b.geom) AS geom
     FROM ${quoteIdent(va)} a
     JOIN ${quoteIdent(vb)} b ON ST_Intersects(a.geom, b.geom)`;
@@ -151,8 +210,12 @@ export async function runUnion(
 	const { a, b } = TwoLayerArgs.parse(args);
 	const va = resolveLayer(a, ctx);
 	const vb = resolveLayer(b, ctx);
-	// SQL UNION ALL of geometries — keeps both layers' rows.
-	const sql = `SELECT geom FROM ${quoteIdent(va)} UNION ALL SELECT geom FROM ${quoteIdent(vb)}`;
+	// AUDIT-010 (math/SQL): the previous `SELECT geom ... UNION ALL
+	// SELECT geom` discarded every non-geom attribute. Users expect
+	// "stack both layers, keep their fields." DuckDB's
+	// `UNION ALL BY NAME` does exactly that — columns missing from
+	// one side are NULL-filled on the other.
+	const sql = `SELECT * FROM ${quoteIdent(va)} UNION ALL BY NAME SELECT * FROM ${quoteIdent(vb)}`;
 	const out = await materializeView(ctx, "union", sql);
 	return { output: { kind: "layer", ref: out } };
 }
@@ -166,14 +229,71 @@ export async function runDifference(
 	const { a, b } = TwoLayerArgs.parse(args);
 	const va = resolveLayer(a, ctx);
 	const vb = resolveLayer(b, ctx);
-	// For each a, subtract everything in b that intersects it.
-	const sql = `SELECT a.* EXCLUDE (geom),
-      ST_Difference(a.geom, COALESCE(ST_Union_Agg(b.geom), ST_GeomFromText('POLYGON EMPTY'))) AS geom
-    FROM ${quoteIdent(va)} a
-    LEFT JOIN ${quoteIdent(vb)} b ON ST_Intersects(a.geom, b.geom)
-    GROUP BY a.*`;
+	// AUDIT-011 (math/SQL): `GROUP BY a.*` star-expansion isn't
+	// portable in DuckDB and breaks when `a` contains BLOB / geometry
+	// columns that aren't groupable. Materialize a per-row surrogate
+	// id with row_number(), aggregate by that, then re-join the
+	// attribute columns.
+	const colsA = await listColumns(ctx, va);
+	const carryCols = colsA.filter((c) => c.toLowerCase() !== "geom");
+	const carrySelect = carryCols.map((c) => `a.${quoteIdent(c)}`).join(", ");
+	const sql = `
+      WITH a_indexed AS (
+        SELECT *, row_number() OVER () AS __rid FROM ${quoteIdent(va)}
+      ),
+      diffs AS (
+        SELECT a.__rid,
+          ST_Difference(
+            ANY_VALUE(a.geom),
+            COALESCE(ST_Union_Agg(b.geom), ST_GeomFromText('POLYGON EMPTY'))
+          ) AS geom
+        FROM a_indexed a
+        LEFT JOIN ${quoteIdent(vb)} b ON ST_Intersects(a.geom, b.geom)
+        GROUP BY a.__rid
+      )
+      SELECT ${carrySelect ? `${carrySelect},` : ""} d.geom AS geom
+      FROM diffs d JOIN a_indexed a ON a.__rid = d.__rid`;
 	const out = await materializeView(ctx, "difference", sql);
 	return { output: { kind: "layer", ref: out } };
+}
+
+/**
+ * Build a `<alias>.<col> AS <prefix>_<col>` projection for every
+ * non-geometry column in views `va` and `vb`. Skip `geom` because the
+ * caller appends `ST_Intersection(a.geom, b.geom) AS geom` separately.
+ * Returns a fallback `_intersect_placeholder` column when both layers
+ * are geom-only — keeps the SELECT well-formed.
+ */
+async function buildPrefixedProjection(
+	ctx: ExecCtx,
+	va: string,
+	vb: string,
+): Promise<string> {
+	const colsA = await listColumns(ctx, va);
+	const colsB = await listColumns(ctx, vb);
+	const parts: string[] = [];
+	for (const c of colsA) {
+		if (c.toLowerCase() === "geom") continue;
+		parts.push(`a.${quoteIdent(c)} AS ${quoteIdent(`a_${c}`)}`);
+	}
+	for (const c of colsB) {
+		if (c.toLowerCase() === "geom") continue;
+		parts.push(`b.${quoteIdent(c)} AS ${quoteIdent(`b_${c}`)}`);
+	}
+	return parts.length > 0 ? parts.join(", ") : "NULL AS _intersect_placeholder";
+}
+
+async function listColumns(ctx: ExecCtx, view: string): Promise<string[]> {
+	const t = await ctx.engine.query(
+		`SELECT name FROM pragma_table_info(${quoteIdent(view)})`,
+	);
+	const out: string[] = [];
+	for (const row of t.toArray()) {
+		const r = row as Record<string, unknown>;
+		const n = r.name;
+		if (typeof n === "string") out.push(n);
+	}
+	return out;
 }
 
 registerRunner("geometry.difference", runDifference);

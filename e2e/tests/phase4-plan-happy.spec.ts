@@ -106,21 +106,31 @@ test("Phase 4 — plan happy path", async ({ page }) => {
 		.locator("button.run")
 		.click();
 
-	// Approval triggers progress + result.
+	// Approval triggers progress + result. Timeout bumped to 15s to
+	// accommodate the DuckDB-WASM cold-load on the first ingest of the
+	// test session (same change phase4-plan-edit.spec.ts applies). The
+	// AGENTIC_FALLBACK warning that fires for Anthropic is a soft
+	// warning, not a hard error, so the assertion filters it out.
 	await expect
 		.poll(
 			async () =>
 				await page.evaluate(() => {
 					const trace =
-						(window as unknown as { __p4Trace: Array<{ kind: string }> })
-							.__p4Trace ?? [];
+						(
+							window as unknown as {
+								__p4Trace: Array<{ kind: string; detail?: { code?: string } }>;
+							}
+						).__p4Trace ?? [];
 					return {
 						progress: trace.some((e) => e.kind === "progress"),
 						result: trace.some((e) => e.kind === "result"),
-						error: trace.some((e) => e.kind === "error"),
+						hardError: trace.some(
+							(e) =>
+								e.kind === "error" && e.detail?.code !== "AGENTIC_FALLBACK",
+						),
 					};
 				}),
-			{ timeout: 5_000, intervals: [50, 100, 250] },
+			{ timeout: 15_000, intervals: [50, 100, 250] },
 		)
-		.toEqual({ progress: true, result: true, error: false });
+		.toEqual({ progress: true, result: true, hardError: false });
 });

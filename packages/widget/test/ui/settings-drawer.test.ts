@@ -24,6 +24,32 @@ function mount(value?: Partial<SettingsValue>): DrawerEl {
 }
 
 describe("<gcb-settings-drawer>", () => {
+	// AUDIT-K3.C10 (2026-05-11): Escape closes the drawer. Without this
+	// the user is trapped if they tab into a select and want to bail out
+	// without committing — they have to hunt for the Cancel button.
+	it("emits gcb:settings-close when Escape is pressed", async () => {
+		const el = mount({ apiKey: "" });
+		await el.updateComplete;
+		let closed = 0;
+		el.addEventListener("gcb:settings-close", () => closed++);
+		document.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
+		expect(closed).toBe(1);
+	});
+
+	it("removes the Escape listener on disconnect (no leak)", async () => {
+		const el = mount({ apiKey: "" });
+		await el.updateComplete;
+		let closed = 0;
+		el.addEventListener("gcb:settings-close", () => closed++);
+		el.remove();
+		document.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
+		expect(closed).toBe(0);
+	});
+
 	it("disables Save when the API key is empty", async () => {
 		const el = mount({ apiKey: "", dangerouslyAllowBrowser: true });
 		await el.updateComplete;

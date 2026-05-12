@@ -129,15 +129,21 @@ test("Phase 4 — inline edit updates step args", async ({ page }) => {
 			async () =>
 				await page.evaluate(() => {
 					const trace =
-						(window as unknown as { __p4Trace: Array<{ kind: string }> })
-							.__p4Trace ?? [];
+						(
+							window as unknown as {
+								__p4Trace: Array<{ kind: string; detail?: { code?: string } }>;
+							}
+						).__p4Trace ?? [];
 					return {
 						progress: trace.filter((e) => e.kind === "progress").length,
 						result: trace.some((e) => e.kind === "result"),
-						error: trace.some((e) => e.kind === "error"),
+						hardError: trace.some(
+							(e) =>
+								e.kind === "error" && e.detail?.code !== "AGENTIC_FALLBACK",
+						),
 					};
 				}),
 			{ timeout: 15_000, intervals: [100, 250, 500] },
 		)
-		.toMatchObject({ result: true, error: false });
+		.toMatchObject({ result: true, hardError: false });
 });

@@ -37,6 +37,18 @@ export function quoteIdent(name: string): string {
 	if (name.includes("\0")) {
 		throw new Error("quoteIdent: identifier contains NUL byte");
 	}
+	// §S (2026-05-12): reject ASCII control characters in identifiers.
+	// DuckDB itself accepts most control chars inside double-quoted
+	// identifiers, but they break log parsers, plan-review UI rendering,
+	// and audit grep. A legitimate column name never contains a
+	// newline/tab/vertical-tab/etc; rejecting here surfaces them to the
+	// loader's normalizeRows pass rather than letting them propagate
+	// silently into SQL. The control-char range is INTENTIONAL here, so
+	// the lint rule is suppressed.
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional control-char rejection
+	if (/[\x01-\x1f\x7f]/.test(name)) {
+		throw new Error("quoteIdent: identifier contains ASCII control character");
+	}
 	return `"${name.replace(/"/g, '""')}"`;
 }
 

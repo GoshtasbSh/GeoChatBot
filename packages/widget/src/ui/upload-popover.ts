@@ -171,7 +171,12 @@ export class GcbUploadPopover extends LitElement {
 	override render() {
 		if (!this.open) return nothing;
 		return html`
-      <div class="popover" role="dialog" aria-label="Add a dataset">
+      <div
+        class="popover"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add a dataset"
+      >
         <h5>Add a dataset</h5>
         <div
           class="drop-area ${this._over ? "over" : ""}"

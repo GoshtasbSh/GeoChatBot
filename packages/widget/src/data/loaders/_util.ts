@@ -81,7 +81,9 @@ export function assertNonEmpty(buffer: ArrayBuffer, filename: string): void {
 
 // Lower-cased column-name variants we'll auto-detect as latitude / longitude.
 // Includes the obvious aliases plus the underscore-suffixed forms common in
-// USGS, Census, and ArcGIS exports (latitude_dd, point_x, y_coord, etc.).
+// USGS, Census, and ArcGIS exports (latitude_dd, point_x, y_coord, etc.),
+// the GBIF / iNaturalist conventions (decimallatitude, decimal_latitude),
+// and the GPS / device-export conventions (gps_lat, geo_lat).
 // All comparisons happen case-insensitively in findColumn.
 const LAT_NAMES = [
 	"latitude",
@@ -89,10 +91,23 @@ const LAT_NAMES = [
 	"y",
 	"latitude_dd",
 	"lat_dd",
+	"lat_deg",
+	"lat_decimal",
+	"decimal_latitude",
+	"decimallatitude",
 	"y_coord",
 	"point_y",
 	"ycoord",
+	"coord_y",
 	"y_lat",
+	"gps_lat",
+	"gps_latitude",
+	"geo_lat",
+	"geolatitude",
+	"point_lat",
+	"site_lat",
+	"loc_lat",
+	"pos_lat",
 ];
 const LON_NAMES = [
 	"longitude",
@@ -104,11 +119,40 @@ const LON_NAMES = [
 	"lon_dd",
 	"long_dd",
 	"lng_dd",
+	"lon_deg",
+	"lon_decimal",
+	"decimal_longitude",
+	"decimallongitude",
 	"x_coord",
 	"point_x",
 	"xcoord",
+	"coord_x",
 	"x_lon",
+	"gps_lon",
+	"gps_lng",
+	"gps_longitude",
+	"geo_lon",
+	"geo_lng",
+	"geolongitude",
+	"point_lon",
+	"point_lng",
+	"site_lon",
+	"site_lng",
+	"loc_lon",
+	"loc_lng",
+	"pos_lon",
+	"pos_lng",
 ];
+
+// Tier-2 substring fallback: when no exact alias matches, fall back to
+// columns whose name CONTAINS the canonical roots `latitude` / `longitude`
+// (case-insensitive). This handles freeform names like
+// "Site_Latitude_DD_NAD83" or "Bird_Decimal_Longitude" that don't appear
+// verbatim in the alias list. Range validation downstream is the real guard
+// against false positives (`platitudes`, `longitudinal_study_id` etc. would
+// fail the [-90,90]/[-180,180] check on actual values).
+const LAT_SUBSTR_RE = /latitude/i;
+const LON_SUBSTR_RE = /longitude/i;
 
 function findColumn(
 	columns: string[],
@@ -120,6 +164,10 @@ function findColumn(
 		if (m) return m.orig;
 	}
 	return undefined;
+}
+
+function findColumnByRegex(columns: string[], re: RegExp): string | undefined {
+	return columns.find((c) => re.test(c));
 }
 
 function isFiniteNumber(v: unknown): v is number {
@@ -141,9 +189,19 @@ export function detectLatLon(
 	const columns = Object.keys(rows[0] ?? {});
 	if (columns.length === 0) return undefined;
 
-	const latColumn = options.latColumn ?? findColumn(columns, LAT_NAMES);
-	const lonColumn = options.lonColumn ?? findColumn(columns, LON_NAMES);
+	// Tier 1: exact-alias match (case-insensitive). Tier 2: substring fallback
+	// against the canonical roots `latitude` / `longitude`. Range validation
+	// downstream filters out the rare false positive that survives tier 2.
+	const latColumn =
+		options.latColumn ??
+		findColumn(columns, LAT_NAMES) ??
+		findColumnByRegex(columns, LAT_SUBSTR_RE);
+	const lonColumn =
+		options.lonColumn ??
+		findColumn(columns, LON_NAMES) ??
+		findColumnByRegex(columns, LON_SUBSTR_RE);
 	if (!latColumn || !lonColumn) return undefined;
+	if (latColumn === lonColumn) return undefined;
 	if (!columns.includes(latColumn) || !columns.includes(lonColumn))
 		return undefined;
 

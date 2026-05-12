@@ -32,7 +32,10 @@ export const tokensCSS = css`
 
     --gcb-ink: #1c1917;
     --gcb-ink-soft: #44403c;
-    --gcb-ink-muted: #78716c;
+    /* AUDIT-R (2026-05-11): darkened from #78716c (4.4:1 against
+     * --gcb-bg #f7f5ef) to #6b635c (5.2:1) so WCAG AA passes for the
+     * 16+ small-text uses across the settings drawer + signup hint. */
+    --gcb-ink-muted: #6b635c;
     --gcb-ink-dim: #a8a29e;
 
     --gcb-accent: #059669;
@@ -53,8 +56,23 @@ export const tokensCSS = css`
     color-scheme: light;
   }
 
-  /* ── DARK (GIS Pro: navy-slate + amber) ──────────────────────── */
-  :host([theme="dark"]) {
+  /* ── DARK (GIS Pro: navy-slate + amber) ──────────────────────────
+   * AUDIT-K2 (2026-05-11): tokensCSS is mixed into the static styles
+   * of every component (gcb-shell, rail, ask-input, ...). Each one
+   * therefore re-declares the LIGHT defaults on its own :host block,
+   * which previously shadowed the dark tokens set on the widget root —
+   * the theme toggle visibly flipped <geo-chatbot> bg but every inner
+   * shadow root stayed light because its OWN :host won the cascade.
+   * Fix: use :host-context([theme="dark"]) so a child shadow root's
+   * host picks up the dark values when ANY ancestor (notably the
+   * widget root) carries theme="dark". Same pattern for the
+   * theme="auto" + prefers-color-scheme:dark case below.
+   * Supported in every modern engine (Chromium, WebKit, Firefox 125+).
+   * We keep :host([theme="dark"]) too so the widget root itself flips
+   * (covers headless / iframe roots that directly wear the attribute).
+   */
+  :host([theme="dark"]),
+  :host-context([theme="dark"]) {
     --gcb-bg: #1a2033;
     --gcb-bg-rail: #141b2b;
     --gcb-bg-2: #242b3d;
@@ -66,7 +84,13 @@ export const tokensCSS = css`
 
     --gcb-ink: #e2e8f0;
     --gcb-ink-soft: #b0bec5;
-    --gcb-ink-muted: #647891;
+    /* AUDIT-R (2026-05-11): #647891 was 3.1-3.6:1 against the dark
+     * surface set (--gcb-bg #1a2033 / --gcb-bg-2 #242b3d) — failed
+     * WCAG AA 4.5:1 across status chip, panel headers, drawer body
+     * copy, and the empty-state hint. #8a9bb5 lands at 5.0-5.6:1
+     * on both surfaces. --gcb-ink-dim left for non-text uses (lines,
+     * icon strokes) where 3:1 graphic-element contrast is fine. */
+    --gcb-ink-muted: #8a9bb5;
     --gcb-ink-dim: #4a5e78;
 
     --gcb-accent: #f59e0b;
@@ -88,7 +112,8 @@ export const tokensCSS = css`
   }
 
   @media (prefers-color-scheme: dark) {
-    :host([theme="auto"]) {
+    :host([theme="auto"]),
+    :host-context([theme="auto"]) {
       --gcb-bg: #1a2033;
       --gcb-bg-rail: #141b2b;
       --gcb-bg-2: #242b3d;
@@ -99,7 +124,7 @@ export const tokensCSS = css`
       --gcb-line-soft: #2d3751;
       --gcb-ink: #e2e8f0;
       --gcb-ink-soft: #b0bec5;
-      --gcb-ink-muted: #647891;
+      --gcb-ink-muted: #8a9bb5;
       --gcb-ink-dim: #4a5e78;
       --gcb-accent: #f59e0b;
       --gcb-accent-fg: #1a2033;

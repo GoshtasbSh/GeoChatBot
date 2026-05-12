@@ -83,9 +83,7 @@ export async function runQuickscan(
 	const rc = await ctx.engine.query(
 		`SELECT COUNT(*) AS n FROM ${quoteIdent(view)}`,
 	);
-	const rowCount = Number(
-		(rc.toArray()[0] as { n: number | bigint })?.n ?? 0,
-	);
+	const rowCount = Number((rc.toArray()[0] as { n: number | bigint })?.n ?? 0);
 	const cols = await ctx.engine.query(
 		`SELECT name, type FROM pragma_table_info(${quoteIdent(view)})`,
 	);
@@ -141,12 +139,12 @@ export async function runQuickscan(
 	// 4. Sample rows (5) -------------------------------------------------
 	if (!skipSet.has("sample") && rowCount > 0) {
 		try {
-			const samp = await ctx.engine.query(
-				`SELECT * EXCLUDE (geom) FROM ${quoteIdent(view)} LIMIT 5`,
-			).catch(async () =>
-				// Some engines/views don't have a geom column; retry without EXCLUDE.
-				ctx.engine.query(`SELECT * FROM ${quoteIdent(view)} LIMIT 5`),
-			);
+			const samp = await ctx.engine
+				.query(`SELECT * EXCLUDE (geom) FROM ${quoteIdent(view)} LIMIT 5`)
+				.catch(async () =>
+					// Some engines/views don't have a geom column; retry without EXCLUDE.
+					ctx.engine.query(`SELECT * FROM ${quoteIdent(view)} LIMIT 5`),
+				);
 			const rows = samp.toArray() as Array<Record<string, unknown>>;
 			lines.push("## Sample (first 5 rows)");
 			lines.push("```");
@@ -339,7 +337,7 @@ function isDateType(t: string): boolean {
 	return (
 		u.startsWith("DATE") ||
 		u.startsWith("TIMESTAMP") ||
-		u.startsWith("TIME") && !u.startsWith("TIMESTAMP_TZ_NANOS") // exclude weird ms types
+		(u.startsWith("TIME") && !u.startsWith("TIMESTAMP_TZ_NANOS")) // exclude weird ms types
 	);
 }
 
@@ -355,7 +353,10 @@ function describe(err: unknown): string {
 	return String(err);
 }
 
-function buildVerdict(rowCount: number, cols: Array<{ name: string; type: string }>): string {
+function buildVerdict(
+	rowCount: number,
+	cols: Array<{ name: string; type: string }>,
+): string {
 	if (rowCount === 0) {
 		return "Dataset is **empty** — no rows to analyze.";
 	}
@@ -364,9 +365,12 @@ function buildVerdict(rowCount: number, cols: Array<{ name: string; type: string
 	const hints: string[] = [];
 	if (numeric === 0) hints.push("no numeric columns detected");
 	if (total === 0) hints.push("no columns at all");
-	if (rowCount < 5) hints.push(`only ${rowCount} rows — statistical claims will be unreliable`);
+	if (rowCount < 5)
+		hints.push(`only ${rowCount} rows — statistical claims will be unreliable`);
 	const verdict = `Dataset has **${rowCount.toLocaleString()}** rows × **${total}** columns. Numeric columns: ${numeric}.`;
-	return hints.length > 0 ? `${verdict}\n\nCaveats: ${hints.join("; ")}.` : verdict;
+	return hints.length > 0
+		? `${verdict}\n\nCaveats: ${hints.join("; ")}.`
+		: verdict;
 }
 
 /**
@@ -442,7 +446,7 @@ async function spatialSummary(
 	if (!lat || !lon || lat.name === lon.name) return null;
 	const crs = guessCRS(lon.lo, lat.lo, lon.hi, lat.hi);
 	return [
-		`No native geometry column. Numeric columns that look like coordinates:`,
+		"No native geometry column. Numeric columns that look like coordinates:",
 		`- \`${lat.name}\` (range ${lat.lo.toFixed(2)} … ${lat.hi.toFixed(2)}) — candidate **latitude**`,
 		`- \`${lon.name}\` (range ${lon.lo.toFixed(2)} … ${lon.hi.toFixed(2)}) — candidate **longitude**`,
 		`CRS guess: **${crs}**. To plot, the planner can build a geometry view from these columns.`,
@@ -470,7 +474,12 @@ function guessCRS(
 	}
 	// Values much larger than the WGS84 range — probably state-plane, UTM,
 	// or Web Mercator (which goes to ±20 million meters).
-	if (Math.abs(xMin) > 200 || Math.abs(xMax) > 200 || Math.abs(yMin) > 200 || Math.abs(yMax) > 200) {
+	if (
+		Math.abs(xMin) > 200 ||
+		Math.abs(xMax) > 200 ||
+		Math.abs(yMin) > 200 ||
+		Math.abs(yMax) > 200
+	) {
 		return "projected";
 	}
 	return "unknown";

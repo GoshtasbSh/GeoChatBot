@@ -33,6 +33,7 @@
  */
 
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { parseRetryAfter } from "../forced-tool/types.js";
 import type { Plan } from "../types.js";
 import { type InspectionRunCtx, runInspection } from "./inspect-runners.js";
 import { INSPECT_TOOLS } from "./inspect-tools.js";
@@ -108,6 +109,18 @@ export interface AgentLoopOptions {
 	dangerouslyAllowBrowser?: boolean;
 	/** Test/integration override of the LLM transport. */
 	llmCall?: LoopLLMCall;
+	/**
+	 * AUDIT-K4 (2026-05-11): how many times to auto-retry a 429 within a
+	 * single iteration. Default 2. Each retry waits min(Retry-After,
+	 * exponentialBackoff(attempt)) before re-issuing the same request.
+	 * Set to 0 to disable.
+	 */
+	maxRateLimitRetries?: number;
+	/**
+	 * AUDIT-K4: hook for sleeping between rate-limit retries. Tests
+	 * inject a fake to avoid real-time waits. Defaults to setTimeout.
+	 */
+	sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	/** Fired before each LLM call — useful for UI status. */
 	onStep?: (
 		e:
@@ -121,7 +134,16 @@ export interface AgentLoopOptions {
 			  }
 			| { kind: "finalize"; iteration: number; plan: Plan }
 			| { kind: "budget-exhausted"; iteration: number }
-			| { kind: "unknown-tool"; iteration: number; toolId: string },
+			| { kind: "unknown-tool"; iteration: number; toolId: string }
+			// AUDIT-K4: emitted while the loop is parked waiting for the
+			// provider's rate-limit window to reopen. Hosts wire this to a
+			// countdown card.
+			| {
+					kind: "rate-limit-wait";
+					iteration: number;
+					attempt: number;
+					waitMs: number;
+			  },
 	) => void;
 }
 
@@ -152,6 +174,8 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 		dangerouslyAllowBrowser,
 		llmCall = defaultOpenAICompatCall,
 		onStep,
+		maxRateLimitRetries = 2,
+		sleepImpl = defaultSleep,
 	} = opts;
 
 	const tools = buildToolsBlock();
@@ -174,18 +198,95 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 			err.name = "AbortError";
 			throw err;
 		}
-		const resp = await llmCall({
-			apiKey,
-			model,
-			endpoint,
-			messages,
-			tools,
-			...(signal ? { signal } : {}),
-			maxTokens: maxTokensPerCall,
-			...(dangerouslyAllowBrowser !== undefined
-				? { dangerouslyAllowBrowser }
-				: {}),
-		});
+		// AUDIT-K4 (2026-05-11): retry loop for 429s. Most Groq free-tier
+		// 429s clear within 5-30s; instead of dead-ending the whole agentic
+		// run we park the iteration for `Retry-After` (capped at 60s) and
+		// re-issue the same request. The `rate-limit-wait` event lets the
+		// UI render a countdown card.
+		let resp: LoopLLMResponse | null = null;
+		let toolUseFailedRecovered = false;
+		for (let attempt = 0; attempt <= maxRateLimitRetries; attempt++) {
+			try {
+				resp = await llmCall({
+					apiKey,
+					model,
+					endpoint,
+					messages,
+					tools,
+					...(signal ? { signal } : {}),
+					maxTokens: maxTokensPerCall,
+					...(dangerouslyAllowBrowser !== undefined
+						? { dangerouslyAllowBrowser }
+						: {}),
+				});
+				break;
+			} catch (err) {
+				const code =
+					err instanceof Error ? (err as { code?: string }).code : undefined;
+				// AUDIT-N (2026-05-11) — recover from provider tool_use_failed
+				// 400s. Smaller Llama models sometimes emit a TERMINAL tool
+				// (render.*, report.*, geometry.*) as a direct tool call
+				// instead of wrapping it in `finalize_plan.steps`. Groq + OpenAI
+				// reject with HTTP 400 `tool_use_failed`. Instead of bailing,
+				// we push a corrective system-style user prompt back into
+				// `messages` and let the next iteration retry. Counts toward
+				// the same `consecutiveUnknown` budget as our own
+				// unknown-tool guard so a misbehaving model still terminates.
+				if (code === "TOOL_USE_FAILED") {
+					const raw =
+						(err as { rawBody?: string }).rawBody ??
+						(err instanceof Error ? err.message : String(err));
+					const failedName = (() => {
+						const m = raw.match(/tool '([^']+)'/);
+						return m?.[1];
+					})();
+					const corrective =
+						failedName !== undefined
+							? `Your last tool call attempted "${failedName}" which is NOT in the available tool list. Terminal tools (render.*, report.*, geometry.*, joins.*, stats.*, sql, geocode.*) go INSIDE the steps[] array of a finalize_plan call, not as direct tool calls. The ONLY tools you can call directly are inspect.list_columns, inspect.sample_rows, inspect.distinct_values, inspect.column_pattern, inspect.probe_sql, and finalize_plan. Retry by either (a) calling an inspect.* tool, or (b) calling finalize_plan with "${failedName}" as a step.`
+							: `Your last tool call was rejected by the provider with: ${raw.slice(0, 200)}. Retry with a valid tool call (inspect.* or finalize_plan).`;
+					messages.push({ role: "user", content: corrective });
+					consecutiveUnknown++;
+					onStep?.({
+						kind: "unknown-tool",
+						iteration: iter,
+						toolId: failedName ?? "<malformed-tool-call>",
+					});
+					if (consecutiveUnknown >= 3) {
+						throw new Error(
+							`agent loop: model called unknown tools 3 times in a row (last: "${failedName ?? "<malformed>"}")`,
+						);
+					}
+					toolUseFailedRecovered = true;
+					break;
+				}
+				const isRateLimit = code === "RATE_LIMIT";
+				if (!isRateLimit || attempt >= maxRateLimitRetries) throw err;
+				const retryAfter =
+					(err as { retryAfterMs?: number }).retryAfterMs ?? undefined;
+				// Exponential backoff floor: 2^attempt seconds, capped at 30s.
+				// Honor Retry-After when present (capped at 60s).
+				const backoffMs = Math.min(30_000, 1000 * 2 ** (attempt + 1));
+				const waitMs = Math.min(
+					60_000,
+					Math.max(backoffMs, retryAfter ?? backoffMs),
+				);
+				onStep?.({
+					kind: "rate-limit-wait",
+					iteration: iter,
+					attempt: attempt + 1,
+					waitMs,
+				});
+				await sleepImpl(waitMs, signal);
+			}
+		}
+		// If we ran the tool_use_failed recovery, skip the response-handling
+		// block and continue to the next outer iteration (the corrective
+		// message is already pushed).
+		if (toolUseFailedRecovered) continue;
+		if (!resp) {
+			// Should be unreachable — we either break with a value or re-throw.
+			throw new Error("agent loop: LLM call returned no response");
+		}
 
 		if (resp.text) {
 			onStep?.({ kind: "reason", iteration: iter, text: resp.text });
@@ -351,10 +452,18 @@ async function defaultOpenAICompatCall(
 		// "RATE_LIMIT" error code lets the host fold a retry-suggestion
 		// into the UI instead of dumping a raw HTTP body on the user.
 		if (res.status === 429) {
+			const retryAfterMs = parseRetryAfter(res.headers.get("Retry-After"));
+			const tail =
+				retryAfterMs !== undefined
+					? ` Provider says retry after ${Math.ceil(retryAfterMs / 1000)}s.`
+					: "";
 			const err = new Error(
-				`Rate limit hit (HTTP 429). Wait a few seconds and try again, switch to a smaller model in Settings, or use a paid provider. Provider response: ${txt.slice(0, 200)}`,
+				`Rate limit hit (HTTP 429). Wait a few seconds and try again, switch to a smaller model in Settings, or use a paid provider.${tail} Provider response: ${txt.slice(0, 200)}`,
 			);
 			(err as { code?: string }).code = "RATE_LIMIT";
+			if (retryAfterMs !== undefined) {
+				(err as { retryAfterMs?: number }).retryAfterMs = retryAfterMs;
+			}
 			throw err;
 		}
 		if (res.status === 401 || res.status === 403) {
@@ -362,6 +471,21 @@ async function defaultOpenAICompatCall(
 				`Auth failed (HTTP ${res.status}). Re-enter your API key in Settings.`,
 			);
 			(err as { code?: string }).code = "AUTH";
+			throw err;
+		}
+		// AUDIT-N (2026-05-11): Groq + OpenAI sometimes return HTTP 400
+		// `tool_use_failed` when the model emits a tool call for a name
+		// that isn't in the request's tools list — typically because a
+		// smaller Llama model called a TERMINAL tool (render.*, report.*,
+		// geometry.*, …) directly instead of wrapping it in
+		// `finalize_plan.steps`. The agentic loop CAN recover from this
+		// by treating it like an unknown-tool emission: push a corrective
+		// tool-result message back to the model and iterate. Without this
+		// the run dead-ends with a raw HTTP 400 at the events foot.
+		if (res.status === 400 && /tool_use_failed/i.test(txt)) {
+			const err = new Error(`provider tool_use_failed: ${txt.slice(0, 240)}`);
+			(err as { code?: string }).code = "TOOL_USE_FAILED";
+			(err as { rawBody?: string }).rawBody = txt;
 			throw err;
 		}
 		throw new Error(
@@ -422,6 +546,34 @@ function buildToolsBlock(): LoopToolDef[] {
 		});
 	}
 	return out;
+}
+
+/**
+ * AUDIT-K4: cooperative sleep that resolves early when the host's abort
+ * signal fires. Avoids leaving a 60-second timer dangling after a user
+ * clicks Stop during a rate-limit countdown.
+ */
+function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const t = setTimeout(() => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, ms);
+		const onAbort = (): void => {
+			clearTimeout(t);
+			const err = new Error("agent loop aborted during rate-limit wait");
+			err.name = "AbortError";
+			reject(err);
+		};
+		if (signal) {
+			if (signal.aborted) {
+				clearTimeout(t);
+				onAbort();
+				return;
+			}
+			signal.addEventListener("abort", onAbort, { once: true });
+		}
+	});
 }
 
 /** Public test-only export so unit tests can build the same tool block. */

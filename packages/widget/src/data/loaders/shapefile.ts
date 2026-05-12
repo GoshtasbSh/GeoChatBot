@@ -93,6 +93,22 @@ export const shapefileLoader: DataLoader = {
 			throw new LoaderError("EMPTY_FILE", `${name}: empty .shp content.`);
 		}
 
+		// SEC-005: post-decompress secondary cap. The pre-check above sums
+		// JSZip's central-directory `uncompressedSize` field, but a hostile
+		// zip can omit those fields — in which case the loop silently skips
+		// them and the bomb check is bypassed. Re-validate AFTER the bytes
+		// are extracted to catch this case. The combined .shp + .dbf is
+		// what actually enters Arrow / DuckDB, so capping the post-decompress
+		// total is the right gate.
+		const decompressed = (shpBuf?.byteLength ?? 0) + (dbfBuf?.byteLength ?? 0);
+		if (decompressed > MAX_UPLOAD_BYTES) {
+			const mb = (decompressed / (1024 * 1024)).toFixed(1);
+			throw new LoaderError(
+				"FILE_TOO_LARGE",
+				`${name}: shapefile decompressed to ${mb} MB, which exceeds the upload cap. Likely a zip bomb or oversized shapefile.`,
+			);
+		}
+
 		let shpResult: { geometries: unknown[] };
 		try {
 			shpResult = (await parse(shpBuf, SHPLoader, {

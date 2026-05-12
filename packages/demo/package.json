@@ -10,7 +10,7 @@
 		"preview": "vite preview"
 	},
 	"dependencies": {
-		"@geochatbot/widget": "*"
+		"@geochatbot/widget": "workspace:*"
 	},
 	"devDependencies": {
 		"vite": "^6.0.0"

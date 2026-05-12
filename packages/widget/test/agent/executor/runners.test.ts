@@ -19,8 +19,17 @@ class SpyEngine implements ExecutorEngine {
 	hasSpatial = true;
 	public sqls: string[] = [];
 	public mockResponse: ArrowTable = tableFromJSON([{ ok: 1 }]);
+	// FIFO queue of mocked responses. When set, each query() call shifts
+	// off the next response; falls back to `mockResponse` when empty. Lets
+	// AUDIT-009/AUDIT-011 tests return a column-listing first and an OK
+	// row for the subsequent CREATE VIEW.
+	public mockResponses: ArrowTable[] | null = null;
 	async query(sql: string): Promise<ArrowTable> {
 		this.sqls.push(sql);
+		if (this.mockResponses && this.mockResponses.length > 0) {
+			const next = this.mockResponses.shift();
+			if (next !== undefined) return next;
+		}
 		return this.mockResponse;
 	}
 }
@@ -118,6 +127,48 @@ describe("runner: geometry.buffer", () => {
 		expect(view).toContain("ST_Buffer(geom, 2000)");
 	});
 
+	// AUDIT-012 (math): when the input bbox fits inside WGS84 (lat/lon),
+	// ST_Buffer's distance argument is interpreted as DEGREES, not metres.
+	// The runner now samples ST_XMin/XMax/YMin/YMax and converts m → ° via
+	// `meters / 111_320` (1° ≈ 111.32 km at equator) so a 500 m buffer
+	// produces a 500-metre polygon (~0.0045°), not a 500-degree polygon
+	// (the entire planet).
+	it("AUDIT-012: buffer auto-converts meters → degrees when input bbox indicates geographic CRS", async () => {
+		// First query is the bbox sample (fits inside WGS84 limits).
+		const bboxResult = (await import("apache-arrow")).tableFromJSON([
+			{ minX: -82.4, minY: 29.5, maxX: -82.3, maxY: 29.7 },
+		]);
+		engine.mockResponses = [bboxResult];
+		await runOneStep("geometry.buffer", {
+			layer: "sales",
+			distance: 500,
+			units: "meters",
+		});
+		const sqls = engine.sqls;
+		const bufferSql = sqls.find((s) => /ST_Buffer\(geom,/.test(s));
+		expect(bufferSql).toBeDefined();
+		// 500 / 111_320 ≈ 0.004491 — match a small decimal.
+		expect(bufferSql).toMatch(/ST_Buffer\(geom, 0\.00449[0-9]+\)/);
+		// The raw "500" meters value must NOT survive into the SQL.
+		expect(bufferSql).not.toMatch(/ST_Buffer\(geom, 500\)/);
+	});
+
+	it("AUDIT-012: buffer leaves meters intact when input bbox indicates projected CRS (|x| > 180)", async () => {
+		const bboxResult = (await import("apache-arrow")).tableFromJSON([
+			{ minX: 540000, minY: 4520000, maxX: 590000, maxY: 4560000 },
+		]);
+		engine.mockResponses = [bboxResult];
+		await runOneStep("geometry.buffer", {
+			layer: "sales",
+			distance: 500,
+			units: "meters",
+		});
+		const bufferSql = engine.sqls.find((s) => /ST_Buffer\(geom,/.test(s));
+		expect(bufferSql).toBeDefined();
+		// Projected metres pass through unchanged.
+		expect(bufferSql).toContain("ST_Buffer(geom, 500)");
+	});
+
 	it("rejects datasets without geometry", async () => {
 		const errs: unknown[] = [];
 		const noGeom: DatasetEntry = {
@@ -212,6 +263,62 @@ describe("runner: geometry.intersect/union/difference", () => {
 	it("difference emits ST_Difference", async () => {
 		await runOneStep("geometry.difference", { a: "sales", b: "hoods" });
 		expect(engine.sqls.some((s) => /ST_Difference/.test(s))).toBe(true);
+	});
+
+	// AUDIT-009 (math/SQL): when `a` and `b` share a column name (very
+	// common — `id`, `name`), the naive `SELECT a.* EXCLUDE (geom),
+	// b.* EXCLUDE (geom)` produces a DuckDB "duplicate column name"
+	// binder error. The fixed runner introspects both views via
+	// pragma_table_info and emits `a_<col>` / `b_<col>` aliases.
+	it("AUDIT-009: intersect aliases columns with a_/b_ prefixes to avoid name collisions", async () => {
+		// Spy engine returns identical column lists for both layers; the
+		// fix must prefix them per-side.
+		const colsResult = (await import("apache-arrow")).tableFromJSON([
+			{ name: "id", type: "INT" },
+			{ name: "label", type: "VARCHAR" },
+			{ name: "geom", type: "GEOMETRY" },
+		]);
+		engine.mockResponses = [colsResult, colsResult];
+		await runOneStep("geometry.intersect", { a: "sales", b: "hoods" });
+		const sql = engine.sqls.find((s) => /ST_Intersection/.test(s));
+		expect(sql).toBeDefined();
+		expect(sql).toMatch(/a\."id" AS "a_id"/);
+		expect(sql).toMatch(/b\."id" AS "b_id"/);
+		expect(sql).toMatch(/a\."label" AS "a_label"/);
+		expect(sql).toMatch(/b\."label" AS "b_label"/);
+		// Bare `b.* EXCLUDE` must NOT appear (the old buggy form).
+		expect(sql).not.toMatch(/b\.\* EXCLUDE/);
+	});
+
+	// AUDIT-010 (math/SQL): `UNION ALL` of just `geom` columns
+	// silently drops every attribute. The correct operator is
+	// `UNION ALL BY NAME` which fills missing-on-one-side columns
+	// with NULL.
+	it("AUDIT-010: union preserves attributes via UNION ALL BY NAME", async () => {
+		await runOneStep("geometry.union", { a: "sales", b: "hoods" });
+		const sql = engine.sqls.find((s) => /UNION ALL BY NAME/.test(s));
+		expect(sql).toBeDefined();
+		// The naive `SELECT geom FROM ... UNION ALL SELECT geom FROM ...`
+		// must not appear — that's the bug we're guarding against.
+		expect(sql).not.toMatch(/SELECT geom FROM .* UNION ALL SELECT geom FROM/);
+	});
+
+	// AUDIT-011 (math/SQL): `GROUP BY a.*` is not portable in DuckDB
+	// (star-expansion is SELECT-only). The fix introduces a row_number
+	// surrogate per a-row, aggregates by that, then re-joins attributes.
+	it("AUDIT-011: difference uses row_number() surrogate instead of GROUP BY a.*", async () => {
+		const colsResult = (await import("apache-arrow")).tableFromJSON([
+			{ name: "id", type: "INT" },
+			{ name: "geom", type: "GEOMETRY" },
+		]);
+		engine.mockResponses = [colsResult];
+		await runOneStep("geometry.difference", { a: "sales", b: "hoods" });
+		const sql = engine.sqls.find((s) => /ST_Difference/.test(s));
+		expect(sql).toBeDefined();
+		expect(sql).toMatch(/row_number\(\) OVER/i);
+		expect(sql).toMatch(/__rid/);
+		// The buggy `GROUP BY a.*` star form must NOT appear.
+		expect(sql).not.toMatch(/GROUP BY a\.\*/);
 	});
 });
 
@@ -309,7 +416,27 @@ describe("runner: stats.aggregate", () => {
 		});
 		const sql = engine.sqls.find((s) => /GROUP BY "city", "state"/.test(s));
 		expect(sql).toBeDefined();
-		expect(sql).toContain('COUNT("id")');
+		// AUDIT-008: count uses COUNT(*) for canonical group-size semantics;
+		// value_col is still required by the schema but ignored for count.
+		expect(sql).toContain("COUNT(*)");
+		// The output column is still aliased with the value_col name so
+		// downstream `${count_id}` references stay stable.
+		expect(sql).toContain('AS "count_id"');
+	});
+
+	it("AUDIT-008: count uses COUNT(*) not COUNT(value_col) — matches QGIS / textbook semantics", async () => {
+		await runOneStep("stats.aggregate", {
+			layer: "sales",
+			group_by: "city",
+			agg_fn: "count",
+			value_col: "id",
+		});
+		const sql = engine.sqls.find((s) => /GROUP BY "city"/.test(s));
+		expect(sql).toBeDefined();
+		// Must NOT count value_col — that's "non-null rows of id" which
+		// silently undercounts when id has nulls.
+		expect(sql).not.toContain('COUNT("id")');
+		expect(sql).toContain("COUNT(*)");
 	});
 });
 

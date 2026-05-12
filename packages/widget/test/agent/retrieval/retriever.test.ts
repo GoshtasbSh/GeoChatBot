@@ -106,6 +106,36 @@ describe("retrieve()", () => {
 		expect(memHit?.plan.goal).toBe("remember-me");
 	});
 
+	// AUDIT-005 — SEC-008 regression. Read-side gate on the memory store.
+	// When the host calls `retrieve()` with `includeMemory: false`, the
+	// memory store must NOT contribute few-shots — even if it has
+	// matching entries from a prior session that ran with memory on.
+	it("AUDIT-005 — skips the memory store when includeMemory: false", async () => {
+		const myPlan: Plan = {
+			goal: "stale-memory-should-not-leak",
+			assumptions: [],
+			dataset_refs: ["custom_dataset"],
+			steps: [
+				{
+					id: "s1",
+					tool: "render.summary",
+					args: { text: "should be hidden" },
+					why: "final",
+				},
+			],
+		};
+		await rememberPlan(
+			"What is the prevailing wind direction in Cedar Key?",
+			myPlan,
+		);
+		const r = await retrieve("Cedar Key wind direction question", {
+			maxExamples: 5,
+			includeMemory: false,
+		});
+		const memHit = r.examples.find((e) => e.source === "user-memory");
+		expect(memHit).toBeUndefined();
+	});
+
 	it("dedupes when memory and a static example both match the query", async () => {
 		// Static example #21 ends with "Show me the Florida community survey responses on a map."
 		// — repurpose its question text so memory and example collide.

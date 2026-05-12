@@ -31,6 +31,12 @@ export interface ExecutorHandle {
 		plan: Plan,
 		planId: string,
 		callbacks?: ExecutorCallbacks,
+		// AUDIT-025: optional AbortSignal so the host can cancel a long-
+		// running plan (e.g. 100-row geocode) from outside the executor.
+		// Honored both by the in-process executor (Executor.execute passes
+		// it into ExecCtx.signal for each runner) and by the worker-backed
+		// executor (client.ts → remote.cancel(planId) → worker controller).
+		signal?: AbortSignal,
 	): Promise<void>;
 	dispose(): Promise<void>;
 }
@@ -46,7 +52,8 @@ export function createInProcessExecutor(
 ): ExecutorHandle {
 	const exec = new Executor({ engine: opts.engine, datasets: opts.datasets });
 	return {
-		execute: (plan, planId, callbacks) => exec.execute(plan, planId, callbacks),
+		execute: (plan, planId, callbacks, signal) =>
+			exec.execute(plan, planId, callbacks, signal),
 		dispose: async () => {
 			/* shared engine is owned by the caller */
 		},
@@ -125,7 +132,7 @@ export async function createWorkerExecutor(): Promise<WorkerExecutorHandle | nul
 		async registerDataset(ds) {
 			return remote.registerDataset(ds);
 		},
-		async execute(plan, planId, callbacks) {
+		async execute(plan, planId, callbacks, signal) {
 			const cb: ExecutorCallbacks = callbacks ?? {};
 			// The worker emits an `onStepError` payload with `priorOutputs` as
 			// a plain Record (see WireStepErrorContext in worker.ts). The user-
@@ -153,9 +160,32 @@ export async function createWorkerExecutor(): Promise<WorkerExecutorHandle | nul
 					return userCritic(ctx);
 				};
 			}
-			// Comlink.proxy wraps callbacks so the worker can invoke them
-			// back across the postMessage boundary.
-			await remote.execute({ plan, planId }, Comlink.proxy(wrapped));
+			// AUDIT-025: when the caller passes an AbortSignal, wire it to
+			// the worker's per-plan AbortController via the proxied
+			// `cancel(planId)` method. If the signal is already aborted at
+			// call time, fire cancel immediately; otherwise subscribe and
+			// fire once. The worker's pending-controllers map is keyed on
+			// planId so this targets only THIS execution.
+			let cancelListener: (() => void) | undefined;
+			if (signal) {
+				if (signal.aborted) {
+					void remote.cancel(planId);
+				} else {
+					cancelListener = () => {
+						void remote.cancel(planId);
+					};
+					signal.addEventListener("abort", cancelListener, { once: true });
+				}
+			}
+			try {
+				// Comlink.proxy wraps callbacks so the worker can invoke them
+				// back across the postMessage boundary.
+				await remote.execute({ plan, planId }, Comlink.proxy(wrapped));
+			} finally {
+				if (signal && cancelListener) {
+					signal.removeEventListener("abort", cancelListener);
+				}
+			}
 		},
 		async dispose() {
 			if (disposed) return;
@@ -182,6 +212,8 @@ interface RemoteWorkerApi {
 		req: { plan: Plan; planId: string },
 		cb: ExecutorCallbacks,
 	): Promise<void>;
+	/** AUDIT-025: cancel an in-flight plan by id; idempotent. */
+	cancel(planId: string): Promise<void>;
 	dispose(): Promise<void>;
 }
 

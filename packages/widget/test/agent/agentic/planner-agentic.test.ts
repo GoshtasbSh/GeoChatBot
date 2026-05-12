@@ -141,4 +141,118 @@ describe('Planner.plan({ mode: "agentic" })', () => {
 			"Cedar Key, FL, USA",
 		);
 	});
+
+	// AUDIT-K1 (2026-05-11): regression for the recovery loop. The agentic
+	// planner used to dead-end if the LLM's first finalize_plan landed a
+	// PlanValidationError (e.g. a `${var}` referencing a step that never
+	// ran). It now re-asks the model once with the validation message as
+	// feedback and returns the corrected plan.
+	it("retries once when the first agentic plan fails validation", async () => {
+		const survey: DatasetEntry = {
+			name: "survey",
+			tableName: "survey",
+			hasGeometry: false,
+		};
+		const engine: ExecutorEngine = {
+			hasSpatial: true,
+			async query() {
+				return tableFromJSON([{ ok: 1 }]);
+			},
+		};
+
+		const feedbackSeen: string[] = [];
+		const llmCall: LoopLLMCall = (req) => {
+			// Capture the user message on each turn so we can prove the retry
+			// feeds the validation error back in.
+			const lastUser = [...req.messages]
+				.reverse()
+				.find((m) => m.role === "user");
+			if (lastUser && typeof lastUser.content === "string") {
+				feedbackSeen.push(lastUser.content);
+			}
+			// First call: emit a broken plan (dangling `${var}` reference
+			// — last step references a var that no step produces).
+			// Second call: emit a clean plan.
+			const isFirst = !feedbackSeen.some((u) => /previous plan failed/.test(u));
+			if (isFirst) {
+				return Promise.resolve({
+					text: null,
+					tool_calls: [
+						{
+							id: "c1",
+							name: "finalize_plan",
+							args: {
+								goal: "show",
+								assumptions: [],
+								dataset_refs: ["survey"],
+								steps: [
+									{
+										id: "s1",
+										tool: "render.map",
+										args: { layer: "${missing}" },
+										why: "render",
+									},
+								],
+							},
+						},
+					],
+				});
+			}
+			return Promise.resolve({
+				text: null,
+				tool_calls: [
+					{
+						id: "c2",
+						name: "finalize_plan",
+						args: {
+							goal: "show",
+							assumptions: [],
+							dataset_refs: ["survey"],
+							steps: [
+								{
+									id: "s1",
+									tool: "render.map",
+									args: { layer: "survey" },
+									why: "render",
+								},
+							],
+						},
+					},
+				],
+			});
+		};
+
+		const planner = new Planner({
+			provider: "groq",
+			apiKey: "test",
+			model: "llama-3.3-70b-versatile",
+			mode: "agentic",
+			agenticEndpoint: "http://stub.example/chat/completions",
+			agenticLlmCall: llmCall,
+			agenticCtx: { engine, datasets: new Map([["survey", survey]]) },
+			retrieval: "off",
+			dangerouslyAllowBrowser: true,
+		});
+
+		const plan = await planner.plan({
+			question: "Show the survey.",
+			datasets: [
+				{
+					name: "survey",
+					kind: "table",
+					rows: 1,
+					columns: [{ name: "Address", type: "Utf8" }],
+					sample: [],
+				},
+			],
+		});
+
+		// Final returned plan is the corrected one.
+		expect(plan.steps).toHaveLength(1);
+		expect(plan.steps[0]?.tool).toBe("render.map");
+		// And the retry actually carried the validation feedback to the LLM.
+		expect(
+			feedbackSeen.some((u) => /previous plan failed validation/.test(u)),
+		).toBe(true);
+	});
 });

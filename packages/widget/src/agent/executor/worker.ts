@@ -89,9 +89,27 @@ export interface ExecuteRequest {
 class WorkerExecutor {
 	private engine = new DuckDBEngine();
 	private datasets: DatasetEntry[] = [];
+	// AUDIT-025: per-execution AbortControllers indexed by planId so the
+	// host can cancel an in-flight plan across the worker boundary.
+	// `cancel(planId)` aborts the controller; the inner Executor's per-step
+	// `signal.aborted` check stops the loop between steps. Long-running
+	// runners (geocode rate-limit pauses, large SQL) that thread the
+	// ExecCtx.signal into their own awaits surface a clean AbortError.
+	private pending = new Map<string, AbortController>();
 
 	async init(): Promise<void> {
 		await this.engine.init();
+	}
+
+	/**
+	 * Cancel an in-flight plan by `planId`. Idempotent — calling cancel on
+	 * an unknown planId or a finished plan is a no-op. Called by the host
+	 * via the Comlink proxy when the user clears or disconnects.
+	 */
+	async cancel(planId: string): Promise<void> {
+		const ctrl = this.pending.get(planId);
+		if (!ctrl) return;
+		ctrl.abort();
 	}
 
 	async registerDataset(ds: DatasetIPC): Promise<DatasetEntry> {
@@ -123,6 +141,12 @@ class WorkerExecutor {
 		callbacks: Comlink.Remote<RemoteCallbacks>,
 	): Promise<void> {
 		const exec = new Executor({ engine: this.engine, datasets: this.datasets });
+		// AUDIT-025: own an AbortController for this execution so the
+		// `cancel(planId)` proxy method can stop the plan between steps.
+		// Stored under planId so multiple concurrent executes (rare but
+		// possible) don't collide.
+		const controller = new AbortController();
+		this.pending.set(request.planId, controller);
 		// Surface postMessage boundary failures: a host-side callback that
 		// throws (or a torn-down channel) would otherwise be silently
 		// swallowed by `void`. We log to the worker console for diagnostics.
@@ -174,17 +198,26 @@ class WorkerExecutor {
 					}
 				: undefined;
 
-		await exec.execute(request.plan, request.planId, {
-			onProgress: safeProxy<ProgressEvent>((e) => callbacks.onProgress(e)),
-			onResult: safeProxy<ResultEvent>((e) => callbacks.onResult(e)),
-			onError: safeProxy<{
-				planId: string;
-				stepId: string;
-				message: string;
-				code?: string;
-			}>((e) => callbacks.onError(e)),
-			...(onStepError ? { onStepError } : {}),
-		});
+		try {
+			await exec.execute(
+				request.plan,
+				request.planId,
+				{
+					onProgress: safeProxy<ProgressEvent>((e) => callbacks.onProgress(e)),
+					onResult: safeProxy<ResultEvent>((e) => callbacks.onResult(e)),
+					onError: safeProxy<{
+						planId: string;
+						stepId: string;
+						message: string;
+						code?: string;
+					}>((e) => callbacks.onError(e)),
+					...(onStepError ? { onStepError } : {}),
+				},
+				controller.signal,
+			);
+		} finally {
+			this.pending.delete(request.planId);
+		}
 	}
 
 	async dispose(): Promise<void> {

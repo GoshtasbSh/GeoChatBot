@@ -36,9 +36,10 @@ usable BEFORE investing in analysis.
 | `Show points on map` (lat/lon already present) | `render.map` |
 | `Show points on map` (only addresses) | `geocode.address` → `render.map` |
 | `Show the polygons` / `show areas` | `render.map` |
-| `Show a heatmap / density` | `render.map(layer, style:{type:"hexbin"})` |
-| `Show the bbox / extent` | `geometry.bbox` → `render.map` |
+| `Show a heatmap / density` | `stats.hex_bin` or `stats.density_grid` → `render.map(style:{colorBy:"count"})` |
+| `Show the bbox / extent` | `sql("SELECT ST_AsGeoJSON(ST_Envelope(ST_Union_Agg(geom))) AS geom FROM L")` → `render.map` |
 | `Show the convex hull` | `geometry.convex_hull` → `render.map` |
+| `Voronoi catchments` | `geometry.voronoi` → `render.map` |
 
 ---
 
@@ -65,8 +66,13 @@ The legend chip appears under the map title showing which column drives the colo
 | `Buffer X by 500 m` / `everything within 500m of X` | `geometry.buffer(X, 500)` → `render.map` |
 | `Centroids of polygons` | `geometry.centroid` → `render.map` |
 | `Simplify polygons` / `reduce vertices` | `geometry.simplify(layer, tol)` → `render.map` |
-| `Area of each polygon` | `geometry.area` → `render.table` or `render.map(style.colorBy:"area_m2")` |
-| `Length of each line` | `geometry.length` → `render.table` |
+| `Area of each polygon` | `sql("SELECT *, ST_Area(geom) AS area_m2 FROM L")` → `render.map(style.colorBy:"area_m2", classification:"quantile")` |
+| `Length of each line` | `sql("SELECT *, ST_Length(geom) AS length_m FROM L")` → `render.table` |
+| `Union / dissolve all polygons` | `geometry.union(layer)` → `render.map` |
+| `Dissolve by attribute` (e.g. by region) | `geometry.dissolve(layer, by:"region")` → `render.map` |
+| `Intersection of two layers` | `geometry.intersect(a, b)` → `render.map` |
+| `Difference (A minus B)` | `geometry.difference(a, b)` → `render.map` |
+| `Reproject to another CRS` | `geometry.reproject(layer, target_crs:"EPSG:3857")` |
 
 ---
 
@@ -89,7 +95,9 @@ The legend chip appears under the map title showing which column drives the colo
 | `Which polygons contain X` | `joins.spatial_join("contains")` → `render.table` |
 | `Average X per region` | `joins.spatial_join` → `stats.aggregate(mean, X, group_by:region)` → `render.chart` |
 | `Points within 1km of polygons` | `geometry.buffer` → `joins.spatial_join` → `render.map` |
-| `Join sales to neighborhoods by id` (non-spatial) | `joins.attribute_join(on:"id")` |
+| `Point-in-polygon assignment` | `joins.point_in_polygon(points, polygons)` → `render.map` |
+| `Nearest k features` | `joins.nearest_neighbor(a, b, k:5)` → `render.table` |
+| `Join sales to neighborhoods by id` (non-spatial) | `sql("SELECT a.*, b.col FROM A a JOIN B b ON a.id = b.id")` → `render.table` |
 
 ---
 
@@ -98,9 +106,9 @@ The legend chip appears under the map title showing which column drives the colo
 | Ask | Tool chain |
 |---|---|
 | `Distance between A and B` | `sql` with `ST_Distance` |
-| `Nearest X to each Y` | `sql` with `ST_Distance` + `LATERAL` / window |
-| `Distance from this point to each row` | `sql` with `ST_Distance(geom, ST_Point(lon,lat))` → `render.map(style.colorBy:"dist_m")` |
-| `Pairwise distances` | `geometry.distance(a, b)` → `render.table` |
+| `Nearest X to each Y` | `joins.nearest_neighbor(a, b, k:1)` or `sql` with `ST_Distance` + window |
+| `Distance from this point to each row` | `sql("SELECT *, ST_Distance(geom, ST_Point(<lon>,<lat>)) AS dist_m FROM L")` → `render.map(style.colorBy:"dist_m")` |
+| `Pairwise distances (small layer)` | `stats.distance_matrix(layer)` → `render.table` |
 | `Within 1km of point P` | `sql` with `ST_DWithin` → `render.map` |
 
 ---
@@ -113,7 +121,8 @@ The legend chip appears under the map title showing which column drives the colo
 | `Total / sum of X` | `stats.aggregate(sum)` → `render.summary` |
 | `Median of X` | `stats.aggregate(median)` |
 | `Distribution / histogram of X` | `stats.aggregate(group_by:X, agg_fn:count)` → `render.chart` |
-| `Percentiles of X (p50, p95)` | `stats.percentile(X, [50,95])` → `render.table` |
+| `Percentiles of X (p50, p95)` | `sql("SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY X) AS p50, percentile_cont(0.95) WITHIN GROUP (ORDER BY X) AS p95 FROM L")` → `render.table` |
+| `Summary stats for X, Y, Z` | `stats.summary_stats(layer, columns:["X","Y","Z"])` → `render.table` |
 | `X over time` | `stats.aggregate(group_by:<date>, value_col:X, sum)` → `render.chart kind:"line"` |
 | **`Top 10 X`** / `best 10` | `sql` with `ORDER BY X DESC LIMIT 10` → `render.table` or `render.map` |
 | **`Worst 10 X`** / **`worst street for walkability`** | `stats.aggregate(group_by:<entity>, value_col:<concept_col>, agg_fn:"mean")` → `sql ORDER BY ... ASC LIMIT 10` → `render.table` |
@@ -181,16 +190,21 @@ The bot can construct these from existing primitives + `sql`:
 | **Comparable parcels** (k-NN by attribute, constrained spatially) | `sql` with `ST_DWithin` filter + `ORDER BY |a.attr - target|` LIMIT k |
 | **Origin-destination flow / desire lines** | `sql` joining trips, `ST_MakeLine(origin, destination)` → `render.map` (lines styled by flow count) |
 | **Trade area / catchment** | `geometry.buffer` or Voronoi → `joins.spatial_join` |
-| **Change between year A and year B** | `joins.attribute_join(on:"id")` + `sql("SELECT id, b.x - a.x AS delta")` → `render.map(style.colorBy:"delta")` |
+| **Change between year A and year B** | `sql("SELECT a.id, a.x AS x_a, b.x AS x_b, b.x - a.x AS delta FROM A a JOIN B b ON a.id = b.id")` → `render.map(style.colorBy:"delta")` |
 | **Time facet** (X by hour-of-day / month / season) | `sql` with `EXTRACT` → `stats.aggregate` → `render.chart` |
 
 ---
 
-## 13. Interpolation (raster)
+## 13. Spatial autocorrelation primitives
 
 | Ask | Tool chain |
 |---|---|
-| `Interpolate X to a grid` / `raster of X` / `kriging X` | `stats.idw(X, target_grid)` → `render.map` |
+| `Global Moran's I on column X` | `stats.morans_i(layer, value_col:"X")` → `render.summary` |
+| `Local hot/cold spots` (Getis-Ord Gi*) | `stats.getis_ord_gi(layer, value_col:"X")` → `render.map(style.colorBy:"gi_z")` |
+
+## 14. Interpolation (raster)
+
+GeoChatBot does not ship a dedicated IDW / kriging tool. For inverse-distance weighting, the agent will hand-author a `sql` query that builds a target grid + computes weighted means against the input points (small grids only — a 200×200 target with 5000 source points is roughly the in-browser ceiling). For full kriging or multi-band raster algebra, export to GDAL / scikit-gstat / GRASS.
 
 ---
 

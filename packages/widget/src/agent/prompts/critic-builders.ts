@@ -28,7 +28,12 @@ export function buildCriticUserMessage(input: CriticUserMessageInput): string {
 	const datasetsBlock = renderDatasetsBlock(input.datasets);
 
 	return [
-		`# Failure context (attempt ${input.retryCount} of ${input.maxRetries})`,
+		// AUDIT-020: `retryCount` is 0-indexed (executor increments AFTER the
+		// critic returns), so on the first failure the critic was seeing
+		// "attempt 0 of 2" — confusing both the model and code reviewers.
+		// Show 1-indexed attempts so the model can reason about whether
+		// retries remain.
+		`# Failure context (attempt ${input.retryCount + 1} of ${input.maxRetries + 1})`,
 		"",
 		"## Failed step",
 		"```json",

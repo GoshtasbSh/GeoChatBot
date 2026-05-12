@@ -214,7 +214,10 @@ export class GcbMap extends LitElement {
 					},
 				}),
 			);
-			for (const feat of features as GeoJSON.Feature[]) {
+			// AUDIT-015 (perf): walk only the displayed (capped) feature
+			// set when expanding the bbox so a 200k-feature input doesn't
+			// pay the bbox cost AND zoom-to features that aren't rendered.
+			for (const feat of limited as GeoJSON.Feature[]) {
 				if (feat?.geometry) expandBboxFromGeoJSON(feat.geometry, bbox);
 			}
 		}
@@ -489,8 +492,8 @@ const QUANTILE_PALETTE: ReadonlyArray<Rgba> = [
 	[253, 231, 37, 200], // q1 (lowest)  — yellow
 	[122, 209, 81, 200], // q2           — green
 	[33, 144, 141, 200], // q3           — teal
-	[59, 82, 139, 200],  // q4           — blue
-	[68, 1, 84, 220],    // q5 (highest) — purple
+	[59, 82, 139, 200], // q4           — blue
+	[68, 1, 84, 220], // q5 (highest) — purple
 ];
 
 const DEFAULT_COLOR: Rgba = [67, 56, 202, 64];
@@ -527,7 +530,10 @@ function pickStrategy(
 	if (style.classification) return style.classification;
 	const numeric = readNumericValues(features, style.colorBy);
 	const totalNonNull = features.filter(
-		(f) => (f.properties as Record<string, unknown> | null)?.[style.colorBy as string] != null,
+		(f) =>
+			(f.properties as Record<string, unknown> | null)?.[
+				style.colorBy as string
+			] != null,
 	).length;
 	// >= 80% of non-null values are numeric → treat as quantile.
 	return totalNonNull > 0 && numeric.length / totalNonNull >= 0.8
@@ -535,13 +541,46 @@ function pickStrategy(
 		: "categorical";
 }
 
-function computeQuantileBreaks(values: number[]): number[] {
+// Exported so unit tests (test/ui/mapview-color.test.ts) can lock the
+// AUDIT-013 / AUDIT-014 math without bringing up MapLibre + deck.gl.
+export function computeQuantileBreaks(values: number[]): number[] {
+	return _computeQuantileBreaks(values);
+}
+export function bucketIndexQuantile(value: number, breaks: number[]): number {
+	let bucket = 0;
+	for (const b of breaks) {
+		if (value > b) bucket++;
+		else break;
+	}
+	return Math.min(QUANTILE_PALETTE.length - 1, bucket);
+}
+export function bucketIndexLinear(
+	value: number,
+	min: number,
+	max: number,
+): number {
+	const span = max - min;
+	const t = span > 0 ? (value - min) / span : 0;
+	return Math.min(
+		QUANTILE_PALETTE.length - 1,
+		Math.max(0, Math.floor(t * QUANTILE_PALETTE.length)),
+	);
+}
+export const _PALETTE_SIZE_FOR_TEST = QUANTILE_PALETTE.length;
+
+function _computeQuantileBreaks(values: number[]): number[] {
 	if (values.length === 0) return [];
 	const sorted = [...values].sort((a, b) => a - b);
 	const breaks: number[] = [];
+	// AUDIT-013 (math): produce N-1 breakpoints where N = palette size.
+	// Use `Math.ceil(q * (n - 1))` rather than `Math.floor(q * n)` so the
+	// first break is strictly above the minimum value (otherwise the
+	// floor index lands on the min when ties exist, and strict-greater
+	// bucket assignment then skips the bottom bucket entirely).
+	const n = sorted.length;
 	for (let i = 1; i < QUANTILE_PALETTE.length; i++) {
 		const q = i / QUANTILE_PALETTE.length;
-		const idx = Math.min(sorted.length - 1, Math.floor(q * sorted.length));
+		const idx = Math.min(n - 1, Math.max(0, Math.ceil(q * (n - 1))));
 		breaks.push(sorted[idx] as number);
 	}
 	return breaks;
@@ -563,8 +602,34 @@ function buildColorAccessor(
 			return CATEGORICAL_PALETTE[idx] ?? DEFAULT_COLOR;
 		};
 	}
-	// quantile or linear — both bucket numeric values into 5 classes
 	const nums = readNumericValues(features, col);
+	if (nums.length === 0) return DEFAULT_COLOR;
+	const classification = style?.classification ?? "quantile";
+	// AUDIT-014 (math): true linear classification — interpolate the
+	// value's position [min,max] linearly across the palette index
+	// range. Previously this path was an alias for quantile (palette
+	// skewed by data distribution rather than scaled by extent).
+	if (classification === "linear") {
+		const min = Math.min(...nums);
+		const max = Math.max(...nums);
+		const span = max - min;
+		return (f: GeoJSON.Feature) => {
+			const raw = (f.properties as Record<string, unknown> | null)?.[col];
+			const v = typeof raw === "string" ? Number(raw) : (raw as number);
+			if (!Number.isFinite(v)) return DEFAULT_COLOR;
+			const t = span > 0 ? (v - min) / span : 0;
+			const idx = Math.min(
+				QUANTILE_PALETTE.length - 1,
+				Math.max(0, Math.floor(t * QUANTILE_PALETTE.length)),
+			);
+			return QUANTILE_PALETTE[idx] ?? DEFAULT_COLOR;
+		};
+	}
+	// Quantile (default): strict-greater bucket assignment so a value
+	// equal to a break goes into the LOWER bucket. Previously `>=` here
+	// pushed equal values into the higher bucket, which combined with
+	// the off-by-one break index meant the bottom bucket was empty on
+	// any dataset with ties at the floor-index boundary.
 	const breaks = computeQuantileBreaks(nums);
 	return (f: GeoJSON.Feature) => {
 		const raw = (f.properties as Record<string, unknown> | null)?.[col];
@@ -572,7 +637,7 @@ function buildColorAccessor(
 		if (!Number.isFinite(n)) return DEFAULT_COLOR;
 		let bucket = 0;
 		for (const b of breaks) {
-			if (n >= b) bucket++;
+			if (n > b) bucket++;
 			else break;
 		}
 		const clamped = Math.min(QUANTILE_PALETTE.length - 1, bucket);

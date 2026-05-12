@@ -106,14 +106,21 @@ export class GcbSettingsDrawer extends LitElement {
     }
     .free-badge {
       display: inline-block;
-      font-size: 10px;
-      font-weight: 600;
-      padding: 2px 6px;
+      /* AUDIT-R (2026-05-11): switched from filled-pill to outlined-pill
+       * so contrast is a single color-on-bg pair (the accent ink against
+       * the panel background). Filled was 3.76:1 in light (white on
+       * emerald) and 1.66:1 in dark (white on amber). Outlined gives
+       * 7+:1 in both modes by construction. */
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
       border-radius: 999px;
-      background: var(--gcb-geom-fg, #047857);
-      color: #fff;
+      border: 1px solid var(--gcb-accent, currentColor);
+      background: transparent;
+      color: var(--gcb-accent-ink, #065f46);
       margin-left: 6px;
       vertical-align: middle;
+      letter-spacing: 0.04em;
     }
     .signup-hint {
       font-size: 11px;
@@ -121,7 +128,12 @@ export class GcbSettingsDrawer extends LitElement {
       margin: -4px 0 0;
     }
     .signup-hint a {
-      color: var(--gcb-accent, #4338ca);
+      /* AUDIT-R (2026-05-11): --gcb-accent #059669 against the paper
+       * background hit 3.45:1 at 11px — failed WCAG AA. Use the
+       * darker --gcb-accent-ink (#065f46 light / #fbbf24 dark) which
+       * is the brand's intended ink-on-surface pair and clears
+       * 4.5:1 in both modes. */
+      color: var(--gcb-accent-ink, #065f46);
       text-decoration: underline;
     }
     .toggle {
@@ -202,7 +214,29 @@ export class GcbSettingsDrawer extends LitElement {
 	override connectedCallback(): void {
 		super.connectedCallback();
 		this._draft = { ...this.value };
+		// AUDIT-K3.C10 (2026-05-11): Escape closes the drawer. Listening on
+		// document because the focused element may live in a nested shadow
+		// root (select, textbox); keydown bubbles through composed:true so
+		// the handler still sees it. capture:true ensures we run before any
+		// outer modal-stack listeners that might preventDefault.
+		document.addEventListener("keydown", this._onEsc, { capture: true });
 	}
+
+	override disconnectedCallback(): void {
+		super.disconnectedCallback();
+		document.removeEventListener("keydown", this._onEsc, {
+			capture: true,
+		} as EventListenerOptions);
+	}
+
+	private _onEsc = (e: KeyboardEvent): void => {
+		if (e.key !== "Escape") return;
+		if (!this.isConnected) return;
+		// Don't swallow Escape when the user is composing IME input.
+		if (e.isComposing) return;
+		e.stopPropagation();
+		this._onClose();
+	};
 
 	override willUpdate(changed: Map<string, unknown>): void {
 		if (changed.has("value")) {

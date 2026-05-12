@@ -168,7 +168,13 @@ describe("callForcedTool dispatcher", () => {
 		await callForcedTool(baseInput("gemini"));
 		const url = fetchMock.mock.calls[0]?.[0] as string;
 		expect(url).toMatch(/generativelanguage\.googleapis\.com\/v1beta\/models/);
-		expect(url).toMatch(/\?key=test$/);
+		// AUDIT-019: Gemini API key now travels via `x-goog-api-key`
+		// header — NOT the URL query — so it doesn't leak into Referer,
+		// HAR exports, CDN access logs, or browser history.
+		expect(url).not.toMatch(/\?key=/);
+		const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+		const headers = init.headers as Record<string, string>;
+		expect(headers["x-goog-api-key"]).toBe("test");
 	});
 });
 
@@ -192,9 +198,50 @@ describe("Browser-direct guard fires for every provider", () => {
 		"refuses %s calls without dangerouslyAllowBrowser when window is defined",
 		async (provider) => {
 			vi.stubGlobal("window", { document: {} });
+			// AUDIT-017: browser-key-guard refusal is UNSUPPORTED, NOT
+			// NETWORK — the UI shouldn't suggest "retry, the network is
+			// flaky" when the cause is missing config consent.
+			await expect(callForcedTool(baseInput(provider))).rejects.toMatchObject({
+				name: "ForcedToolError",
+				code: "UNSUPPORTED",
+			});
+		},
+	);
+});
+
+describe("AUDIT-018 — 5xx mapped to NETWORK (transient) across all providers", () => {
+	it.each(["anthropic", "groq", "openai", "gemini"] as const)(
+		"maps 503 to NETWORK for %s (was BAD_RESPONSE before audit pass 3)",
+		async (provider) => {
+			fetchMock.mockResolvedValue(new Response("", { status: 503 }));
 			await expect(callForcedTool(baseInput(provider))).rejects.toMatchObject({
 				name: "ForcedToolError",
 				code: "NETWORK",
+				status: 503,
+			});
+		},
+	);
+
+	it.each(["anthropic", "groq", "openai", "gemini"] as const)(
+		"maps 502 to NETWORK for %s",
+		async (provider) => {
+			fetchMock.mockResolvedValue(new Response("", { status: 502 }));
+			await expect(callForcedTool(baseInput(provider))).rejects.toMatchObject({
+				name: "ForcedToolError",
+				code: "NETWORK",
+				status: 502,
+			});
+		},
+	);
+
+	it.each(["anthropic", "groq", "openai", "gemini"] as const)(
+		"4xx (e.g. 400) still maps to BAD_RESPONSE for %s",
+		async (provider) => {
+			fetchMock.mockResolvedValue(new Response("", { status: 400 }));
+			await expect(callForcedTool(baseInput(provider))).rejects.toMatchObject({
+				name: "ForcedToolError",
+				code: "BAD_RESPONSE",
+				status: 400,
 			});
 		},
 	);

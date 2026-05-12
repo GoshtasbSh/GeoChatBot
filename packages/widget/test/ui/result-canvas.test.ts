@@ -91,4 +91,33 @@ describe("<result-canvas>", () => {
 		expect(layerRes).toMatchObject({ kind: "layer" });
 		expect(el.shadowRoot).toBeTruthy();
 	});
+
+	// AUDIT-016: render.summary's hero/body split used a greedy regex
+	// `[°a-zA-Z%]*` that ate trailing English words. "5 buffered features"
+	// rendered as hero="5 buffered" / rest="features". The tightened
+	// regex pins the unit suffix to a known set and requires a word
+	// boundary so plain English stays in the body.
+	it("AUDIT-016: summary hero regex does not eat trailing English words", async () => {
+		const el = mount();
+		el.setResult({ kind: "summary", text: "5 buffered features" });
+		await el.updateComplete;
+		const card = el.shadowRoot?.querySelector(".card");
+		expect(card).toBeTruthy();
+		const text = card?.textContent ?? "";
+		// "buffered" must appear in the body, not the hero number.
+		expect(text).toContain("buffered features");
+		// No hero should contain the word "buffered".
+		const hero = el.shadowRoot?.querySelector(".hero-num, .summary-hero");
+		if (hero) expect(hero.textContent ?? "").not.toContain("buffered");
+	});
+
+	it("AUDIT-016: summary hero still extracts numbers with valid unit suffixes", async () => {
+		const el = mount();
+		el.setResult({ kind: "summary", text: "1,234.5 km between sites" });
+		await el.updateComplete;
+		const card = el.shadowRoot?.querySelector(".card");
+		expect(card).toBeTruthy();
+		const text = card?.textContent ?? "";
+		expect(text).toContain("between sites");
+	});
 });

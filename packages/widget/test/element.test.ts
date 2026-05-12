@@ -218,6 +218,30 @@ describe("setProvider / clear", () => {
 		expect(el.results.length).toBe(0);
 		expect(el.shadowRoot?.querySelectorAll(".table-card").length).toBe(0);
 	});
+
+	// AUDIT-022: clear() must wipe per-session state the rail/canvas may
+	// still reference. Previously _lastQuestion and _derivedLayers
+	// carried over a pre-clear question/layers, so clicking an old saved
+	// row would re-mount a card whose `_origin` belongs to a planId that
+	// no longer exists. The reset closes that loophole.
+	it("AUDIT-022: clear() resets _lastQuestion, _derivedLayers, and _activeSaveId", async () => {
+		const el = mountElement() as unknown as {
+			_lastQuestion: string;
+			_derivedLayers: ReadonlyArray<unknown>;
+			_activeSaveId: string | null;
+			clear(): void;
+		};
+		// Simulate post-ask state without driving an actual planner round.
+		el._lastQuestion = "where are the hot spots?";
+		el._derivedLayers = [{ id: "layer_old_s1", name: "old", payload: {} }];
+		el._activeSaveId = "save_old";
+
+		el.clear();
+
+		expect(el._lastQuestion).toBe("");
+		expect(el._derivedLayers.length).toBe(0);
+		expect(el._activeSaveId).toBeNull();
+	});
 });
 
 describe("Phase 2 — mode / ask / exportLayer", () => {
@@ -341,6 +365,67 @@ describe("Phase 4 — review-driven fixes", () => {
 		await el.ask("q");
 		expect(errs.filter((e) => e.code === "BROWSER_KEY_GUARD").length).toBe(0);
 		expect(planEvents.length).toBe(1);
+	});
+
+	// Regression (audit 2026-05-11): the public setProvider({name, apiKey, model})
+	// shape — used by the e2e tests and the documented host BYO-key path —
+	// did NOT sync the internal _llmProvider id. _llmProvider kept the
+	// default ("groq"), so when `agenticMode === "agentic"` and the host
+	// configured Anthropic, the agentic loop ran against the Groq
+	// /chat/completions endpoint and only failed when the in-browser
+	// guard triggered (BROWSER_KEY_GUARD). The visible symptom was 4
+	// failing e2e specs all emitting `["…","error"]` instead of a plan.
+	it("AUDIT-001 — setProvider({name:'anthropic'}) syncs _llmProvider so agentic mode falls back to single-shot for Anthropic", async () => {
+		const el = mountElement();
+		await flushUpdates(el);
+		el.agenticMode = "agentic";
+		el.dangerouslyAllowBrowser = true;
+		// Public host shape: { name, apiKey, model } — the same shape
+		// e2e/tests/phase4-headless.spec.ts and widget.spec.ts pass.
+		el.setProvider({
+			name: "anthropic",
+			apiKey: "sk-ant-test",
+			model: "claude-sonnet-4-6",
+			generate: async () => ({ text: "" }),
+		} as unknown as ChatProvider);
+		await el.pushData({
+			name: "sales",
+			kind: "table",
+			rows: 1,
+			columns: [],
+			sample: [],
+		} as Parameters<typeof el.pushData>[0]);
+		// Bind an executor engine so _buildAgenticCtx() succeeds and the
+		// agentic-fallback warning surfaces from the provider path (not
+		// from the "no engine" path).
+		setTestExecDatasets(el, [
+			{ name: "sales", tableName: "sales", hasGeometry: false },
+		]);
+		(
+			el as unknown as { __setExecutorEngine: (e: unknown) => void }
+		).__setExecutorEngine({
+			hasSpatial: false,
+			query: async () => ({}) as unknown,
+		});
+		el.__setLlmCall(async () => makePlan());
+
+		const errs: GeoChatBotEvents["error"][] = [];
+		const planEvents: Array<unknown> = [];
+		el.on("error", (d) => errs.push(d));
+		el.on("plan", (d) => planEvents.push(d));
+
+		await el.ask("q");
+
+		// Anthropic doesn't support the OpenAI-compat agentic loop, so
+		// agentic mode must DEGRADE to single-shot and the planner stub
+		// must still run, producing a plan event.
+		expect(planEvents.length).toBe(1);
+		const fallback = errs.find((e) => e.code === "AGENTIC_FALLBACK");
+		expect(fallback).toBeDefined();
+		expect(fallback?.message).toMatch(/anthropic/i);
+		// BROWSER_KEY_GUARD would fire if _llmProvider had stayed at the
+		// "groq" default and the agentic loop had run.
+		expect(errs.find((e) => e.code === "BROWSER_KEY_GUARD")).toBeUndefined();
 	});
 
 	it("H1 — plan event detail carries { planId, plan, datasets } shape", async () => {

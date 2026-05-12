@@ -37,7 +37,11 @@ export class CriticLLMError extends Error {
 		| "RATE_LIMIT"
 		| "NETWORK"
 		| "BAD_RESPONSE"
-		| "NO_TOOL_USE";
+		| "NO_TOOL_USE"
+		// AUDIT-017: bubble UNSUPPORTED through to the host so a browser-
+		// key-guard refusal is surfaced as "configuration must change"
+		// rather than "the network is flaky."
+		| "UNSUPPORTED";
 	readonly status?: number;
 	constructor(code: CriticLLMError["code"], message: string, status?: number) {
 		super(message);

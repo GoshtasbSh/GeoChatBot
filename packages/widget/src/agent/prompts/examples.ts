@@ -1218,8 +1218,7 @@ export const EXAMPLES: Example[] = [
 	},
 	// 35 — Equity / disparate-impact analysis
 	{
-		question:
-			"Which demographic group has the worst access to grocery stores?",
+		question: "Which demographic group has the worst access to grocery stores?",
 		plan: {
 			goal: "For each demographic-tract polygon, compute distance to the nearest grocery store, then aggregate distance by demographic class",
 			assumptions: [

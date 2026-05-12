@@ -50,16 +50,19 @@ test("Phase 4 — headless emits events; no internal UI", async ({ page }) => {
 			],
 		}));
 
-		const events: string[] = [];
+		const events: Array<{ kind: string; code?: string }> = [];
 		let planId = "";
 		el.addEventListener("plan", (e: Event) => {
-			events.push("plan");
+			events.push({ kind: "plan" });
 			const detail = (e as CustomEvent<{ planId: string }>).detail;
 			if (detail?.planId) planId = detail.planId;
 		});
-		el.addEventListener("progress", () => events.push("progress"));
-		el.addEventListener("result", () => events.push("result"));
-		el.addEventListener("error", () => events.push("error"));
+		el.addEventListener("progress", () => events.push({ kind: "progress" }));
+		el.addEventListener("result", () => events.push({ kind: "result" }));
+		el.addEventListener("error", (e: Event) => {
+			const detail = (e as CustomEvent<{ code?: string }>).detail;
+			events.push({ kind: "error", code: detail?.code });
+		});
 
 		await el.pushData({
 			name: "s",
@@ -76,9 +79,18 @@ test("Phase 4 — headless emits events; no internal UI", async ({ page }) => {
 		return events;
 	});
 
-	expect(seen).toContain("plan");
-	expect(seen).toContain("result");
-	expect(seen).not.toContain("error");
+	const kinds = seen.map((e) => e.kind);
+	expect(kinds).toContain("plan");
+	expect(kinds).toContain("result");
+	// AGENTIC_FALLBACK is a soft warning emitted on the error channel when
+	// the host requests agentic mode against a provider that doesn't
+	// support the OpenAI-compat /chat/completions multi-turn loop
+	// (Anthropic, Gemini). It is the documented behaviour, not a real
+	// failure. Only HARD errors should fail this test.
+	const hardErrors = seen.filter(
+		(e) => e.kind === "error" && e.code !== "AGENTIC_FALLBACK",
+	);
+	expect(hardErrors).toEqual([]);
 
 	// No plan-review in headless mode — the host page owns the UI.
 	const internals = await page.evaluate(() => {

@@ -73,15 +73,19 @@ describe("callPlannerLLM", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValue({
 			ok: false,
 			status: 401,
+			headers: new Headers(),
 			json: async () => ({}),
 		} as Response);
 		await expect(callPlannerLLM(baseInput)).rejects.toThrow(/auth|401/i);
 	});
 
 	it("throws on rate limit (429)", async () => {
+		// AUDIT-K4: include Retry-After so the new ForcedToolError carries
+		// retryAfterMs through to the host.
 		vi.mocked(globalThis.fetch).mockResolvedValue({
 			ok: false,
 			status: 429,
+			headers: new Headers({ "Retry-After": "5" }),
 			json: async () => ({}),
 		} as Response);
 		await expect(callPlannerLLM(baseInput)).rejects.toThrow(/rate|429/i);

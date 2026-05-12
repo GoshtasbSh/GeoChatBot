@@ -175,12 +175,22 @@ export interface RetrieveOpts {
 	maxDocs?: number;
 	/** Minimum cosine similarity to include a hit. */
 	minScore?: number;
+	/**
+	 * Whether to query the user-memory store. When false, only the static
+	 * corpus + example stores are searched and any past user-approved plans
+	 * are ignored. Privacy-sensitive: this should mirror the host's
+	 * `memoryEnabled` flag so that toggling memory off retroactively hides
+	 * previously-stored entries from few-shot retrieval. Default: true
+	 * (legacy behaviour, preserved for tests that don't care).
+	 */
+	includeMemory?: boolean;
 }
 
 const DEFAULT_OPTS: Required<RetrieveOpts> = {
 	maxExamples: 5,
 	maxDocs: 5,
 	minScore: 0.25,
+	includeMemory: true,
 };
 
 /**
@@ -198,7 +208,13 @@ export async function retrieve(
 	const [docHits, exHits, memHits] = await Promise.all([
 		corpusStore.search(qvec, merged.maxDocs * 2),
 		examplesStore.search(qvec, merged.maxExamples * 2),
-		memoryStore.search(qvec, merged.maxExamples),
+		// SEC-008: when the host has memory disabled, skip the memory store
+		// entirely so stale entries from a previous memory-on session don't
+		// resurface as few-shots. The write path is already gated; this
+		// closes the read-side leak.
+		merged.includeMemory
+			? memoryStore.search(qvec, merged.maxExamples)
+			: Promise.resolve([]),
 	]);
 	const docs: RetrievedDoc[] = docHits
 		.filter((h) => h.score >= merged.minScore)

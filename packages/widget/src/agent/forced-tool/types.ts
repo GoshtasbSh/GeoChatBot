@@ -56,21 +56,71 @@ export class ForcedToolError extends Error {
 		| "NETWORK"
 		| "BAD_RESPONSE"
 		| "NO_TOOL_USE"
-		| "ABORTED";
+		| "ABORTED"
+		// AUDIT-017: distinct code for "we refuse to make this call from
+		// the browser without explicit consent." Previously mapped to
+		// NETWORK, which prompts users to retry (useless — the call will
+		// keep being refused). UNSUPPORTED signals "configuration must
+		// change, not the network."
+		| "UNSUPPORTED";
 	readonly provider: ProviderId;
 	readonly status?: number;
+	/**
+	 * AUDIT-K4 (2026-05-11): how long the host should wait before retrying.
+	 * Populated for RATE_LIMIT errors when the provider returns a
+	 * `Retry-After` header (seconds OR HTTP-date). Lets the UI render a
+	 * countdown card instead of dumping a generic 429 message into the
+	 * events log.
+	 */
+	readonly retryAfterMs?: number;
 	constructor(
 		code: ForcedToolError["code"],
 		provider: ProviderId,
 		message: string,
 		status?: number,
+		retryAfterMs?: number,
 	) {
 		super(message);
 		this.name = "ForcedToolError";
 		this.code = code;
 		this.provider = provider;
 		if (status !== undefined) this.status = status;
+		if (retryAfterMs !== undefined) this.retryAfterMs = retryAfterMs;
 	}
+}
+
+/**
+ * Parse a `Retry-After` header value into milliseconds.
+ *
+ *   - Numeric form ("30") → 30 seconds.
+ *   - HTTP-date form ("Fri, 31 Dec 2026 23:59:59 GMT") → milliseconds
+ *     until that timestamp.
+ *   - Anything else (missing, malformed) → undefined.
+ *
+ * Always returns a non-negative number; clamps to a sane upper bound
+ * (10 minutes) so a misbehaving provider can't park the UI for hours.
+ * AUDIT-K4: shared helper because every forced-tool adapter + the
+ * agentic loop's OpenAI-compat fetch needs the same parsing semantics.
+ */
+export function parseRetryAfter(
+	headerValue: string | null,
+): number | undefined {
+	if (!headerValue) return undefined;
+	const trimmed = headerValue.trim();
+	if (trimmed === "") return undefined;
+	const MAX_MS = 10 * 60 * 1000; // 10 minutes
+	// Numeric: seconds.
+	if (/^\d+(\.\d+)?$/.test(trimmed)) {
+		const secs = Number.parseFloat(trimmed);
+		if (!Number.isFinite(secs) || secs < 0) return undefined;
+		return Math.min(MAX_MS, Math.round(secs * 1000));
+	}
+	// HTTP-date.
+	const t = Date.parse(trimmed);
+	if (Number.isNaN(t)) return undefined;
+	const delta = t - Date.now();
+	if (delta <= 0) return 0;
+	return Math.min(MAX_MS, delta);
 }
 
 /** A provider-specific adapter. Returns the parsed tool input as a plain object. */

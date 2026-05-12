@@ -30,7 +30,14 @@ import { tokensCSS } from "./tokens.js";
  * generic chatbot.
  */
 export interface AgenticThought {
-	kind: "reason" | "tool" | "finalize" | "budget-exhausted" | "unknown-tool";
+	kind:
+		| "reason"
+		| "tool"
+		| "finalize"
+		| "budget-exhausted"
+		| "unknown-tool"
+		// AUDIT-K4 (2026-05-11): rate-limit countdown card.
+		| "rate-limit-wait";
 	iteration: number;
 	/** For 'reason': the LLM's free-text. For 'tool': human-readable summary. */
 	text: string;
@@ -49,6 +56,25 @@ interface Turn {
 
 @customElement("result-canvas")
 export class ResultCanvas extends LitElement {
+	// AUDIT-R (2026-05-11): the host element is the scrollable region
+	// (overflow-y: auto in :host CSS below). axe-core's
+	// scrollable-region-focusable rule requires it be keyboard-focusable
+	// so users can scroll via PageDown / arrow keys without a mouse.
+	// Wired via connectedCallback rather than the LitElement render so
+	// the focusable behavior survives any future template overhaul.
+	override connectedCallback(): void {
+		super.connectedCallback();
+		if (!this.hasAttribute("tabindex")) {
+			this.setAttribute("tabindex", "0");
+		}
+		if (!this.hasAttribute("role")) {
+			this.setAttribute("role", "region");
+		}
+		if (!this.hasAttribute("aria-label")) {
+			this.setAttribute("aria-label", "Conversation results");
+		}
+	}
+
 	static override styles = [
 		tokensCSS,
 		css`
@@ -62,11 +88,15 @@ export class ResultCanvas extends LitElement {
         scroll-behavior: smooth;
       }
 
+      /* AUDIT-024 (a11y): use --gcb-ink-soft for empty-state copy so
+         the descriptive sentence passes WCAG-AA contrast on the paper
+         theme. The previous --gcb-ink-muted on paper read 3.6:1
+         (Lighthouse flagged); --gcb-ink-soft (#44403c) hits ≥7:1. */
       .empty {
         display: flex; flex-direction: column;
         align-items: center; justify-content: center;
         height: 100%; min-height: 200px;
-        color: var(--gcb-ink-muted);
+        color: var(--gcb-ink-soft);
         text-align: center; padding: 32px;
       }
       .empty-icon {
@@ -530,10 +560,17 @@ export class ResultCanvas extends LitElement {
 
 	private _renderSummary(p: ResultPayload, turn: Turn): TemplateResult {
 		if (p.kind !== "summary") return html``;
-		// Try to extract a leading number for hero display (e.g. "0.43°", "5", "1,234.5 km").
-		const match = /^([-+]?\d{1,3}(?:[,\d]*)(?:\.\d+)?\s*[°a-zA-Z%]*)/.exec(
-			p.text.trim(),
-		);
+		// AUDIT-016 (UI): extract a leading number for hero display
+		// (e.g. "0.43°", "5", "1,234.5 km"). The previous pattern used
+		// `[°a-zA-Z%]*` which greedily ate any trailing word — turning
+		// "5 buffered features" into hero="5 buffered" rest="features".
+		// Constrain the unit suffix to a known set and require a word
+		// boundary so plain English words after the number stay in the
+		// body where they belong.
+		const match =
+			/^([-+]?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*(?:°|%|°C|°F|km|mi|m|ft|kg|lb)?)(?=\s|$|[,.;:])/.exec(
+				p.text.trim(),
+			);
 		const leadNum = match?.[1] ?? null;
 		const rest = leadNum ? p.text.trim().slice(leadNum.length).trim() : p.text;
 		return html`
@@ -681,7 +718,9 @@ export class ResultCanvas extends LitElement {
 		const inputLayer: GeoJsonInputLayer = {
 			name: layerName,
 			geojson: fc as { type: "FeatureCollection"; features: unknown[] },
-			...(safeStyle && Object.keys(safeStyle).length > 0 ? { style: safeStyle } : {}),
+			...(safeStyle && Object.keys(safeStyle).length > 0
+				? { style: safeStyle }
+				: {}),
 		};
 		const legend = safeStyle?.colorBy
 			? html`<span class="map-legend">colored by <code>${safeStyle.colorBy}</code></span>`

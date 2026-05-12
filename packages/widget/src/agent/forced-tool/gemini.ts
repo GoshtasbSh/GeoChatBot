@@ -17,7 +17,11 @@
  * up at https://aistudio.google.com/app/apikey for a free key.
  */
 
-import { ForcedToolError, type ForcedToolInput } from "./types.js";
+import {
+	ForcedToolError,
+	type ForcedToolInput,
+	parseRetryAfter,
+} from "./types.js";
 
 const PROVIDER = "gemini" as const;
 const BASE = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -27,17 +31,21 @@ export async function callGemini(
 ): Promise<Record<string, unknown>> {
 	const inBrowser = typeof window !== "undefined";
 	if (inBrowser && input.dangerouslyAllowBrowser !== true) {
+		// AUDIT-017: UNSUPPORTED, not NETWORK.
 		throw new ForcedToolError(
-			"NETWORK",
+			"UNSUPPORTED",
 			PROVIDER,
 			"Direct-from-browser Gemini calls leak the API key. Pass dangerouslyAllowBrowser:true to acknowledge, or proxy through your own server.",
 		);
 	}
 
-	// Gemini requires the API key as a query parameter (it doesn't accept
-	// Authorization headers on this endpoint). The key never reaches the
-	// request body — same exposure surface as the other providers.
-	const url = `${BASE}/${encodeURIComponent(input.model)}:generateContent?key=${encodeURIComponent(input.apiKey)}`;
+	// AUDIT-019: Gemini accepts the API key via `x-goog-api-key` header
+	// as well as the `?key=` query parameter. The header form is preferred
+	// because the URL (and therefore the key) is logged in browser history,
+	// Referer headers, HAR exports, and CDN access logs. The query-param
+	// path was a holdover from the early v1beta docs; the header form has
+	// been live since 2024-Q2.
+	const url = `${BASE}/${encodeURIComponent(input.model)}:generateContent`;
 
 	const systemContent = input.systemPrompt
 		? `${input.cachedSystemPrompt}\n\n${input.systemPrompt}`
@@ -73,7 +81,10 @@ export async function callGemini(
 	try {
 		const init: RequestInit = {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: {
+				"Content-Type": "application/json",
+				"x-goog-api-key": input.apiKey,
+			},
 			body: JSON.stringify(body),
 		};
 		if (input.signal) init.signal = input.signal;
@@ -92,10 +103,23 @@ export async function callGemini(
 			);
 		}
 		if (res.status === 429) {
+			const retryAfterMs = parseRetryAfter(res.headers.get("Retry-After"));
 			throw new ForcedToolError(
 				"RATE_LIMIT",
 				PROVIDER,
-				"rate limited (429)",
+				retryAfterMs !== undefined
+					? `rate limited (429), retry after ${Math.ceil(retryAfterMs / 1000)}s`
+					: "rate limited (429)",
+				res.status,
+				retryAfterMs,
+			);
+		}
+		if (res.status >= 500) {
+			// AUDIT-018: 5xx → NETWORK (transient).
+			throw new ForcedToolError(
+				"NETWORK",
+				PROVIDER,
+				`upstream ${res.status}`,
 				res.status,
 			);
 		}

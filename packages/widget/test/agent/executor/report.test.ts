@@ -50,9 +50,7 @@ async function runQuickscan(
 		goal: "scan",
 		assumptions: [],
 		dataset_refs: ["sales"],
-		steps: [
-			{ id: "s1", tool: "report.quickscan", args, why: "scan" },
-		],
+		steps: [{ id: "s1", tool: "report.quickscan", args, why: "scan" }],
 	};
 	const exec = new Executor({ engine, datasets: [sales] });
 	const payloads: ResultPayload[] = [];

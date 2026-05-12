@@ -85,7 +85,10 @@ describe("buildCriticUserMessage", () => {
 			maxRetries: 2,
 			datasets,
 		});
-		expect(out).toMatch(/attempt.*1.*of.*2/i);
+		// AUDIT-020: 1-indexed attempts so the model can reason about
+		// budget. retryCount=1 (0-indexed) ⇒ "attempt 2 of 3"
+		// (1-indexed total attempts including the initial try).
+		expect(out).toMatch(/attempt.*2.*of.*3/i);
 	});
 
 	it("wraps resolved args in an UNTRUSTED fence (post-substitution data is not trusted)", () => {

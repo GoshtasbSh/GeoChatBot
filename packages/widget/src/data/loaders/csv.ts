@@ -49,9 +49,23 @@ export const csvLoader: DataLoader = {
 				worker: false,
 			} as never);
 		} catch (err) {
+			// §J (2026-05-12): loaders.gl raises "deduce from empty table"
+			// when a CSV has a header row but no data rows. That's not a
+			// PARSE_ERROR — it's just an empty dataset — and the original
+			// message is opaque. Surface it as EMPTY_FILE with a clear
+			// message so the host UI can route it to the same "empty
+			// file" affordance.
+			const msg = describe(err);
+			if (/deduce from empty table|no rows|empty table/i.test(msg)) {
+				throw new LoaderError(
+					"EMPTY_FILE",
+					`${name}: file has a header row but no data rows.`,
+					{ cause: err },
+				);
+			}
 			throw new LoaderError(
 				"PARSE_ERROR",
-				`CSV parse failed for ${name}: ${describe(err)}`,
+				`CSV parse failed for ${name}: ${msg}`,
 				{ cause: err },
 			);
 		}

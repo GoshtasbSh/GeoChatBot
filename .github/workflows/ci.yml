@@ -13,31 +13,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The repo is a pnpm workspace (see pnpm-workspace.yaml +
+      # packageManager field in package.json). Several packages — most
+      # notably packages/site — use the `workspace:*` protocol, which
+      # npm does NOT understand. We set up pnpm BEFORE actions/setup-node
+      # so that step's `cache: 'pnpm'` finds a pnpm executable on PATH.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install
-        run: npm ci || npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint (Biome, soft-fail)
-        run: npm run lint || echo "lint surfaced issues — not blocking Phase 0 CI"
+        run: pnpm run lint || echo "lint surfaced issues — not blocking Phase 0 CI"
 
-      # Build the widget first so workspace consumers (examples/react) can
-      # resolve @geochatbot/widget type declarations during typecheck.
+      # Build the widget first so workspace consumers (examples/react,
+      # packages/site) can resolve @geochatbot/widget type declarations
+      # during typecheck.
       - name: Build widget
-        run: npm run build --workspace=@geochatbot/widget
+        run: pnpm --filter @geochatbot/widget build
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm -r --if-present run typecheck
 
       - name: Test
-        run: npm test
+        run: pnpm -r --if-present run test
 
       - name: Build (all)
-        run: npm run build
+        run: pnpm -r --if-present run build
 
       - name: Hello
-        run: npm run hello
+        run: pnpm run hello

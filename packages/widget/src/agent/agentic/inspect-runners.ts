@@ -38,6 +38,20 @@ function clip(s: string): string {
 	return `${s.slice(0, MAX_OUTPUT_CHARS - 20)}\n…(truncated)`;
 }
 
+/**
+ * Wrap inspection output in an UNTRUSTED_DATA fence so the agentic-loop LLM
+ * treats column names, sampled cell values, and probe-sql results as opaque
+ * content — never as instructions. Mirrors the `<<<UNTRUSTED_DATASET_PROFILE`
+ * fence used by the single-shot planner. The accompanying clause lives in
+ * AGENTIC_PREAMBLE under the "Trust boundary" heading.
+ *
+ * The fence wraps a clipped body so the total tool-result message stays
+ * within the loop's per-message budget (MAX_OUTPUT_CHARS).
+ */
+function fenceUntrusted(toolId: string, body: string): string {
+	return `<<<UNTRUSTED_DATA from ${toolId}\n${clip(body)}\nUNTRUSTED_DATA>>>`;
+}
+
 function resolveDataset(name: string, ctx: RunCtx): DatasetEntry {
 	const d = ctx.datasets.get(name);
 	if (!d) {
@@ -83,7 +97,10 @@ export async function runListColumns(
 	);
 	const rows = arrowToObjs(t);
 	const lines = rows.map((r) => `${String(r.name)}: ${String(r.type)}`);
-	return clip(`columns of "${dataset}":\n${lines.join("\n")}`);
+	return fenceUntrusted(
+		"inspect.list_columns",
+		`columns of "${dataset}":\n${lines.join("\n")}`,
+	);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -109,7 +126,8 @@ export async function runSampleRows(
 		}
 		return o;
 	});
-	return clip(
+	return fenceUntrusted(
+		"inspect.sample_rows",
 		`sample rows of "${dataset}" (showing ${rows.length}):\n${truncated
 			.map((r) => JSON.stringify(r))
 			.join("\n")}`,
@@ -137,14 +155,18 @@ export async function runDistinctValues(
 	);
 	const rows = arrowToObjs(t);
 	if (rows.length === 0) {
-		return `column "${column}" of "${dataset}" has no non-null values.`;
+		return fenceUntrusted(
+			"inspect.distinct_values",
+			`column "${column}" of "${dataset}" has no non-null values.`,
+		);
 	}
 	const lines = rows.map((r) => {
 		let val = String(r.value);
 		if (val.length > 80) val = `${val.slice(0, 77)}...`;
 		return `  ${JSON.stringify(val)}: ${r.cnt}`;
 	});
-	return clip(
+	return fenceUntrusted(
+		"inspect.distinct_values",
 		`top ${rows.length} distinct values of "${column}" in "${dataset}":\n${lines.join("\n")}`,
 	);
 }
@@ -215,7 +237,10 @@ export async function runColumnPattern(
 	);
 	const samples = arrowToObjs(t).map((r) => String(r.v));
 	if (samples.length === 0) {
-		return `column "${column}" of "${dataset}" is entirely null.`;
+		return fenceUntrusted(
+			"inspect.column_pattern",
+			`column "${column}" of "${dataset}" is entirely null.`,
+		);
 	}
 	const counts = new Map<string, number>();
 	for (const s of samples) {
@@ -233,7 +258,8 @@ export async function runColumnPattern(
 	const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
 	const top = ranked[0];
 	if (!top) {
-		return clip(
+		return fenceUntrusted(
+			"inspect.column_pattern",
 			`column "${column}" of "${dataset}" has no pattern samples; ` +
 				`examples=${JSON.stringify(samples.slice(0, 3))}`,
 		);
@@ -241,7 +267,8 @@ export async function runColumnPattern(
 	const summary = ranked
 		.map(([label, n]) => `${label}=${Math.round((n / samples.length) * 100)}%`)
 		.join(", ");
-	return clip(
+	return fenceUntrusted(
+		"inspect.column_pattern",
 		`column "${column}" of "${dataset}" pattern: dominant=${top[0]} (${summary}); ` +
 			`examples=${JSON.stringify(samples.slice(0, 3))}`,
 	);
@@ -264,12 +291,12 @@ export async function runProbeSql(args: unknown, ctx: RunCtx): Promise<string> {
 	const head = `probe_sql returned ${rows.length} rows, columns=[${cols
 		.map((c) => `"${c}"`)
 		.join(", ")}]`;
-	if (rows.length === 0) return head;
+	if (rows.length === 0) return fenceUntrusted("inspect.probe_sql", head);
 	const lines = rows
 		.slice(0, 10)
 		.map((r) => JSON.stringify(r))
 		.map((s) => (s.length > 240 ? `${s.slice(0, 237)}...` : s));
-	return clip(`${head}\n${lines.join("\n")}`);
+	return fenceUntrusted("inspect.probe_sql", `${head}\n${lines.join("\n")}`);
 }
 
 /* -------------------------------------------------------------------------- */

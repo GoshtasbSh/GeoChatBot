@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="GeoChatBot — embeddable in-browser spatial data chatbot. Drop a CSV, GeoJSON, shapefile, or Parquet file and ask plain-English questions; charts, tables, and maps render locally with no data leaving your browser." />
     <title>GeoChatBot — demo</title>
     <style>
       :root { color-scheme: light; }
@@ -15,23 +16,39 @@
       }
       /* Widget fills the whole viewport, edge-to-edge. Border-radius and
        * box-shadow make sense when the widget is embedded in a page; for
-       * the standalone demo we strip them so the chrome is gone. */
+       * the standalone demo we strip them so the chrome is gone.
+       *
+       * AUDIT-K3 (2026-05-11): give the widget a z-index higher than the
+       * dev-only .samples + .log-drawer overlays so its modal drawers
+       * (settings, plan-review, upload) can intercept clicks across the
+       * whole viewport. Without this, the events-log strip at the bottom
+       * silently blocked the settings drawer's Cancel/Save row.
+       */
       geo-chatbot {
         position: fixed;
         inset: 0;
         width: 100vw;
         height: 100vh;
+        z-index: 20;
         border-radius: 0 !important;
         border: none !important;
         box-shadow: none !important;
       }
-      /* Sample-loader floating chip in the top-right. Click → drop a sample
-       * file. Stays out of the widget's way. */
+      /* Sample-loader floating chips. Click → drop a sample file.
+       *
+       * AUDIT-K2 (2026-05-11): previously positioned at top:8px;right:12px
+       * with z-index:10 — which sat ON TOP of the widget's own topbar and
+       * silently intercepted clicks on the theme toggle + settings gear.
+       * That looked like "the theme toggle does nothing" to the user.
+       *
+       * Fixed by relocating below the widget's 48-52px topbar AND lowering
+       * z-index so any future widget overlay still wins.
+       */
       .samples {
         position: fixed;
-        top: 8px;
+        top: 60px;
         right: 12px;
-        z-index: 10;
+        z-index: 5;
         display: flex;
         gap: 6px;
         flex-wrap: wrap;

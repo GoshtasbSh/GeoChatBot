@@ -37,8 +37,13 @@ function aggFnSql(fn: z.infer<typeof AggFn>, col: string): string {
 			return `AVG(${ident})`;
 		case "median":
 			return `MEDIAN(${ident})`;
+		// AUDIT-008 (math): "count by region" should return GROUP SIZE, not
+		// the number of non-null values of `value_col`. The planner is
+		// required to pass `value_col` for all agg_fn variants for prompt
+		// uniformity, but for `count` it's ignored — the canonical
+		// interpretation everywhere from SQL textbooks to QGIS is COUNT(*).
 		case "count":
-			return `COUNT(${ident})`;
+			return "COUNT(*)";
 		case "min":
 			return `MIN(${ident})`;
 		case "max":

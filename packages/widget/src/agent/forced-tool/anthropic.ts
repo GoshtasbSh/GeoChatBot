@@ -7,7 +7,11 @@
  * so subsequent calls pay the prompt-cache rate.
  */
 
-import { ForcedToolError, type ForcedToolInput } from "./types.js";
+import {
+	ForcedToolError,
+	type ForcedToolInput,
+	parseRetryAfter,
+} from "./types.js";
 
 const ENDPOINT = "https://api.anthropic.com/v1/messages";
 const VERSION = "2023-06-01";
@@ -18,8 +22,10 @@ export async function callAnthropic(
 ): Promise<Record<string, unknown>> {
 	const inBrowser = typeof window !== "undefined";
 	if (inBrowser && input.dangerouslyAllowBrowser !== true) {
+		// AUDIT-017: use UNSUPPORTED (not NETWORK) so the UI surfaces a
+		// config-must-change message rather than prompting a retry.
 		throw new ForcedToolError(
-			"NETWORK",
+			"UNSUPPORTED",
 			PROVIDER,
 			"Direct-from-browser Anthropic calls leak the API key. Pass dangerouslyAllowBrowser:true to acknowledge, or proxy through your own server.",
 		);
@@ -87,10 +93,25 @@ export async function callAnthropic(
 			);
 		}
 		if (res.status === 429) {
+			const retryAfterMs = parseRetryAfter(res.headers.get("Retry-After"));
 			throw new ForcedToolError(
 				"RATE_LIMIT",
 				PROVIDER,
-				"rate limited (429)",
+				retryAfterMs !== undefined
+					? `rate limited (429), retry after ${Math.ceil(retryAfterMs / 1000)}s`
+					: "rate limited (429)",
+				res.status,
+				retryAfterMs,
+			);
+		}
+		if (res.status >= 500) {
+			// AUDIT-018: 5xx is transient; map to NETWORK so the UI
+			// surfaces a "retry later" affordance instead of the
+			// "the LLM returned garbage" implication of BAD_RESPONSE.
+			throw new ForcedToolError(
+				"NETWORK",
+				PROVIDER,
+				`upstream ${res.status}`,
 				res.status,
 			);
 		}

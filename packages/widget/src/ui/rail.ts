@@ -77,15 +77,21 @@ export class GcbRail extends LitElement {
 
       .section + .section { margin-top: 4px; }
 
+      /* AUDIT-024 (a11y/color contrast): the previous
+         "var(--gcb-ink-muted) at opacity .85" rendered the section
+         labels and empty-state copy below WCAG-AA contrast against
+         the light-theme paper bg (Lighthouse: 3.0:1, needs >= 4.5:1).
+         Switch to --gcb-ink-soft which is a tier darker, and drop
+         the .85 opacity. */
       .section-lbl {
         padding: 6px 12px 2px;
         font-size: 10px; font-weight: 600;
         letter-spacing: .07em; text-transform: uppercase;
-        color: var(--gcb-ink-muted); opacity: .85;
+        color: var(--gcb-ink-soft);
       }
 
       .empty {
-        font-size: 11px; color: var(--gcb-ink-muted);
+        font-size: 11px; color: var(--gcb-ink-soft);
         padding: 4px 12px 6px;
       }
 
@@ -168,13 +174,17 @@ export class GcbRail extends LitElement {
         border-top: 1px solid var(--gcb-line);
         padding: 10px 8px; flex-shrink: 0;
       }
+      /* AUDIT-024 (a11y): use --gcb-accent-ink (darker emerald) so the
+         button text passes WCAG-AA against the tinted soft background.
+         The previous --gcb-accent #059669 on rgba(5,150,105,0.09) over
+         paper failed Lighthouse's color-contrast audit. */
       .add-btn {
         width: 100%;
         display: flex; align-items: center; justify-content: center; gap: 6px;
         padding: 9px 0; border-radius: var(--gcb-radius);
         border: 1.5px dashed var(--gcb-accent-ring);
         background: var(--gcb-accent-soft);
-        color: var(--gcb-accent);
+        color: var(--gcb-accent-ink);
         font: inherit; font-size: 12px; font-weight: 600;
         cursor: pointer;
         transition: filter 150ms ease, border-style 150ms ease;
@@ -222,7 +232,11 @@ export class GcbRail extends LitElement {
       <div class="panel-scroll">
 
         <!-- Layers (derived from render.map results) -->
-        <div class="section" role="list" aria-label="Layers">
+        <!-- AUDIT-023: was role="list" — required listitem-only children,
+             but the section header div ('.section-lbl') and empty-state
+             div violated that contract. role="group" with aria-labelledby
+             keeps the semantic grouping without the children constraint. -->
+        <div class="section" role="group" aria-label="Layers">
           <div class="section-lbl">Layers</div>
           ${
 						this.layers.length === 0
@@ -250,7 +264,7 @@ export class GcbRail extends LitElement {
         <div class="divider"></div>
 
         <!-- Saved -->
-        <div class="section" role="list" aria-label="Saved results">
+        <div class="section" role="group" aria-label="Saved results">
           <div class="section-lbl">Saved</div>
           ${
 						this.saves.length === 0
@@ -292,7 +306,7 @@ export class GcbRail extends LitElement {
         <div class="divider"></div>
 
         <!-- Datasets (raw uploads) -->
-        <div class="section" role="list" aria-label="Datasets">
+        <div class="section" role="group" aria-label="Datasets">
           <div class="section-lbl">Datasets</div>
           ${
 						this.datasets.length === 0

@@ -188,4 +188,34 @@ describe("validateSql — anti-injection", () => {
 	it("allows semicolon at end with trailing whitespace", () => {
 		expect(() => validateSql("SELECT 1;   ")).not.toThrow();
 	});
+
+	// AUDIT-006 — SEC-007 regression. `splitStatements` walks the SQL
+	// character-by-character and tracks string/comment state. A semicolon
+	// inside a string literal MUST be treated as content, not a statement
+	// separator — otherwise the validator would split a perfectly legal
+	// query like `SELECT 'a;b' FROM t` into two statements and reject it.
+	it("AUDIT-006 — allows a semicolon inside a single-quoted string literal", () => {
+		expect(() => validateSql("SELECT 'a;b' FROM t")).not.toThrow();
+		expect(() =>
+			validateSql("SELECT name FROM t WHERE label = 'first; second'"),
+		).not.toThrow();
+	});
+
+	it("AUDIT-006 — allows a semicolon inside a double-quoted identifier", () => {
+		// DuckDB quoted identifiers can contain anything except the quote
+		// character itself (escaped via doubling). A column named with a
+		// semicolon is pathological but legal.
+		expect(() =>
+			validateSql('SELECT "weird;col" FROM t WHERE "x" = 1'),
+		).not.toThrow();
+	});
+
+	it("AUDIT-006 — still rejects unbalanced quotes wrapping a malicious tail", () => {
+		// If the closing quote is missing, splitStatements treats the
+		// remainder as inside-string and never separates statements; the
+		// keyword check on the (single) statement should still catch DROP.
+		// (This pins the behavior either way: throw OR pass — but our
+		// invariant is "no DDL gets through". This test asserts that.)
+		expect(() => validateSql("SELECT 'a FROM t; DROP TABLE t")).toThrow();
+	});
 });
