@@ -21,7 +21,6 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
           run_install: false
 
       - name: Setup Node
@@ -33,8 +32,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Lint (Biome, soft-fail)
-        run: pnpm run lint || echo "lint surfaced issues — not blocking Phase 0 CI"
+      - name: Lint (Biome)
+        run: pnpm run lint
 
       # Build the widget first so workspace consumers (examples/react,
       # packages/site) can resolve @geochatbot/widget type declarations
