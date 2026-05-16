@@ -188,7 +188,7 @@ async function runCase(
 				}) => void;
 				pushData: (
 					f: File | Record<string, unknown>,
-				) => Promise<unknown> | void;
+				) => Promise<unknown> | undefined;
 				ask: (q: string) => Promise<string>;
 				approvePlan: (id?: string) => void;
 				setMode?: (m: "full" | "headless") => void;
@@ -267,17 +267,19 @@ async function runCase(
 			}
 			// Subscribe BEFORE pushData — otherwise the event can fire
 			// during the await and we'd hang forever waiting for it.
-			const datasetLoaded = new Promise<void>((resolveDataset, rejectDataset) => {
-				const tid = setTimeout(
-					() => rejectDataset(new Error("dataset-loaded timeout")),
-					30_000,
-				);
-				const off = el.on?.("dataset-loaded", () => {
-					clearTimeout(tid);
-					off?.();
-					resolveDataset();
-				});
-			});
+			const datasetLoaded = new Promise<void>(
+				(resolveDataset, rejectDataset) => {
+					const tid = setTimeout(
+						() => rejectDataset(new Error("dataset-loaded timeout")),
+						30_000,
+					);
+					const off = el.on?.("dataset-loaded", () => {
+						clearTimeout(tid);
+						off?.();
+						resolveDataset();
+					});
+				},
+			);
 			await el.pushData(file);
 			await datasetLoaded;
 
@@ -289,14 +291,11 @@ async function runCase(
 			}
 
 			// Wait until result OR error event lands (or timeout)
-			const deadline = Date.now() + (c.matcher.kind === "graceful-failure" ? 30_000 : 90_000);
+			const deadline =
+				Date.now() + (c.matcher.kind === "graceful-failure" ? 30_000 : 90_000);
 			while (Date.now() < deadline) {
 				const t = w.__navTrace;
-				if (
-					t.some(
-						(e) => e.kind === "result" || e.kind === "error",
-					)
-				) {
+				if (t.some((e) => e.kind === "result" || e.kind === "error")) {
 					break;
 				}
 				await new Promise((r) => setTimeout(r, 250));
@@ -349,7 +348,9 @@ test.describe("UF Navigator end-to-end coverage", () => {
 			page.on("console", (m) => {
 				if (m.type() === "error") consoleErrors.push(m.text());
 			});
-			page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
+			page.on("pageerror", (e) =>
+				consoleErrors.push(`pageerror: ${e.message}`),
+			);
 
 			const csvBytes = Array.from(new Uint8Array(POINTS_CSV));
 			const trace = await runCase(page, c, {

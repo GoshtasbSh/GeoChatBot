@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 /**
  * Diagnostic — verify CORS on api.ai.it.ufl.edu allows browser fetch from
@@ -14,9 +14,10 @@ const REPO_ROOT = resolve(__dirname, "../..");
 function loadEnv(): Record<string, string> {
 	const out: Record<string, string> = {};
 	try {
-		for (const l of readFileSync(resolve(REPO_ROOT, ".env.local"), "utf8").split(
-			/\r?\n/,
-		)) {
+		for (const l of readFileSync(
+			resolve(REPO_ROOT, ".env.local"),
+			"utf8",
+		).split(/\r?\n/)) {
 			const t = l.trim();
 			if (!t || t.startsWith("#")) continue;
 			const eq = t.indexOf("=");
@@ -29,7 +30,9 @@ function loadEnv(): Record<string, string> {
 const E = loadEnv();
 const KEY = process.env.NAVIGATOR_API_KEY ?? E.NAVIGATOR_API_KEY ?? "";
 
-test("CORS: browser can fetch /v1/models from UF Navigator", async ({ page }) => {
+test("CORS: browser can fetch /v1/models from UF Navigator", async ({
+	page,
+}) => {
 	test.skip(!KEY, "NAVIGATOR_API_KEY missing");
 	const consoleErrors: string[] = [];
 	page.on("console", (m) => {

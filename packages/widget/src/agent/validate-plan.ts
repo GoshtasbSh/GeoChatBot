@@ -23,10 +23,10 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
 	// through `output_var`, never step IDs — so we can safely rewrite IDs
 	// to canonical form before schema parsing. No-op if IDs are already
 	// canonical. AUDIT-2026-05-15.
-	input = canonicalizeStepIds(input);
+	const canon = canonicalizeStepIds(input);
 
 	// Layer 1: shape
-	const parsed = PlanSchema.safeParse(input);
+	const parsed = PlanSchema.safeParse(canon);
 	if (!parsed.success) {
 		throw new PlanValidationError(`malformed plan: ${parsed.error.message}`);
 	}
@@ -93,36 +93,76 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
 		// accept agg_fn ∈ {sum, mean, median, count, min, max} — models often
 		// emit "avg" (a synonym), "average", or pass it as `fn`/`op` instead
 		// of `agg_fn`. Canonicalize so the schema validator passes.
-		if (step.tool === "stats.aggregate" || step.tool === "stats.hex_bin" || step.tool === "stats.density_grid") {
+		if (
+			step.tool === "stats.aggregate" ||
+			step.tool === "stats.hex_bin" ||
+			step.tool === "stats.density_grid"
+		) {
 			const a = step.args as Record<string, unknown>;
 			// fn / op → agg_fn
 			if (a.agg_fn === undefined) {
-				if (a.fn !== undefined) { a.agg_fn = a.fn; delete a.fn; }
-				else if (a.op !== undefined) { a.agg_fn = a.op; delete a.op; }
+				if (a.fn !== undefined) {
+					a.agg_fn = a.fn;
+					a.fn = undefined;
+				} else if (a.op !== undefined) {
+					a.agg_fn = a.op;
+					a.op = undefined;
+				}
 			}
-			const synonyms: Record<string, string> = { avg: "mean", average: "mean", maximum: "max", minimum: "min", stddev: "mean" };
+			const synonyms: Record<string, string> = {
+				avg: "mean",
+				average: "mean",
+				maximum: "max",
+				minimum: "min",
+				stddev: "mean",
+			};
 			if (typeof a.agg_fn === "string" && synonyms[a.agg_fn.toLowerCase()]) {
 				a.agg_fn = synonyms[a.agg_fn.toLowerCase()];
 			}
 			// table / dataset / source → layer (stats.aggregate field is `layer`)
 			if (a.layer === undefined) {
-				if (typeof a.table === "string") { a.layer = a.table; delete a.table; }
-				else if (typeof a.dataset === "string") { a.layer = a.dataset; delete a.dataset; }
-				else if (typeof a.source === "string") { a.layer = a.source; delete a.source; }
-				else if (typeof a.input === "string") { a.layer = a.input; delete a.input; }
+				if (typeof a.table === "string") {
+					a.layer = a.table;
+					a.table = undefined;
+				} else if (typeof a.dataset === "string") {
+					a.layer = a.dataset;
+					a.dataset = undefined;
+				} else if (typeof a.source === "string") {
+					a.layer = a.source;
+					a.source = undefined;
+				} else if (typeof a.input === "string") {
+					a.layer = a.input;
+					a.input = undefined;
+				}
 			}
 			// column / col / metric → value_col
 			if (a.value_col === undefined) {
-				if (typeof a.column === "string") { a.value_col = a.column; delete a.column; }
-				else if (typeof a.col === "string") { a.value_col = a.col; delete a.col; }
-				else if (typeof a.metric === "string") { a.value_col = a.metric; delete a.metric; }
-				else if (typeof a.field === "string") { a.value_col = a.field; delete a.field; }
+				if (typeof a.column === "string") {
+					a.value_col = a.column;
+					a.column = undefined;
+				} else if (typeof a.col === "string") {
+					a.value_col = a.col;
+					a.col = undefined;
+				} else if (typeof a.metric === "string") {
+					a.value_col = a.metric;
+					a.metric = undefined;
+				} else if (typeof a.field === "string") {
+					a.value_col = a.field;
+					a.field = undefined;
+				}
 			}
 			// groupBy / by / groups → group_by
 			if (a.group_by === undefined) {
-				if (a.groupBy !== undefined) { a.group_by = a.groupBy; delete a.groupBy; }
-				else if (a.by !== undefined) { a.group_by = a.by; delete a.by; }
-				else if (a.groups !== undefined) { a.group_by = a.groups; delete a.groups; }
+				if (a.groupBy !== undefined) {
+					a.group_by = a.groupBy;
+					a.groupBy = undefined;
+				} else if (a.by !== undefined) {
+					a.group_by = a.by;
+					a.by = undefined;
+				} else if (a.groups !== undefined) {
+					a.group_by = a.groups;
+					a.groups = undefined;
+				}
 			}
 		}
 		const argRes = tool.args.safeParse(step.args);

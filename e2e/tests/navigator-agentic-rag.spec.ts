@@ -22,9 +22,10 @@ const REPO_ROOT = resolve(__dirname, "../..");
 function loadEnv(): Record<string, string> {
 	const out: Record<string, string> = {};
 	try {
-		for (const l of readFileSync(resolve(REPO_ROOT, ".env.local"), "utf8").split(
-			/\r?\n/,
-		)) {
+		for (const l of readFileSync(
+			resolve(REPO_ROOT, ".env.local"),
+			"utf8",
+		).split(/\r?\n/)) {
 			const t = l.trim();
 			if (!t || t.startsWith("#")) continue;
 			const eq = t.indexOf("=");
@@ -61,8 +62,12 @@ test.describe("UF Navigator agentic + RAG (gpt-oss-120b)", () => {
 			const outcome = await page.evaluate(
 				async ({ apiKey, model, csvBytes, question }) => {
 					const el = document.querySelector("geo-chatbot") as HTMLElement & {
-						setProvider: (p: { name: string; apiKey: string; model?: string }) => void;
-						pushData: (f: File) => Promise<unknown> | void;
+						setProvider: (p: {
+							name: string;
+							apiKey: string;
+							model?: string;
+						}) => void;
+						pushData: (f: File) => Promise<unknown> | undefined;
 						ask: (q: string) => Promise<string>;
 						approvePlan: (id?: string) => void;
 						on?: (ev: string, cb: (p: unknown) => void) => () => void;
@@ -88,7 +93,9 @@ test.describe("UF Navigator agentic + RAG (gpt-oss-120b)", () => {
 					const agenticSteps: string[] = [];
 
 					let resolveData: () => void = () => {};
-					const dataLoaded = new Promise<void>((res) => (resolveData = res));
+					const dataLoaded = new Promise<void>((res) => {
+						resolveData = res;
+					});
 
 					el.on?.("dataset-loaded", () => resolveData());
 					el.on?.("agentic-step", (p: unknown) => {
@@ -97,7 +104,10 @@ test.describe("UF Navigator agentic + RAG (gpt-oss-120b)", () => {
 					});
 					el.on?.("plan", (p: unknown) => {
 						const planId = (p as { planId?: string }).planId;
-						if (planId) try { el.approvePlan(planId); } catch {}
+						if (planId)
+							try {
+								el.approvePlan(planId);
+							} catch {}
 					});
 					el.on?.("result", (p: unknown) => {
 						clearTimeout(tid);
@@ -107,17 +117,26 @@ test.describe("UF Navigator agentic + RAG (gpt-oss-120b)", () => {
 						const e = p as { code?: string; message?: string };
 						if (e.code === "AGENTIC_FALLBACK") return;
 						clearTimeout(tid);
-						rejectResult(new Error(`${e.code}: ${(e.message ?? "").slice(0, 200)}`));
+						rejectResult(
+							new Error(`${e.code}: ${(e.message ?? "").slice(0, 200)}`),
+						);
 					});
 
-					const file = new File([new Uint8Array(csvBytes)], "points.csv", { type: "text/csv" });
+					const file = new File([new Uint8Array(csvBytes)], "points.csv", {
+						type: "text/csv",
+					});
 					await el.pushData(file);
 					await dataLoaded;
 					el.ask(question).catch(() => {});
 
 					try {
 						const r = await result;
-						return { ok: true, kind: r.kind, agenticSteps, err: null as string | null };
+						return {
+							ok: true,
+							kind: r.kind,
+							agenticSteps,
+							err: null as string | null,
+						};
 					} catch (err) {
 						return {
 							ok: false,
@@ -139,7 +158,9 @@ test.describe("UF Navigator agentic + RAG (gpt-oss-120b)", () => {
 			console.log(`[${c.id}] outcome:`, JSON.stringify(outcome));
 			if (errs.length) console.log(`[${c.id}] errors:`, errs.slice(0, 3));
 
-			expect(outcome.ok, `result event fired (err: ${outcome.err ?? ""})`).toBe(true);
+			expect(outcome.ok, `result event fired (err: ${outcome.err ?? ""})`).toBe(
+				true,
+			);
 			expect(
 				outcome.agenticSteps.length,
 				"agentic loop emitted at least one step event",

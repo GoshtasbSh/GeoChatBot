@@ -1233,8 +1233,8 @@ export class GeoChatBotElement extends LitElement {
           ${this.error ? html`<div class="err">${this.error}</div>` : null}
           <!-- ── Floating status bar (visible whenever the agent is busy) ── -->
           ${
-            this._agentBusy && this._statusLine
-              ? html`<div style="
+						this._agentBusy && this._statusLine
+							? html`<div style="
                   display:flex;
                   align-items:center;
                   gap:10px;
@@ -1256,15 +1256,15 @@ export class GeoChatBotElement extends LitElement {
                     ${this._statusLine}
                   </span>
                   ${
-                    this._statusLine.includes("Geocoding")
-                      ? html`<span style="font-size:11px;opacity:.7;font-weight:400;flex-shrink:0;">
+										this._statusLine.includes("Geocoding")
+											? html`<span style="font-size:11px;opacity:.7;font-weight:400;flex-shrink:0;">
                           US addresses use Census batch geocoder (fast); other addresses use Nominatim (1 req/s)
                         </span>`
-                      : null
-                  }
+											: null
+									}
                 </div>`
-              : null
-          }
+							: null
+					}
           <result-canvas style="flex:1; min-height:0;"></result-canvas>
           <!-- Upload popover anchored under the topbar — opens via Add data button -->
           ${
@@ -1928,22 +1928,23 @@ export class GeoChatBotElement extends LitElement {
 						// Update the floating status line with step info.
 						if (e.status === "running") {
 							const total = plan.steps.length;
-							const idx =
-								plan.steps.findIndex((s) => s.id === e.stepId) + 1;
-							const tool = plan.steps.find((s) => s.id === e.stepId)?.tool ?? e.stepId;
+							const idx = plan.steps.findIndex((s) => s.id === e.stepId) + 1;
+							const tool =
+								plan.steps.find((s) => s.id === e.stepId)?.tool ?? e.stepId;
 							this._statusLine = `Step ${idx} / ${total} — ${tool}…`;
 						} else if (e.status === "success") {
 							const remaining = plan.steps.filter(
 								(s) =>
 									s.id > e.stepId ||
-									plan.steps.indexOf(s) > plan.steps.findIndex((ss) => ss.id === e.stepId),
+									plan.steps.indexOf(s) >
+										plan.steps.findIndex((ss) => ss.id === e.stepId),
 							).length;
 							if (remaining === 0) this._statusLine = "Rendering result…";
 						}
 					},
-				onSubProgress: (message: string) => {
-					this._statusLine = message;
-				},
+					onSubProgress: (message: string) => {
+						this._statusLine = message;
+					},
 					onResult: (e: ExecResultEvent) => {
 						this.dispatch("result", e);
 						if (this.mode !== "headless") this._mountResult(e);

@@ -87,9 +87,13 @@ export const INSPECT_TOOLS = {
 			"After the user answers, use that answer in your plan (e.g. as region_hint in geocode.address). " +
 			"You may continue inspecting after the answer if needed to finalize the plan.",
 		args: z.object({
-			question: z.string().min(1).max(280).describe(
-				"The specific question to ask the user. Be concrete: e.g. 'What city and state are these addresses in? (e.g. Keystone Heights, FL, USA)'",
-			),
+			question: z
+				.string()
+				.min(1)
+				.max(280)
+				.describe(
+					"The specific question to ask the user. Be concrete: e.g. 'What city and state are these addresses in? (e.g. Keystone Heights, FL, USA)'",
+				),
 		}),
 	},
 	finalize_plan: {

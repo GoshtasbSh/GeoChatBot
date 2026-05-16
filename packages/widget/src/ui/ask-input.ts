@@ -222,7 +222,8 @@ export class GcbAskInput extends LitElement {
 		// without touching _agentBusy or any other ask() lifecycle state.
 		// This completely separates clarification routing from normal ask routing.
 		const eventName = this.clarifyQuestion ? "gcb:clarify-answer" : "gcb:ask";
-		if (!this.clarifyQuestion && (this.disabledReason !== null || this.busy)) return;
+		if (!this.clarifyQuestion && (this.disabledReason !== null || this.busy))
+			return;
 		this.dispatchEvent(new CustomEvent<string>(eventName, { detail: q }));
 		this._value = "";
 	}

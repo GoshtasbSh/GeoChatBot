@@ -4,11 +4,7 @@
 	"private": true,
 	"description": "Embeddable chatbot widget for in-browser spatial and tabular data analysis.",
 	"license": "MIT",
-	"workspaces": [
-		"packages/*",
-		"examples/*",
-		"e2e"
-	],
+	"workspaces": ["packages/*", "examples/*", "e2e"],
 	"scripts": {
 		"dev": "pnpm --filter @geochatbot/widget dev",
 		"demo": "pnpm --filter @geochatbot/demo dev",

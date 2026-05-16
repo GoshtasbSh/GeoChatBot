@@ -11,13 +11,13 @@ import { callAnthropic } from "./anthropic.js";
 import { callGemini } from "./gemini.js";
 import { callGroq } from "./groq.js";
 import { callOpenAI } from "./openai.js";
-import { callUFNavigator } from "./uf-navigator.js";
 import {
 	type ForcedToolAdapter,
 	type ForcedToolInput,
 	type ProviderId,
 	UnknownProviderError,
 } from "./types.js";
+import { callUFNavigator } from "./uf-navigator.js";
 
 const ADAPTERS: Record<ProviderId, ForcedToolAdapter> = {
 	anthropic: callAnthropic,

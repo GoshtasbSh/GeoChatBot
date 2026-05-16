@@ -98,7 +98,12 @@ export async function runGeocodeAddress(
 			};
 		} else {
 			ctx.onSubProgress?.("Locating region…");
-			const center = await geocodeOne(region_hint.trim(), country_code, undefined, ctx.signal);
+			const center = await geocodeOne(
+				region_hint.trim(),
+				country_code,
+				undefined,
+				ctx.signal,
+			);
 			if (center) {
 				const PAD = 0.3; // ~20 miles — covers any city or county
 				viewbox = {
@@ -134,7 +139,12 @@ export async function runGeocodeAddress(
 			addr = `${addr}, ${region_hint.trim()}`;
 		}
 		attempts++;
-		const hit = await geocodeOne(addr, viewbox ? undefined : country_code, viewbox, ctx.signal);
+		const hit = await geocodeOne(
+			addr,
+			viewbox ? undefined : country_code,
+			viewbox,
+			ctx.signal,
+		);
 		if (hit) hits.push({ rid, lon: hit.lon, lat: hit.lat });
 		if (ctx.onSubProgress && (i % 5 === 0 || i === rows.length - 1)) {
 			ctx.onSubProgress(
@@ -239,4 +249,3 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 		}
 	});
 }
-

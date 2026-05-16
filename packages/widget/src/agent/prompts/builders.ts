@@ -181,7 +181,8 @@ export function detectSemanticHint(
 		return "state";
 
 	// Sample-based detection.
-	const allNumeric = sampleStrs.length > 0 &&
+	const allNumeric =
+		sampleStrs.length > 0 &&
 		sampleStrs.every((s) => /^-?\d+(\.\d+)?$/.test(s.trim()));
 	if (allNumeric && ltype.includes("double")) {
 		const nums = sampleStrs.map((s) => Number.parseFloat(s));
@@ -191,12 +192,16 @@ export function detectSemanticHint(
 		if (looksLon && /(lon|lng|x)/i.test(lname)) return "longitude";
 	}
 
-	if (sampleStrs.some((s) => /^\$\s?\d/.test(s) || /^\d+[\d,]*\.\d{2}$/.test(s)))
+	if (
+		sampleStrs.some((s) => /^\$\s?\d/.test(s) || /^\d+[\d,]*\.\d{2}$/.test(s))
+	)
 		return "currency";
 
-	if (sampleStrs.some((s) =>
-		/^\(\d{3}\)\s?\d{3}[-.\s]?\d{4}$|^\+?\d[\d\s().-]{7,}\d$/.test(s.trim()),
-	)) {
+	if (
+		sampleStrs.some((s) =>
+			/^\(\d{3}\)\s?\d{3}[-.\s]?\d{4}$|^\+?\d[\d\s().-]{7,}\d$/.test(s.trim()),
+		)
+	) {
 		// Phone heuristic — at least one sample looks phone-shaped.
 		if (/(phone|tel|mobile|cell)/i.test(lname)) return "phone";
 	}
@@ -204,7 +209,13 @@ export function detectSemanticHint(
 	if (sampleStrs.some((s) => /^\d{4}-\d{2}-\d{2}/.test(s.trim())))
 		return "iso-date";
 
-	if (sampleStrs.some((s) => /^POINT\s*\(|^POLYGON\s*\(|^MULTIPOINT\s*\(|^MULTIPOLYGON\s*\(|^LINESTRING\s*\(/i.test(s.trim())))
+	if (
+		sampleStrs.some((s) =>
+			/^POINT\s*\(|^POLYGON\s*\(|^MULTIPOINT\s*\(|^MULTIPOLYGON\s*\(|^LINESTRING\s*\(/i.test(
+				s.trim(),
+			),
+		)
+	)
 		return "wkt-geometry";
 
 	if (

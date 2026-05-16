@@ -104,7 +104,10 @@ export interface PlannerOptions {
 	 * The host surfaces the question to the user and resolves with their
 	 * answer text. The loop pauses while awaiting this.
 	 */
-	onAgenticClarify?: (question: string, signal?: AbortSignal) => Promise<string>;
+	onAgenticClarify?: (
+		question: string,
+		signal?: AbortSignal,
+	) => Promise<string>;
 }
 
 export interface PlanRequest {

@@ -21,9 +21,10 @@ const REPO_ROOT = resolve(__dirname, "../..");
 function loadEnv(): Record<string, string> {
 	const out: Record<string, string> = {};
 	try {
-		for (const l of readFileSync(resolve(REPO_ROOT, ".env.local"), "utf8").split(
-			/\r?\n/,
-		)) {
+		for (const l of readFileSync(
+			resolve(REPO_ROOT, ".env.local"),
+			"utf8",
+		).split(/\r?\n/)) {
 			const t = l.trim();
 			if (!t || t.startsWith("#")) continue;
 			const eq = t.indexOf("=");
@@ -46,11 +47,27 @@ interface VisualCase {
 }
 
 const CASES: VisualCase[] = [
-	{ id: "count", question: "How many rows are in this dataset?", expectKind: "summary" },
-	{ id: "stats", question: "Give me summary statistics for the population column.", expectKind: "table" },
-	{ id: "topn-bar", question: "Show a bar chart of population by city.", expectKind: "chart" },
+	{
+		id: "count",
+		question: "How many rows are in this dataset?",
+		expectKind: "summary",
+	},
+	{
+		id: "stats",
+		question: "Give me summary statistics for the population column.",
+		expectKind: "table",
+	},
+	{
+		id: "topn-bar",
+		question: "Show a bar chart of population by city.",
+		expectKind: "chart",
+	},
 	{ id: "map", question: "Map the points.", expectKind: "layer" },
-	{ id: "filter", question: "How many cities have population over 300000?", expectKind: "summary" },
+	{
+		id: "filter",
+		question: "How many cities have population over 300000?",
+		expectKind: "summary",
+	},
 ];
 
 test.describe("UF Navigator visual coverage (full mode, auto-approve)", () => {
@@ -61,7 +78,9 @@ test.describe("UF Navigator visual coverage (full mode, auto-approve)", () => {
 			test.setTimeout(180_000);
 
 			const consoleErrors: string[] = [];
-			page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e.message}`));
+			page.on("pageerror", (e) =>
+				consoleErrors.push(`pageerror: ${e.message}`),
+			);
 
 			await page.goto("/");
 			await page.waitForSelector("geo-chatbot");
@@ -75,7 +94,7 @@ test.describe("UF Navigator visual coverage (full mode, auto-approve)", () => {
 							apiKey: string;
 							model?: string;
 						}) => void;
-						pushData: (f: File) => Promise<unknown> | void;
+						pushData: (f: File) => Promise<unknown> | undefined;
 						ask: (q: string) => Promise<string>;
 						approvePlan: (id?: string) => void;
 						on?: (ev: string, cb: (p: unknown) => void) => () => void;
@@ -101,9 +120,9 @@ test.describe("UF Navigator visual coverage (full mode, auto-approve)", () => {
 					);
 
 					let resolveDataset: () => void = () => {};
-					const datasetLoaded = new Promise<void>(
-						(res) => (resolveDataset = res),
-					);
+					const datasetLoaded = new Promise<void>((res) => {
+						resolveDataset = res;
+					});
 
 					el.on?.("dataset-loaded", () => resolveDataset());
 					el.on?.("plan", (p: unknown) => {
@@ -126,7 +145,9 @@ test.describe("UF Navigator visual coverage (full mode, auto-approve)", () => {
 						if (e.code === "AGENTIC_FALLBACK") return;
 						clearTimeout(tid);
 						rejectResult(
-							new Error(`${e.code ?? "ERROR"}: ${(e.message ?? "").slice(0, 200)}`),
+							new Error(
+								`${e.code ?? "ERROR"}: ${(e.message ?? "").slice(0, 200)}`,
+							),
 						);
 					});
 
