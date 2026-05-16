@@ -393,14 +393,15 @@ export class GcbSettingsDrawer extends LitElement {
           </label>
 
           ${(() => {
-						// Agentic mode is OpenAI-compat only (Groq + OpenAI). Anthropic
-						// and Gemini use different multi-turn protocols that aren't
-						// implemented yet — gating the toggle here prevents the silent
-						// "AGENTIC_FALLBACK" warning the host fires for unsupported
+						// Agentic mode is OpenAI-compat only (Groq + OpenAI + UF Navigator).
+						// Anthropic and Gemini use different multi-turn protocols that
+						// aren't implemented yet — gating the toggle here prevents the
+						// silent "AGENTIC_FALLBACK" warning the host fires for unsupported
 						// providers, which users were experiencing as a footgun.
 						const supportsAgentic =
 							this._draft.provider === "groq" ||
-							this._draft.provider === "openai";
+							this._draft.provider === "openai" ||
+							this._draft.provider === "uf-navigator";
 						return html`
           <label class="toggle">
             <input
@@ -497,6 +498,8 @@ export class GcbSettingsDrawer extends LitElement {
 				return "gsk_…";
 			case "gemini":
 				return "AIza…";
+			case "uf-navigator":
+				return "sk-…";
 		}
 	}
 }

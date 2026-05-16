@@ -11,6 +11,7 @@ import { callAnthropic } from "./anthropic.js";
 import { callGemini } from "./gemini.js";
 import { callGroq } from "./groq.js";
 import { callOpenAI } from "./openai.js";
+import { callUFNavigator } from "./uf-navigator.js";
 import {
 	type ForcedToolAdapter,
 	type ForcedToolInput,
@@ -23,6 +24,7 @@ const ADAPTERS: Record<ProviderId, ForcedToolAdapter> = {
 	groq: callGroq,
 	openai: callOpenAI,
 	gemini: callGemini,
+	"uf-navigator": callUFNavigator,
 };
 
 /**
@@ -86,6 +88,35 @@ export const PROVIDER_CATALOGUE: ReadonlyArray<ProviderInfo> = [
 			{ id: "gpt-4o-mini", label: "GPT-4o mini (recommended)" },
 			{ id: "gpt-4o", label: "GPT-4o" },
 			{ id: "gpt-4-turbo", label: "GPT-4 Turbo" },
+		],
+	},
+	{
+		id: "uf-navigator",
+		label: "UF Navigator (Llama)",
+		signupUrl: "https://api.ai.it.ufl.edu/ui",
+		free: true,
+		models: [
+			// gpt-oss reasoning models go first: in 2026-05-15 audit they
+			// outperformed Llama at tool-arg coverage on the same prompts.
+			// vLLM emits a `reasoning_content` field alongside `tool_calls`;
+			// our adapter ignores it and only reads tool_calls, so the
+			// integration is drop-in.
+			{
+				id: "gpt-oss-120b",
+				label: "gpt-oss 120B reasoning (recommended)",
+			},
+			{
+				id: "gpt-oss-20b",
+				label: "gpt-oss 20B reasoning (fast)",
+			},
+			{
+				id: "llama-3.3-70b-instruct",
+				label: "Llama 3.3 70B",
+			},
+			{
+				id: "llama-3.1-70b-instruct",
+				label: "Llama 3.1 70B",
+			},
 		],
 	},
 ];

@@ -15,13 +15,18 @@
  */
 
 import { z } from "zod";
+import { lookupPlace } from "../../data/gazetteer.js";
 import { registerRunner } from "../runtime.js";
 import { materializeView, quoteIdent, resolveTable } from "../sql-helpers.js";
 import type { ExecCtx, RunnerResult } from "../types.js";
 
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 const RATE_LIMIT_MS = 1100;
-const MAX_GEOCODE_ROWS = 100;
+// Raised from 100 → 400: Nominatim's public policy is 1 req/s which we
+// honour (RATE_LIMIT_MS=1100ms). 400 rows ≈ 7 minutes — acceptable for a
+// one-time survey geocode batch. Operator-hosted Nominatim instances have
+// no cap. Public Nominatim usage policy: https://operations.osmfoundation.org/policies/nominatim/
+const MAX_GEOCODE_ROWS = 400;
 
 const GeocodeArgs = z.object({
 	layer: z.unknown(),
@@ -34,6 +39,13 @@ interface GeocodeHit {
 	rid: number;
 	lon: number;
 	lat: number;
+}
+
+interface Viewbox {
+	lonMin: number;
+	latMin: number;
+	lonMax: number;
+	latMax: number;
 }
 
 export async function runGeocodeAddress(
@@ -67,12 +79,41 @@ export async function runGeocodeAddress(
 		);
 	}
 
+	// Resolve a viewbox from region_hint before the per-row loop.
+	// Nominatim rural-coverage improves dramatically when the search is
+	// constrained to the correct city/county via viewbox+bounded=1.
+	// Evidence: "6116 Harvard Ave, Keystone Heights FL" → 0 results;
+	// "6116 Harvard Ave" + viewbox around Keystone Heights → FOUND.
+	let viewbox: Viewbox | undefined;
+	if (region_hint?.trim()) {
+		// R.4-c: try the local mini-gazetteer first to skip a Nominatim hop.
+		const cached = lookupPlace(region_hint.trim());
+		if (cached) {
+			const PAD = 0.3; // ~20 miles — covers any city or county
+			viewbox = {
+				lonMin: cached.lon - PAD,
+				latMin: cached.lat - PAD,
+				lonMax: cached.lon + PAD,
+				latMax: cached.lat + PAD,
+			};
+		} else {
+			ctx.onSubProgress?.("Locating region…");
+			const center = await geocodeOne(region_hint.trim(), country_code, undefined, ctx.signal);
+			if (center) {
+				const PAD = 0.3; // ~20 miles — covers any city or county
+				viewbox = {
+					lonMin: center.lon - PAD,
+					latMin: center.lat - PAD,
+					lonMax: center.lon + PAD,
+					latMax: center.lat + PAD,
+				};
+			}
+		}
+	}
+
 	const hits: GeocodeHit[] = [];
 	let attempts = 0;
 	for (let i = 0; i < rows.length; i++) {
-		// Honor the host's abort signal between rows so a Stop click during a
-		// 100-row pass interrupts within one rate-limit tick (~1.1s) instead
-		// of running to completion (~110s).
 		if (ctx.signal?.aborted) {
 			const err = new Error("geocode aborted");
 			err.name = "AbortError";
@@ -81,25 +122,25 @@ export async function runGeocodeAddress(
 		const row = rows[i];
 		if (!row) continue;
 		const rid = Number(row._gcb_rid);
-		// Strip stray ", , " sequences that appear when intermediate columns
-		// are NULL — Nominatim handles trailing commas fine but middle gaps
-		// confuse the geocoder.
 		let addr = String(row._gcb_addr ?? "")
 			.replace(/,\s*,/g, ",")
 			.replace(/^\s*,\s*|\s*,\s*$/g, "")
 			.trim();
 		if (!addr) continue;
-		if (region_hint?.trim()) {
-			// Append the user-supplied region hint so a one-column street value
-			// like "6116 Harvard Avenue" becomes "6116 Harvard Avenue, Cedar
-			// Key, FL, USA" before going to Nominatim. Without this, single-
-			// column geocoding silently resolves to the wrong city/country.
+		// With a viewbox, send ONLY the street address — the viewbox supplies
+		// the geographic context and appending city/state confuses Nominatim's
+		// rural-address parser. Without a viewbox, append region_hint.
+		if (!viewbox && region_hint?.trim()) {
 			addr = `${addr}, ${region_hint.trim()}`;
 		}
 		attempts++;
-		const hit = await geocodeOne(addr, country_code, ctx.signal);
+		const hit = await geocodeOne(addr, viewbox ? undefined : country_code, viewbox, ctx.signal);
 		if (hit) hits.push({ rid, lon: hit.lon, lat: hit.lat });
-		// Pause between requests except after the last one to respect Nominatim's free-tier policy.
+		if (ctx.onSubProgress && (i % 5 === 0 || i === rows.length - 1)) {
+			ctx.onSubProgress(
+				`Geocoding address ${i + 1} of ${rows.length} (${hits.length} matched so far)…`,
+			);
+		}
 		if (i < rows.length - 1) await sleep(RATE_LIMIT_MS, ctx.signal);
 	}
 
@@ -139,11 +180,25 @@ registerRunner("geocode.address", runGeocodeAddress);
 async function geocodeOne(
 	addr: string,
 	countryCode: string | undefined,
+	viewbox: Viewbox | undefined,
 	signal?: AbortSignal,
 ): Promise<{ lon: number; lat: number } | null> {
 	try {
 		const params = new URLSearchParams({ format: "json", limit: "1", q: addr });
-		if (countryCode) params.set("countrycodes", countryCode.toLowerCase());
+		if (viewbox) {
+			// viewbox=lonMin,latMin,lonMax,latMax + bounded=1 constrains the
+			// search to the target city/county. This is what makes Nominatim
+			// resolve rural US streets that it misses with free-text queries.
+			params.set(
+				"viewbox",
+				`${viewbox.lonMin},${viewbox.latMin},${viewbox.lonMax},${viewbox.latMax}`,
+			);
+			params.set("bounded", "1");
+			// countrycodes is redundant with a tight viewbox and can suppress
+			// results in edge cases (e.g. addresses near a national border)
+		} else if (countryCode) {
+			params.set("countrycodes", countryCode.toLowerCase());
+		}
 		const url = `${NOMINATIM_URL}?${params.toString()}`;
 		const init: RequestInit = { headers: { Accept: "application/json" } };
 		if (signal) init.signal = signal;
@@ -157,11 +212,7 @@ async function geocodeOne(
 		if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 		return { lat, lon };
 	} catch (err) {
-		// Re-throw aborts so the caller halts the loop instead of treating
-		// the cancellation as a per-row "failed to resolve" outcome.
 		if (err instanceof Error && err.name === "AbortError") throw err;
-		// Network errors / CORS / JSON parse failures are non-fatal —
-		// we drop the row and let the caller see partial results.
 		return null;
 	}
 }
@@ -188,3 +239,4 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 		}
 	});
 }
+

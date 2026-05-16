@@ -1,0 +1,201 @@
+id,name,category,address,city,state,zip,population,area_sqkm,built_year
+1,Residential Site 001,residential,4606 University Ave,Gainesville,FL,32604,7364,1.787,1913
+2,Transit Site 002,transit,9774 Archer Rd,Gainesville,FL,32607,1091,0.421,1927
+3,Commercial Site 003,commercial,9963 NW 16th Ave,Gainesville,FL,32601,18440,2.526,1983
+4,Transit Site 004,transit,3711 Hawthorne Rd,Gainesville,FL,32608,19359,3.513,2011
+5,Residential Site 005,residential,7024 NW 13th St,Gainesville,FL,32606,9155,1.986,2022
+6,Industrial Site 006,industrial,1619 Archer Rd,Gainesville,FL,32607,3219,4.519,1944
+7,Transit Site 007,transit,811 NE 8th Ave,Gainesville,FL,32612,15104,6.726,2024
+8,Parks Site 008,parks,9144 Archer Rd,Gainesville,FL,32605,20649,7.751,2010
+9,Industrial Site 009,industrial,3250 SW 20th Ave,Gainesville,FL,32612,2329,0.621,1929
+10,Industrial Site 010,industrial,3914 Archer Rd,Gainesville,FL,32602,12505,3.511,1981
+11,Industrial Site 011,industrial,6165 NW 13th St,Gainesville,FL,32606,6915,8.394,1989
+12,Residential Site 012,residential,2903 SW 20th Ave,Gainesville,FL,32609,23942,3.098,1959
+13,Parks Site 013,parks,9225 NE 8th Ave,Gainesville,FL,32604,22483,4.087,1998
+14,Residential Site 014,residential,625 SW 34th St,Gainesville,FL,32606,13195,3.383,1927
+15,Transit Site 015,transit,3583 Newberry Rd,Gainesville,FL,32611,16408,4.976,2017
+16,Parks Site 016,parks,4439 NW 13th St,Gainesville,FL,32603,8131,9.325,1968
+17,Industrial Site 017,industrial,7119 SW 20th Ave,Gainesville,FL,32610,13137,4.557,1917
+18,Transit Site 018,transit,1589 Williston Rd,Gainesville,FL,32601,3642,1.953,1920
+19,Parks Site 019,parks,1140 SW 20th Ave,Gainesville,FL,32607,12554,7.469,1959
+20,Transit Site 020,transit,9164 NE 8th Ave,Gainesville,FL,32601,22341,9.023,1987
+21,Transit Site 021,transit,5673 NE 8th Ave,Gainesville,FL,32602,9667,5.463,1958
+22,Residential Site 022,residential,8301 NE 8th Ave,Gainesville,FL,32603,16685,11.412,2011
+23,Industrial Site 023,industrial,3358 NW 16th Ave,Gainesville,FL,32603,12302,9.543,1969
+24,Transit Site 024,transit,9913 University Ave,Gainesville,FL,32606,16060,0.292,2018
+25,Industrial Site 025,industrial,4023 NE 8th Ave,Gainesville,FL,32601,7942,10.981,2021
+26,Residential Site 026,residential,8062 Archer Rd,Gainesville,FL,32602,24973,6.682,1916
+27,Commercial Site 027,commercial,9107 Williston Rd,Gainesville,FL,32603,8735,6.62,1977
+28,Parks Site 028,parks,8935 SW 34th St,Gainesville,FL,32612,22655,2.554,1939
+29,Parks Site 029,parks,7277 Newberry Rd,Gainesville,FL,32609,14844,1.557,1928
+30,Residential Site 030,residential,444 Newberry Rd,Gainesville,FL,32610,18200,2.915,1928
+31,Residential Site 031,residential,1064 Archer Rd,Gainesville,FL,32604,2258,11.322,2010
+32,Industrial Site 032,industrial,8523 Archer Rd,Gainesville,FL,32604,9175,8.379,1927
+33,Transit Site 033,transit,9455 NW 13th St,Gainesville,FL,32610,15538,3.075,1960
+34,Parks Site 034,parks,1645 SW 34th St,Gainesville,FL,32602,21643,5.417,1954
+35,Parks Site 035,parks,987 Williston Rd,Gainesville,FL,32611,21462,12.303,1912
+36,Residential Site 036,residential,5659 Hawthorne Rd,Gainesville,FL,32602,8197,2.435,1968
+37,Parks Site 037,parks,7012 NW 13th St,Gainesville,FL,32603,9177,5.81,2011
+38,Residential Site 038,residential,9116 Williston Rd,Gainesville,FL,32602,1707,8.169,1969
+39,Residential Site 039,residential,3972 Archer Rd,Gainesville,FL,32603,13367,6.096,1927
+40,Parks Site 040,parks,2797 University Ave,Gainesville,FL,32607,120,12.317,1933
+41,Parks Site 041,parks,7030 NE 8th Ave,Gainesville,FL,32612,23987,12.443,1971
+42,Parks Site 042,parks,3211 NW 13th St,Gainesville,FL,32605,7183,12.11,1974
+43,Transit Site 043,transit,5238 University Ave,Gainesville,FL,32601,1693,7.323,1964
+44,Transit Site 044,transit,1031 NW 13th St,Gainesville,FL,32609,2675,10.649,1908
+45,Transit Site 045,transit,3953 Archer Rd,Gainesville,FL,32607,3978,11.773,1972
+46,Commercial Site 046,commercial,9840 SW 20th Ave,Gainesville,FL,32601,20345,1.071,1984
+47,Transit Site 047,transit,8665 SW 20th Ave,Gainesville,FL,32606,8594,2.593,1991
+48,Industrial Site 048,industrial,4451 SW 34th St,Gainesville,FL,32607,4338,8.413,1938
+49,Parks Site 049,parks,1288 Newberry Rd,Gainesville,FL,32601,15067,7.783,1972
+50,Residential Site 050,residential,8908 Archer Rd,Gainesville,FL,32604,16626,3.352,2019
+51,Industrial Site 051,industrial,4102 Archer Rd,Gainesville,FL,32606,9388,2.014,2006
+52,Transit Site 052,transit,8766 NE 8th Ave,Gainesville,FL,32601,21934,10.223,1938
+53,Residential Site 053,residential,4433 NW 13th St,Gainesville,FL,32602,3557,9.293,1919
+54,Industrial Site 054,industrial,3550 NE 8th Ave,Gainesville,FL,32612,11285,2.585,1981
+55,Industrial Site 055,industrial,8104 NW 16th Ave,Gainesville,FL,32605,1714,1.199,1954
+56,Industrial Site 056,industrial,158 University Ave,Gainesville,FL,32606,4336,7.982,1933
+57,Commercial Site 057,commercial,9138 Williston Rd,Gainesville,FL,32612,14064,7.033,1914
+58,Residential Site 058,residential,9038 NW 13th St,Gainesville,FL,32601,12148,7.302,1918
+59,Parks Site 059,parks,785 NW 13th St,Gainesville,FL,32605,11998,11.242,2001
+60,Residential Site 060,residential,3541 Newberry Rd,Gainesville,FL,32611,8226,8.353,1945
+61,Transit Site 061,transit,2632 Hawthorne Rd,Gainesville,FL,32604,5374,12.204,2003
+62,Commercial Site 062,commercial,506 Hawthorne Rd,Gainesville,FL,32603,24185,11.56,2000
+63,Parks Site 063,parks,4471 SW 34th St,Gainesville,FL,32603,23029,1.396,2011
+64,Residential Site 064,residential,3744 Williston Rd,Gainesville,FL,32604,15133,4.403,2005
+65,Commercial Site 065,commercial,487 SW 34th St,Gainesville,FL,32611,6378,5.011,1935
+66,Residential Site 066,residential,5853 NE 8th Ave,Gainesville,FL,32611,16742,5.026,2007
+67,Transit Site 067,transit,552 Newberry Rd,Gainesville,FL,32602,8609,2.273,2023
+68,Industrial Site 068,industrial,1876 University Ave,Gainesville,FL,32610,14289,4.354,2000
+69,Industrial Site 069,industrial,8479 Hawthorne Rd,Gainesville,FL,32602,12672,11.249,1924
+70,Industrial Site 070,industrial,7244 University Ave,Gainesville,FL,32601,17086,11.573,1968
+71,Commercial Site 071,commercial,7166 Newberry Rd,Gainesville,FL,32602,21815,11.514,1979
+72,Industrial Site 072,industrial,5020 Archer Rd,Gainesville,FL,32609,10184,8.353,1941
+73,Parks Site 073,parks,9183 NE 8th Ave,Gainesville,FL,32603,6336,5.285,2020
+74,Parks Site 074,parks,9424 NW 13th St,Gainesville,FL,32605,13356,6.872,1900
+75,Industrial Site 075,industrial,3543 NE 8th Ave,Gainesville,FL,32607,19054,7.603,1941
+76,Parks Site 076,parks,7344 Williston Rd,Gainesville,FL,32611,7052,6.414,2001
+77,Commercial Site 077,commercial,4749 Archer Rd,Gainesville,FL,32609,21803,7.93,1942
+78,Residential Site 078,residential,5185 SW 34th St,Gainesville,FL,32604,6575,1.885,1905
+79,Commercial Site 079,commercial,1293 Williston Rd,Gainesville,FL,32608,13630,11.082,1973
+80,Commercial Site 080,commercial,8199 Hawthorne Rd,Gainesville,FL,32607,8044,1.887,1988
+81,Residential Site 081,residential,7065 Archer Rd,Gainesville,FL,32604,5813,10.061,1989
+82,Transit Site 082,transit,922 Williston Rd,Gainesville,FL,32609,8215,11.473,1915
+83,Parks Site 083,parks,7712 NW 13th St,Gainesville,FL,32611,17454,12.349,1976
+84,Industrial Site 084,industrial,8370 Williston Rd,Gainesville,FL,32607,18002,5.602,1920
+85,Parks Site 085,parks,4346 Williston Rd,Gainesville,FL,32604,20944,3.503,1999
+86,Transit Site 086,transit,4019 Williston Rd,Gainesville,FL,32605,14463,1.015,1936
+87,Commercial Site 087,commercial,5602 NE 8th Ave,Gainesville,FL,32606,17749,1.053,1919
+88,Commercial Site 088,commercial,2603 Hawthorne Rd,Gainesville,FL,32612,7060,0.85,1952
+89,Industrial Site 089,industrial,7733 NW 16th Ave,Gainesville,FL,32607,2090,2.625,1953
+90,Parks Site 090,parks,420 SW 20th Ave,Gainesville,FL,32610,12514,5.988,2020
+91,Industrial Site 091,industrial,6489 NE 8th Ave,Gainesville,FL,32607,17686,9.357,1969
+92,Transit Site 092,transit,8099 SW 34th St,Gainesville,FL,32604,8993,5.476,1903
+93,Parks Site 093,parks,6724 Newberry Rd,Gainesville,FL,32612,5458,10.514,2017
+94,Commercial Site 094,commercial,8851 SW 20th Ave,Gainesville,FL,32601,12961,7.419,1984
+95,Residential Site 095,residential,7122 Archer Rd,Gainesville,FL,32603,15178,2.313,1933
+96,Parks Site 096,parks,3567 Newberry Rd,Gainesville,FL,32608,10760,4.252,2012
+97,Parks Site 097,parks,7006 NE 8th Ave,Gainesville,FL,32605,2733,5.905,1995
+98,Transit Site 098,transit,5833 University Ave,Gainesville,FL,32604,21353,0.904,2022
+99,Residential Site 099,residential,4151 University Ave,Gainesville,FL,32604,717,7.786,1930
+100,Commercial Site 100,commercial,1974 Williston Rd,Gainesville,FL,32610,7192,5.84,1932
+101,Industrial Site 101,industrial,1976 NW 13th St,Gainesville,FL,32603,10242,1.396,1903
+102,Industrial Site 102,industrial,6249 SW 20th Ave,Gainesville,FL,32607,23479,2.519,1975
+103,Commercial Site 103,commercial,5041 Archer Rd,Gainesville,FL,32611,19724,10.079,2001
+104,Transit Site 104,transit,5788 University Ave,Gainesville,FL,32609,14087,8.286,1908
+105,Transit Site 105,transit,307 Newberry Rd,Gainesville,FL,32607,16112,1.364,2022
+106,Industrial Site 106,industrial,2606 Williston Rd,Gainesville,FL,32607,5821,9.186,2023
+107,Industrial Site 107,industrial,8917 SW 20th Ave,Gainesville,FL,32608,15282,5.473,1993
+108,Transit Site 108,transit,5380 NE 8th Ave,Gainesville,FL,32604,2889,3.523,1957
+109,Commercial Site 109,commercial,9436 Williston Rd,Gainesville,FL,32610,21945,4.768,1903
+110,Parks Site 110,parks,3079 Newberry Rd,Gainesville,FL,32608,7000,4.468,1933
+111,Industrial Site 111,industrial,9867 NE 8th Ave,Gainesville,FL,32612,9102,6.97,1966
+112,Commercial Site 112,commercial,4054 Archer Rd,Gainesville,FL,32612,13367,6.133,1997
+113,Commercial Site 113,commercial,8141 Williston Rd,Gainesville,FL,32608,615,1.209,1928
+114,Parks Site 114,parks,5116 SW 34th St,Gainesville,FL,32611,19106,4.644,1970
+115,Transit Site 115,transit,7071 Newberry Rd,Gainesville,FL,32612,18085,4.168,1989
+116,Parks Site 116,parks,5123 NE 8th Ave,Gainesville,FL,32605,7604,1.552,1924
+117,Industrial Site 117,industrial,8879 Archer Rd,Gainesville,FL,32612,6116,2.435,1994
+118,Parks Site 118,parks,9759 NE 8th Ave,Gainesville,FL,32609,19605,3.573,1912
+119,Commercial Site 119,commercial,3827 NE 8th Ave,Gainesville,FL,32606,5929,3.813,1990
+120,Transit Site 120,transit,4594 NW 13th St,Gainesville,FL,32601,1836,6.939,1989
+121,Commercial Site 121,commercial,1780 Williston Rd,Gainesville,FL,32601,18860,3.59,1961
+122,Parks Site 122,parks,3120 Newberry Rd,Gainesville,FL,32601,8323,11.766,1961
+123,Residential Site 123,residential,6665 Archer Rd,Gainesville,FL,32608,2477,7.234,1987
+124,Residential Site 124,residential,2544 NW 13th St,Gainesville,FL,32610,10006,1.111,1931
+125,Residential Site 125,residential,6918 NW 16th Ave,Gainesville,FL,32610,19583,9.895,1928
+126,Transit Site 126,transit,7481 Hawthorne Rd,Gainesville,FL,32608,9793,10.759,1954
+127,Industrial Site 127,industrial,1086 SW 20th Ave,Gainesville,FL,32610,24301,1.285,1997
+128,Commercial Site 128,commercial,4435 SW 34th St,Gainesville,FL,32611,2710,2.005,1922
+129,Transit Site 129,transit,2664 Archer Rd,Gainesville,FL,32601,13436,5.659,1976
+130,Parks Site 130,parks,634 NE 8th Ave,Gainesville,FL,32604,9490,8.852,1989
+131,Parks Site 131,parks,3924 Archer Rd,Gainesville,FL,32605,20531,7.393,2002
+132,Commercial Site 132,commercial,1980 Hawthorne Rd,Gainesville,FL,32609,7416,8.113,2016
+133,Industrial Site 133,industrial,1269 NW 13th St,Gainesville,FL,32601,5486,9.918,1976
+134,Transit Site 134,transit,7295 NE 8th Ave,Gainesville,FL,32602,15408,8.624,1989
+135,Parks Site 135,parks,8299 NE 8th Ave,Gainesville,FL,32609,16230,5.5,1976
+136,Residential Site 136,residential,5380 Hawthorne Rd,Gainesville,FL,32610,8254,0.372,1929
+137,Transit Site 137,transit,439 SW 20th Ave,Gainesville,FL,32611,8881,7.224,1997
+138,Commercial Site 138,commercial,8602 Williston Rd,Gainesville,FL,32611,14540,11.455,1923
+139,Transit Site 139,transit,8156 Hawthorne Rd,Gainesville,FL,32602,15451,4.382,1942
+140,Industrial Site 140,industrial,2734 Archer Rd,Gainesville,FL,32606,13538,8.686,1936
+141,Parks Site 141,parks,701 NW 16th Ave,Gainesville,FL,32608,2935,3.966,1941
+142,Residential Site 142,residential,8531 Hawthorne Rd,Gainesville,FL,32601,21600,10.874,1959
+143,Parks Site 143,parks,3173 University Ave,Gainesville,FL,32609,11904,7.802,1963
+144,Parks Site 144,parks,3435 University Ave,Gainesville,FL,32605,18046,1.681,1936
+145,Parks Site 145,parks,2089 Williston Rd,Gainesville,FL,32601,20694,7.63,1930
+146,Commercial Site 146,commercial,9124 NE 8th Ave,Gainesville,FL,32601,18146,5.129,1928
+147,Residential Site 147,residential,2024 Williston Rd,Gainesville,FL,32611,5095,6.255,1991
+148,Industrial Site 148,industrial,4579 NW 16th Ave,Gainesville,FL,32607,15860,12.254,1931
+149,Parks Site 149,parks,2469 NW 16th Ave,Gainesville,FL,32607,6295,11.527,1965
+150,Commercial Site 150,commercial,4626 Archer Rd,Gainesville,FL,32607,11187,11.681,1964
+151,Industrial Site 151,industrial,4734 University Ave,Gainesville,FL,32612,9833,10.477,1974
+152,Parks Site 152,parks,7416 NW 13th St,Gainesville,FL,32609,15920,4.347,1970
+153,Transit Site 153,transit,7560 Hawthorne Rd,Gainesville,FL,32606,6231,12.261,1930
+154,Transit Site 154,transit,3926 Hawthorne Rd,Gainesville,FL,32607,1480,4.011,1960
+155,Parks Site 155,parks,2592 Hawthorne Rd,Gainesville,FL,32608,1263,1.622,2023
+156,Transit Site 156,transit,1744 Newberry Rd,Gainesville,FL,32608,3317,6.598,1958
+157,Residential Site 157,residential,6817 NW 13th St,Gainesville,FL,32611,5108,0.982,2000
+158,Industrial Site 158,industrial,6612 Newberry Rd,Gainesville,FL,32611,2681,10.654,2009
+159,Transit Site 159,transit,5288 Hawthorne Rd,Gainesville,FL,32611,23600,11.099,1962
+160,Transit Site 160,transit,1221 University Ave,Gainesville,FL,32604,20731,8.571,1936
+161,Commercial Site 161,commercial,7210 Archer Rd,Gainesville,FL,32602,24965,7.94,2011
+162,Residential Site 162,residential,2825 Williston Rd,Gainesville,FL,32612,9862,11.298,1905
+163,Industrial Site 163,industrial,4906 University Ave,Gainesville,FL,32606,12332,5.412,1931
+164,Transit Site 164,transit,9372 Hawthorne Rd,Gainesville,FL,32611,5950,2.166,1910
+165,Transit Site 165,transit,4045 Hawthorne Rd,Gainesville,FL,32608,19158,1.832,1959
+166,Industrial Site 166,industrial,4283 Williston Rd,Gainesville,FL,32611,357,11.241,1959
+167,Industrial Site 167,industrial,2688 NW 16th Ave,Gainesville,FL,32602,14524,11.818,1975
+168,Industrial Site 168,industrial,4197 Hawthorne Rd,Gainesville,FL,32608,9949,2.53,1949
+169,Parks Site 169,parks,3986 Archer Rd,Gainesville,FL,32607,18790,4.519,1937
+170,Industrial Site 170,industrial,6584 University Ave,Gainesville,FL,32605,315,7.096,1987
+171,Residential Site 171,residential,8238 SW 20th Ave,Gainesville,FL,32605,7590,7.608,1945
+172,Commercial Site 172,commercial,4206 SW 34th St,Gainesville,FL,32611,24808,9.026,1984
+173,Commercial Site 173,commercial,745 Archer Rd,Gainesville,FL,32605,14494,0.465,1946
+174,Commercial Site 174,commercial,4935 Archer Rd,Gainesville,FL,32606,24543,5.223,1925
+175,Commercial Site 175,commercial,6094 NW 16th Ave,Gainesville,FL,32609,16492,11.423,2006
+176,Commercial Site 176,commercial,7994 NE 8th Ave,Gainesville,FL,32605,24513,10.886,2002
+177,Residential Site 177,residential,1333 Williston Rd,Gainesville,FL,32603,24762,12.083,2010
+178,Parks Site 178,parks,6092 NW 16th Ave,Gainesville,FL,32602,12979,0.223,1968
+179,Residential Site 179,residential,6138 Williston Rd,Gainesville,FL,32611,24593,8.421,1974
+180,Parks Site 180,parks,1875 Newberry Rd,Gainesville,FL,32611,7711,5.92,1979
+181,Transit Site 181,transit,3726 Newberry Rd,Gainesville,FL,32611,2121,7.961,1959
+182,Industrial Site 182,industrial,2011 Hawthorne Rd,Gainesville,FL,32603,1535,11.831,1938
+183,Parks Site 183,parks,1692 Archer Rd,Gainesville,FL,32604,17664,1.739,1958
+184,Industrial Site 184,industrial,6966 NW 16th Ave,Gainesville,FL,32610,24372,9.096,2013
+185,Parks Site 185,parks,8117 Archer Rd,Gainesville,FL,32610,13423,11.741,1935
+186,Residential Site 186,residential,3659 Newberry Rd,Gainesville,FL,32608,14621,11.884,2009
+187,Industrial Site 187,industrial,6118 Archer Rd,Gainesville,FL,32609,21179,4.515,1950
+188,Industrial Site 188,industrial,2101 SW 34th St,Gainesville,FL,32608,3053,8.301,1982
+189,Transit Site 189,transit,928 University Ave,Gainesville,FL,32606,8031,12.361,2000
+190,Transit Site 190,transit,1224 SW 34th St,Gainesville,FL,32609,6838,7.35,2004
+191,Commercial Site 191,commercial,2517 Newberry Rd,Gainesville,FL,32610,142,3.502,1918
+192,Commercial Site 192,commercial,4206 NW 16th Ave,Gainesville,FL,32603,3652,8.28,1903
+193,Commercial Site 193,commercial,5969 University Ave,Gainesville,FL,32604,19345,4.081,1922
+194,Industrial Site 194,industrial,2176 University Ave,Gainesville,FL,32612,13844,6.6,1995
+195,Residential Site 195,residential,7444 Williston Rd,Gainesville,FL,32606,16867,7.441,1957
+196,Transit Site 196,transit,810 SW 34th St,Gainesville,FL,32612,21640,6.542,1958
+197,Residential Site 197,residential,7947 University Ave,Gainesville,FL,32607,14018,8.592,1962
+198,Parks Site 198,parks,1423 Archer Rd,Gainesville,FL,32606,19982,1.897,1916
+199,Industrial Site 199,industrial,9690 SW 20th Ave,Gainesville,FL,32609,23385,4.099,1976
+200,Transit Site 200,transit,7533 NE 8th Ave,Gainesville,FL,32609,19888,5.406,2001

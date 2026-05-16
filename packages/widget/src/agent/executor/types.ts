@@ -54,6 +54,12 @@ export interface ExecCtx {
 	 * "Stop" button can interrupt long-running operations promptly.
 	 */
 	signal?: AbortSignal;
+	/**
+	 * Optional callback for runners to report fine-grained progress within
+	 * a single step (e.g. geocode address 47/318). The message is a short
+	 * human-readable string. The host routes it to the status overlay.
+	 */
+	onSubProgress?: (message: string) => void;
 }
 
 /** Headless-equivalent payload for `render.*` runners. */
@@ -157,6 +163,8 @@ export interface StepErrorContext {
 /** Callback bag the host element supplies to {@link Executor.execute}. */
 export interface ExecutorCallbacks {
 	onProgress?: (e: ProgressEvent) => void;
+	/** Sub-step progress from long-running runners (e.g. geocode batch). */
+	onSubProgress?: (message: string) => void;
 	onResult?: (e: ResultEvent) => void;
 	onError?: (e: {
 		planId: string;

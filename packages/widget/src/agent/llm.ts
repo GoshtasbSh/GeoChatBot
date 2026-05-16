@@ -33,6 +33,8 @@ export interface PlannerLLMInput {
 	maxTokens?: number;
 	signal?: AbortSignal;
 	dangerouslyAllowBrowser?: boolean;
+	/** Audit 2026-05-16 R.4-b: passthrough to forced-tool adapter. */
+	reasoningEffort?: "low" | "medium" | "high";
 }
 
 /**
@@ -82,6 +84,9 @@ export async function callPlannerLLM(
 			...(input.signal !== undefined ? { signal: input.signal } : {}),
 			...(input.dangerouslyAllowBrowser !== undefined
 				? { dangerouslyAllowBrowser: input.dangerouslyAllowBrowser }
+				: {}),
+			...(input.reasoningEffort !== undefined
+				? { reasoningEffort: input.reasoningEffort }
 				: {}),
 		});
 	} catch (err) {

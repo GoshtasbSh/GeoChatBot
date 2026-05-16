@@ -109,6 +109,72 @@ export class GcbAskInput extends LitElement {
       cursor: pointer;
     }
     .empty button:hover { background: var(--gcb-accent-soft-bg, #f5f3ff); }
+
+    /* ── Clarification mode ── */
+    .clarify-banner {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .clarify-label {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      background: var(--gcb-accent-soft-bg, #f5f3ff);
+      border: 1.5px solid var(--gcb-accent, #4338ca);
+      border-radius: 10px 10px 0 0;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .clarify-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .clarify-question {
+      color: var(--gcb-fg, #1a1a1a);
+      font-weight: 500;
+    }
+    .clarify-hint {
+      font-size: 11px;
+      color: var(--gcb-muted-fg, #666);
+      margin-top: 2px;
+    }
+    .clarify-row {
+      display: flex;
+      gap: 8px;
+      background: var(--gcb-bg, #fff);
+      border: 1.5px solid var(--gcb-accent, #4338ca);
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      padding: 6px 6px 6px 12px;
+      box-shadow: 0 0 0 3px rgba(67, 56, 202, .12);
+    }
+    .clarify-row input[type='text'] {
+      font: inherit;
+      flex: 1;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--gcb-fg, #1a1a1a);
+      padding: 8px 0;
+      min-width: 0;
+    }
+    .clarify-row input[type='text']::placeholder { color: var(--gcb-muted-fg, #888); }
+    button.answer {
+      font: inherit;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 0;
+      background: var(--gcb-accent, #4338ca);
+      color: #fff;
+      cursor: pointer;
+      transition: filter 120ms ease;
+    }
+    button.answer:hover:not(:disabled) { filter: brightness(1.08); }
+    button.answer:disabled { opacity: .5; cursor: not-allowed; }
   `;
 
 	/**
@@ -127,6 +193,14 @@ export class GcbAskInput extends LitElement {
 	/** Whether a plan is currently in flight. When true, Ask is disabled. */
 	@property({ type: Boolean }) busy = false;
 
+	/**
+	 * When set, the input switches to clarification mode: a highlighted
+	 * banner shows the model's question and the input/button prompt the
+	 * user to answer it. The host clears this once the answer is routed
+	 * back to the agentic loop.
+	 */
+	@property({ attribute: false }) clarifyQuestion: string | null = null;
+
 	@state() private _value = "";
 
 	private _onInput = (e: Event) => {
@@ -142,8 +216,14 @@ export class GcbAskInput extends LitElement {
 
 	private _submit() {
 		const q = this._value.trim();
-		if (!q || this.disabledReason !== null || this.busy) return;
-		this.dispatchEvent(new CustomEvent<string>("gcb:ask", { detail: q }));
+		if (!q) return;
+		// When the model is asking a clarification question, dispatch a
+		// dedicated event so the host can route it directly to the loop
+		// without touching _agentBusy or any other ask() lifecycle state.
+		// This completely separates clarification routing from normal ask routing.
+		const eventName = this.clarifyQuestion ? "gcb:clarify-answer" : "gcb:ask";
+		if (!this.clarifyQuestion && (this.disabledReason !== null || this.busy)) return;
+		this.dispatchEvent(new CustomEvent<string>(eventName, { detail: q }));
 		this._value = "";
 	}
 
@@ -157,6 +237,43 @@ export class GcbAskInput extends LitElement {
 	};
 
 	override render() {
+		// ── Clarification mode ────────────────────────────────────────────────
+		// The agentic loop has called ask_user and is paused. Show the model's
+		// question prominently and transform the input+button into an "Answer"
+		// slot. The user's input is submitted like a normal Ask — the host
+		// intercepts it and routes it to the loop instead of starting a new ask.
+		if (this.clarifyQuestion) {
+			return html`
+        <div class="wrap">
+          <div class="clarify-banner">
+            <div class="clarify-label">
+              <span class="clarify-icon">❓</span>
+              <div>
+                <div class="clarify-question">${this.clarifyQuestion}</div>
+                <div class="clarify-hint">Type your answer below and press Answer to continue.</div>
+              </div>
+            </div>
+            <div class="clarify-row">
+              <input
+                type="text"
+                placeholder="Type your answer…"
+                .value=${this._value}
+                @input=${this._onInput}
+                @keydown=${this._onKeydown}
+                aria-label="Answer the model's question"
+              />
+              <button
+                type="button"
+                class="answer"
+                ?disabled=${!this._value.trim()}
+                @click=${() => this._submit()}
+              >Answer</button>
+            </div>
+          </div>
+        </div>
+      `;
+		}
+
 		if (this.disabledReason === "no-data") {
 			return html`
         <div class="wrap">

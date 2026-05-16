@@ -1,0 +1,145 @@
+{
+  "A": {
+    "fixture": "clean_urban_points.csv",
+    "displayName": "Dataset A — clean_urban_points (200 rows, urban)",
+    "ground_truth": {
+      "row_count": 200,
+      "residential_count": 35,
+      "mean_population": 12386.8,
+      "category_counts_top": ["parks", "industrial", "transit", "residential", "commercial"]
+    },
+    "questions": [
+      { "q": "How many rows are in this dataset?", "family": "count", "expect": { "kind": "value_close", "expected": 200, "tolerance": 0 } },
+      { "q": "What columns are available in this dataset?", "family": "columns", "expect": { "kind": "render_any" } },
+      { "q": "Show me the first 10 rows", "family": "preview", "expect": { "kind": "rows_at_least", "expected": 10 } },
+      { "q": "Count rows by category", "family": "groupby-count", "expect": { "kind": "rows_close", "expected": 5, "tolerance": 1 } },
+      { "q": "How many residential sites are in this dataset?", "family": "filter-count", "expect": { "kind": "value_close", "expected": 35, "tolerance": 0 } },
+      { "q": "What is the average population across all sites?", "family": "aggregate-mean", "expect": { "kind": "value_close", "expected": 12386.8, "tolerance": 5 } },
+      { "q": "Show me the maximum and minimum population", "family": "aggregate-minmax", "expect": { "kind": "render_any" } },
+      { "q": "Median population", "family": "aggregate-median", "expect": { "kind": "render_any" } },
+      { "q": "Top 5 sites by population, descending", "family": "top-n", "expect": { "kind": "rows_at_least", "expected": 5 } },
+      { "q": "Bottom 5 by area_sqkm", "family": "bottom-n", "expect": { "kind": "rows_at_least", "expected": 5 } },
+      { "q": "Plot a bar chart of count by category", "family": "chart-bar", "expect": { "kind": "rendered_chart" } },
+      { "q": "Show a pie chart of category share", "family": "chart-pie", "expect": { "kind": "rendered_chart" } },
+      { "q": "Sum of population grouped by category, sorted descending", "family": "groupby-sum", "expect": { "kind": "rows_at_least", "expected": 4 } },
+      { "q": "Filter to sites built before 1950 and show them as a table", "family": "filter-date", "expect": { "kind": "render_any" } },
+      { "q": "How many sites are in ZIP 32601?", "family": "filter-equals", "expect": { "kind": "render_any" } },
+      { "q": "Group by category and show the average population per category", "family": "groupby-mean", "expect": { "kind": "rows_at_least", "expected": 4 } },
+      { "q": "Are there any missing values in this dataset?", "family": "data-quality", "expect": { "kind": "render_any" } },
+      { "q": "Tell me something interesting about this data", "family": "exploratory", "expect": { "kind": "render_any" } },
+      { "q": "Show the addresses on a map", "family": "geocode-clarification", "expect": { "kind": "render_any" } },
+      { "q": "Plot the number of sites built per decade", "family": "time-series", "expect": { "kind": "render_any" } }
+    ]
+  },
+  "B": {
+    "fixture": "mixed_geometry_polygons.csv",
+    "displayName": "Dataset B — mixed_geometry_polygons (50 FL counties)",
+    "ground_truth": {
+      "row_count": 50,
+      "high_crime_count": 50
+    },
+    "questions": [
+      { "q": "How many counties are in this dataset?", "family": "count", "expect": { "kind": "value_close", "expected": 50, "tolerance": 0 } },
+      { "q": "What columns do I have?", "family": "columns", "expect": { "kind": "render_any" } },
+      { "q": "Show all the polygons on a map", "family": "map-polygons", "expect": { "kind": "rendered_layer" } },
+      { "q": "Choropleth of pop_2020", "family": "choropleth", "expect": { "kind": "rendered_layer" } },
+      { "q": "Color polygons by unemployment_pct", "family": "map-color-by", "expect": { "kind": "rendered_layer" } },
+      { "q": "Show me the polygon for Alachua county", "family": "filter-map", "expect": { "kind": "render_any" } },
+      { "q": "Counties where crime_rate_per_1k is greater than 5", "family": "filter-numeric", "expect": { "kind": "render_any" } },
+      { "q": "Top 5 counties by pop_2020", "family": "top-n", "expect": { "kind": "rows_at_least", "expected": 5 } },
+      { "q": "What is the average median income across counties?", "family": "aggregate-mean", "expect": { "kind": "render_any" } },
+      { "q": "Total population across all counties", "family": "aggregate-sum", "expect": { "kind": "render_any" } },
+      { "q": "Histogram of crime_rate_per_1k", "family": "chart-hist", "expect": { "kind": "rendered_chart" } },
+      { "q": "Bar chart of top 10 counties by population", "family": "chart-bar", "expect": { "kind": "rendered_chart" } }
+    ]
+  },
+  "C": {
+    "fixture": "latlon_with_dates.csv",
+    "displayName": "Dataset C — latlon_with_dates (500 US events)",
+    "ground_truth": {
+      "row_count": 500,
+      "max_severity": 5,
+      "severity_4_or_5_count": 199,
+      "null_severity_count": 30
+    },
+    "questions": [
+      { "q": "How many events are in this dataset?", "family": "count", "expect": { "kind": "value_close", "expected": 500, "tolerance": 0 } },
+      { "q": "Show all the events on a map", "family": "map-points", "expect": { "kind": "rendered_layer" } },
+      { "q": "Count events by event_type", "family": "groupby-count", "expect": { "kind": "rows_at_least", "expected": 8 } },
+      { "q": "What is the maximum severity?", "family": "aggregate-max", "expect": { "kind": "value_close", "expected": 5, "tolerance": 0 } },
+      { "q": "How many events have severity 4 or 5?", "family": "filter-count", "expect": { "kind": "value_close", "expected": 199, "tolerance": 0 } },
+      { "q": "How many events have no severity recorded?", "family": "filter-null", "expect": { "kind": "value_close", "expected": 30, "tolerance": 0 } },
+      { "q": "Color the points by event_type", "family": "map-color-cat", "expect": { "kind": "rendered_layer" } },
+      { "q": "Size the points by severity", "family": "map-size", "expect": { "kind": "rendered_layer" } },
+      { "q": "Show only severity 4 or 5 events on a map", "family": "filter-map", "expect": { "kind": "rendered_layer" } },
+      { "q": "Top 5 most common event types", "family": "top-n", "expect": { "kind": "rows_at_least", "expected": 5 } },
+      { "q": "Plot a bar chart of count by event_type", "family": "chart-bar", "expect": { "kind": "rendered_chart" } },
+      { "q": "How many events happened in 2024?", "family": "filter-time", "expect": { "kind": "render_any" } }
+    ]
+  },
+  "F": {
+    "fixture": "huge_performance.csv",
+    "displayName": "Dataset F — huge_performance (100 000 rows)",
+    "ground_truth": {
+      "row_count": 100000,
+      "category_count": 20,
+      "mean_value_a_approx": 499.02
+    },
+    "questions": [
+      { "q": "How many rows are in this dataset?", "family": "count", "expect": { "kind": "value_close", "expected": 100000, "tolerance": 0 } },
+      { "q": "Average of value_a", "family": "aggregate-mean", "expect": { "kind": "value_close", "expected": 499.02, "tolerance": 5 } },
+      { "q": "Maximum value_a", "family": "aggregate-max", "expect": { "kind": "render_any" } },
+      { "q": "How many distinct categories?", "family": "count-distinct", "expect": { "kind": "value_close", "expected": 20, "tolerance": 0 } },
+      { "q": "Top 5 categories by count", "family": "top-n", "expect": { "kind": "rows_at_least", "expected": 5 } },
+      { "q": "Show all points on a map", "family": "map-large", "expect": { "kind": "rendered_layer" } },
+      { "q": "Histogram of value_a", "family": "chart-hist", "expect": { "kind": "rendered_chart" } },
+      { "q": "Average value_b grouped by category", "family": "groupby-mean", "expect": { "kind": "rows_at_least", "expected": 10 } }
+    ]
+  },
+  "G": {
+    "fixture": "international_unicode.csv",
+    "displayName": "Dataset G — international_unicode (150 rows)",
+    "ground_truth": {
+      "row_count": 150,
+      "distinct_countries": 15
+    },
+    "questions": [
+      { "q": "How many rows?", "family": "count", "expect": { "kind": "value_close", "expected": 150, "tolerance": 0 } },
+      { "q": "How many distinct countries (pais)?", "family": "count-distinct", "expect": { "kind": "value_close", "expected": 15, "tolerance": 0 } },
+      { "q": "Show all points on a world map", "family": "map-world", "expect": { "kind": "rendered_layer" } },
+      { "q": "Count by country (pais)", "family": "groupby-count", "expect": { "kind": "rows_at_least", "expected": 10 } },
+      { "q": "Top 5 countries by count", "family": "top-n", "expect": { "kind": "rows_at_least", "expected": 5 } }
+    ]
+  },
+  "H": {
+    "fixture": "timestamps_and_geom.csv",
+    "displayName": "Dataset H — timestamps_and_geom (300, ISO+WKT)",
+    "ground_truth": {
+      "row_count": 300
+    },
+    "questions": [
+      { "q": "How many rows?", "family": "count", "expect": { "kind": "value_close", "expected": 300, "tolerance": 0 } },
+      { "q": "Count rows by category", "family": "groupby-count", "expect": { "kind": "rows_at_least", "expected": 4 } },
+      { "q": "Average metric", "family": "aggregate-mean", "expect": { "kind": "render_any" } },
+      { "q": "Show points on a map", "family": "map-points", "expect": { "kind": "rendered_layer" } },
+      { "q": "Filter rows where metric > 50 and show the count", "family": "filter-count", "expect": { "kind": "render_any" } },
+      { "q": "Top 10 rows by metric", "family": "top-n", "expect": { "kind": "rows_at_least", "expected": 10 } },
+      { "q": "Plot metric over obs_ts as a line chart", "family": "time-series", "expect": { "kind": "rendered_chart" } }
+    ]
+  },
+  "D": {
+    "fixture": "messy_real_world.csv",
+    "displayName": "Dataset D — messy_real_world (400, no header)",
+    "ground_truth": {
+      "row_count": 400
+    },
+    "questions": [
+      { "q": "How many rows in this dataset?", "family": "count", "expect": { "kind": "value_close", "expected": 400, "tolerance": 0 } },
+      { "q": "What's in this data?", "family": "data-quality", "expect": { "kind": "render_any" } },
+      { "q": "Count rows by column4 (survey status)", "family": "groupby-count", "expect": { "kind": "rows_at_least", "expected": 4 } },
+      { "q": "Show me the first 10 rows", "family": "preview", "expect": { "kind": "render_any" } },
+      { "q": "Are there missing values?", "family": "data-quality", "expect": { "kind": "render_any" } },
+      { "q": "Show me distinct values in column4", "family": "distinct", "expect": { "kind": "render_any" } }
+    ]
+  }
+}

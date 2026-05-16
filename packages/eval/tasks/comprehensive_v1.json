@@ -1,0 +1,1235 @@
+[
+  {
+    "id": "count_basic_imperative",
+    "question": "Count the rows in nyc311.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 50,
+      "tolerance": 5
+    },
+    "tags": [
+      "aggregate",
+      "basic",
+      "phrasing-imperative"
+    ]
+  },
+  {
+    "id": "count_basic_question",
+    "question": "How many requests are there in total?",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 50,
+      "tolerance": 5
+    },
+    "tags": [
+      "aggregate",
+      "basic",
+      "phrasing-question"
+    ]
+  },
+  {
+    "id": "count_basic_terse",
+    "question": "total?",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 50,
+      "tolerance": 5
+    },
+    "tags": [
+      "aggregate",
+      "basic",
+      "phrasing-terse"
+    ]
+  },
+  {
+    "id": "filter_count_brooklyn",
+    "question": "How many requests are in Brooklyn?",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "joins.point_in_polygon"
+        },
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "joins.point_in_polygon"
+        },
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 15,
+      "tolerance": 10
+    },
+    "tags": [
+      "filter",
+      "aggregate"
+    ]
+  },
+  {
+    "id": "filter_count_complaint_type",
+    "question": "How many rows have complaint_type 'Noise'?",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 5,
+      "tolerance": 10
+    },
+    "tags": [
+      "filter",
+      "aggregate"
+    ]
+  },
+  {
+    "id": "groupby_aggregate",
+    "question": "Count requests grouped by complaint type.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain": [
+        "complaint",
+        "count"
+      ]
+    },
+    "tags": [
+      "aggregate",
+      "groupby"
+    ]
+  },
+  {
+    "id": "topn_borough",
+    "question": "Which borough received the most 311 requests?",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain": [
+        "brooklyn"
+      ]
+    },
+    "tags": [
+      "topn",
+      "aggregate"
+    ]
+  },
+  {
+    "id": "topn_complaint",
+    "question": "What's the most common complaint type?",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "noise",
+        "illegal parking",
+        "heat"
+      ]
+    },
+    "tags": [
+      "topn",
+      "aggregate"
+    ]
+  },
+  {
+    "id": "summary_stats_temporal",
+    "question": "What's the date range of these requests?",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.summary_stats"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "2024",
+        "2023"
+      ]
+    },
+    "tags": [
+      "summary-stats",
+      "temporal"
+    ]
+  },
+  {
+    "id": "render_chart",
+    "question": "Show a bar chart of 311 requests by borough.",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "render.chart"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.chart"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "chart",
+        "borough",
+        "count"
+      ]
+    },
+    "tags": [
+      "render",
+      "chart"
+    ]
+  },
+  {
+    "id": "render_table_raw",
+    "question": "Show me the first 10 raw rows of the nyc311 layer.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "table",
+        "row"
+      ]
+    },
+    "tags": [
+      "render",
+      "table"
+    ]
+  },
+  {
+    "id": "render_map_points",
+    "question": "Map all 311 request locations.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "render.map"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.map"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "geometry",
+      "feature_count": 50,
+      "feature_count_tolerance": 5
+    },
+    "tags": [
+      "render",
+      "map",
+      "spatial"
+    ]
+  },
+  {
+    "id": "spatial_pip",
+    "question": "Which requests fall inside the Brooklyn polygon?",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "joins.point_in_polygon"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "joins.point_in_polygon"
+        },
+        {
+          "tool": "render.map"
+        }
+      ],
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "brooklyn",
+        "inside",
+        "within"
+      ]
+    },
+    "tags": [
+      "spatial",
+      "pip",
+      "join"
+    ]
+  },
+  {
+    "id": "spatial_buffer_count",
+    "question": "How many requests are within 500m of the centroid of Brooklyn?",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "geometry.centroid"
+        },
+        {
+          "tool": "geometry.buffer"
+        },
+        {
+          "tool": "joins.point_in_polygon"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "geometry.buffer"
+        },
+        {
+          "tool": "joins.point_in_polygon"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 5,
+      "tolerance": 15
+    },
+    "tags": [
+      "spatial",
+      "buffer",
+      "multistep"
+    ]
+  },
+  {
+    "id": "spatial_nearest",
+    "question": "For each borough centroid, find the 3 closest 311 requests.",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "geometry.centroid"
+        },
+        {
+          "tool": "joins.nearest_neighbor"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "joins.nearest_neighbor"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "nearest",
+        "distance"
+      ]
+    },
+    "tags": [
+      "spatial",
+      "nearest-neighbor"
+    ]
+  },
+  {
+    "id": "spatial_distance_matrix",
+    "question": "Compute pairwise distances between borough centroids and the first 5 311 requests.",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "geometry.centroid"
+        },
+        {
+          "tool": "stats.distance_matrix"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "stats.distance_matrix"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "distance"
+      ]
+    },
+    "tags": [
+      "spatial",
+      "distance-matrix"
+    ]
+  },
+  {
+    "id": "stats_hex_bin",
+    "question": "Hex-bin the 311 requests at H3 resolution 9 and map them.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "stats.hex_bin"
+        },
+        {
+          "tool": "render.map"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "geometry"
+    },
+    "tags": [
+      "spatial",
+      "h3",
+      "hex"
+    ]
+  },
+  {
+    "id": "stats_density_grid",
+    "question": "Build a 500-meter density grid of 311 request counts.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "stats.density_grid"
+        },
+        {
+          "tool": "render.map"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "geometry"
+    },
+    "tags": [
+      "spatial",
+      "grid",
+      "density"
+    ]
+  },
+  {
+    "id": "stats_morans_i",
+    "question": "Are 311 request counts per borough spatially clustered? Compute Moran's I.",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "stats.morans_i"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.morans_i"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "moran",
+        "i statistic",
+        "p-value",
+        "clustered"
+      ]
+    },
+    "tags": [
+      "spatial",
+      "autocorrelation"
+    ]
+  },
+  {
+    "id": "stats_getis_ord",
+    "question": "Find hot spots and cold spots of 311 requests using Getis-Ord Gi* within 2000 meters.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "stats.getis_ord_gi"
+        },
+        {
+          "tool": "render.map"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "geometry"
+    },
+    "tags": [
+      "spatial",
+      "hotspot"
+    ]
+  },
+  {
+    "id": "geometry_centroid",
+    "question": "Compute the centroid of each borough polygon.",
+    "dataset_refs": [
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "geometry.centroid"
+        },
+        {
+          "tool": "render.map"
+        }
+      ],
+      [
+        {
+          "tool": "geometry.centroid"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "geometry"
+    },
+    "tags": [
+      "geometry",
+      "centroid"
+    ]
+  },
+  {
+    "id": "geometry_convex_hull",
+    "question": "Draw a convex hull around all 311 requests.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "geometry.convex_hull"
+        },
+        {
+          "tool": "render.map"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "geometry"
+    },
+    "tags": [
+      "geometry",
+      "hull"
+    ]
+  },
+  {
+    "id": "geometry_dissolve",
+    "question": "Dissolve the borough polygons into one shape and map it.",
+    "dataset_refs": [
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "geometry.dissolve"
+        },
+        {
+          "tool": "render.map"
+        }
+      ],
+      [
+        {
+          "tool": "geometry.union"
+        },
+        {
+          "tool": "render.map"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "geometry"
+    },
+    "tags": [
+      "geometry",
+      "dissolve"
+    ]
+  },
+  {
+    "id": "geometry_voronoi",
+    "question": "Compute Voronoi polygons for the borough centroids.",
+    "dataset_refs": [
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "geometry.centroid"
+        },
+        {
+          "tool": "geometry.voronoi"
+        },
+        {
+          "tool": "render.map"
+        }
+      ],
+      [
+        {
+          "tool": "geometry.voronoi"
+        },
+        {
+          "tool": "render.map"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "geometry"
+    },
+    "tags": [
+      "geometry",
+      "voronoi"
+    ]
+  },
+  {
+    "id": "geometry_reproject",
+    "question": "Reproject the boroughs layer to EPSG:3857 and show the table.",
+    "dataset_refs": [
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "geometry.reproject"
+        },
+        {
+          "tool": "render.table"
+        }
+      ],
+      [
+        {
+          "tool": "geometry.reproject"
+        },
+        {
+          "tool": "render.map"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "3857",
+        "mercator"
+      ]
+    },
+    "tags": [
+      "geometry",
+      "crs"
+    ]
+  },
+  {
+    "id": "report_quickscan",
+    "question": "Tell me about the nyc311 dataset \u2014 what's in it?",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "report.quickscan"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "report.quickscan"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "complaint",
+        "borough",
+        "rows",
+        "columns"
+      ]
+    },
+    "tags": [
+      "report",
+      "quickscan"
+    ]
+  },
+  {
+    "id": "raw_sql_escape",
+    "question": "Run this SQL: SELECT borough, COUNT(*) AS n FROM nyc311 GROUP BY borough ORDER BY n DESC.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.table"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "brooklyn",
+        "manhattan",
+        "queens"
+      ]
+    },
+    "tags": [
+      "sql"
+    ]
+  },
+  {
+    "id": "underspecified_what_interesting",
+    "question": "What's interesting about this dataset?",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "report.quickscan"
+        }
+      ],
+      [
+        {
+          "tool": "report.quickscan"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "stats.summary_stats"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "text",
+      "must_contain_any": [
+        "complaint",
+        "borough",
+        "request"
+      ]
+    },
+    "tags": [
+      "underspecified",
+      "phrasing-open"
+    ]
+  },
+  {
+    "id": "wrong_column_name",
+    "question": "Sum the 'prices' column in nyc311.",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [],
+    "expected": {
+      "kind": "error_or_text",
+      "must_contain_any": [
+        "no such column",
+        "not found",
+        "unknown",
+        "missing"
+      ]
+    },
+    "tags": [
+      "error-handling",
+      "wrong-column"
+    ]
+  },
+  {
+    "id": "out_of_scope_raster",
+    "question": "Compute NDVI from a Landsat raster of this area.",
+    "dataset_refs": [],
+    "acceptable_plan_shapes": [
+      []
+    ],
+    "expected": {
+      "kind": "error_or_text",
+      "must_contain_any": [
+        "raster",
+        "not supported",
+        "no such tool",
+        "out of scope",
+        "cannot"
+      ]
+    },
+    "tags": [
+      "out-of-scope",
+      "raster"
+    ]
+  },
+  {
+    "id": "out_of_scope_network",
+    "question": "Find the shortest driving path between two boroughs on the road network.",
+    "dataset_refs": [],
+    "acceptable_plan_shapes": [
+      []
+    ],
+    "expected": {
+      "kind": "error_or_text",
+      "must_contain_any": [
+        "network",
+        "routing",
+        "not supported",
+        "no such tool",
+        "out of scope",
+        "cannot"
+      ]
+    },
+    "tags": [
+      "out-of-scope",
+      "network"
+    ]
+  },
+  {
+    "id": "empty_result",
+    "question": "How many requests are in Antarctica?",
+    "dataset_refs": [
+      "nyc311"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "sql"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ],
+      [
+        {
+          "tool": "joins.point_in_polygon"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "numeric_or_text",
+      "value": 0,
+      "tolerance": 0,
+      "must_contain_any": [
+        "0",
+        "no",
+        "none",
+        "empty"
+      ]
+    },
+    "tags": [
+      "empty-result",
+      "edge-case"
+    ]
+  },
+  {
+    "id": "multi_clause_long",
+    "question": "First, find the borough with the most 311 requests. Then buffer that borough's centroid by 1km. Finally, count how many requests fall inside that buffer.",
+    "dataset_refs": [
+      "nyc311",
+      "boroughs"
+    ],
+    "acceptable_plan_shapes": [
+      [
+        {
+          "tool": "stats.aggregate"
+        },
+        {
+          "tool": "geometry.centroid"
+        },
+        {
+          "tool": "geometry.buffer"
+        },
+        {
+          "tool": "joins.point_in_polygon"
+        },
+        {
+          "tool": "render.summary"
+        }
+      ]
+    ],
+    "expected": {
+      "kind": "numeric",
+      "value": 5,
+      "tolerance": 20
+    },
+    "tags": [
+      "multistep",
+      "long-prompt"
+    ]
+  }
+]

@@ -122,6 +122,9 @@ export class Executor {
 				outputs,
 				newView: (prefix) => this.mintView(step, prefix),
 				...(signal ? { signal } : {}),
+				...(callbacks.onSubProgress
+					? { onSubProgress: callbacks.onSubProgress }
+					: {}),
 			};
 
 			try {

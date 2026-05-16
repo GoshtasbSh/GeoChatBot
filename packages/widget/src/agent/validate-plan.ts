@@ -14,6 +14,17 @@ export class PlanValidationError extends Error {
 const VAR_REF = /\$\{(\w+)\}/g;
 
 export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
+	// Layer 0: canonicalize step IDs.
+	//
+	// Some models (UF Navigator's gpt-oss-120b/20b reasoning family,
+	// Llama 3.3 70B at higher temperatures) emit descriptive step IDs like
+	// "step_1", "count_step", or "s_01" instead of the canonical "s1, s2"
+	// form the schema requires. The IDs are step-local — variable refs go
+	// through `output_var`, never step IDs — so we can safely rewrite IDs
+	// to canonical form before schema parsing. No-op if IDs are already
+	// canonical. AUDIT-2026-05-15.
+	input = canonicalizeStepIds(input);
+
 	// Layer 1: shape
 	const parsed = PlanSchema.safeParse(input);
 	if (!parsed.success) {
@@ -67,12 +78,89 @@ export function validatePlan(input: unknown, loadedDatasets: string[]): Plan {
 			throw new PlanValidationError(`unknown tool: ${step.tool}`, step.id);
 		}
 		step.args = sanitizeArgs(step.args);
+		// Audit 2026-05-16: render.chart accepts kind ∈ {bar, line, scatter,
+		// pie, grouped_bar} but llama-3.3-70b-instruct routinely emits
+		// "histogram" as the kind (14× in the Phase 2 sweep). Map to "bar"
+		// so the chart still renders — a histogram-of-counts displayed as
+		// a bar chart is the same visualization.
+		if (step.tool === "render.chart") {
+			const a = step.args as Record<string, unknown>;
+			if (a.kind === "histogram") a.kind = "bar";
+			if (a.kind === "column") a.kind = "bar";
+			if (a.kind === "donut") a.kind = "pie";
+		}
+		// Audit 2026-05-16: stats.aggregate / stats.hex_bin / stats.density_grid
+		// accept agg_fn ∈ {sum, mean, median, count, min, max} — models often
+		// emit "avg" (a synonym), "average", or pass it as `fn`/`op` instead
+		// of `agg_fn`. Canonicalize so the schema validator passes.
+		if (step.tool === "stats.aggregate" || step.tool === "stats.hex_bin" || step.tool === "stats.density_grid") {
+			const a = step.args as Record<string, unknown>;
+			// fn / op → agg_fn
+			if (a.agg_fn === undefined) {
+				if (a.fn !== undefined) { a.agg_fn = a.fn; delete a.fn; }
+				else if (a.op !== undefined) { a.agg_fn = a.op; delete a.op; }
+			}
+			const synonyms: Record<string, string> = { avg: "mean", average: "mean", maximum: "max", minimum: "min", stddev: "mean" };
+			if (typeof a.agg_fn === "string" && synonyms[a.agg_fn.toLowerCase()]) {
+				a.agg_fn = synonyms[a.agg_fn.toLowerCase()];
+			}
+			// table / dataset / source → layer (stats.aggregate field is `layer`)
+			if (a.layer === undefined) {
+				if (typeof a.table === "string") { a.layer = a.table; delete a.table; }
+				else if (typeof a.dataset === "string") { a.layer = a.dataset; delete a.dataset; }
+				else if (typeof a.source === "string") { a.layer = a.source; delete a.source; }
+				else if (typeof a.input === "string") { a.layer = a.input; delete a.input; }
+			}
+			// column / col / metric → value_col
+			if (a.value_col === undefined) {
+				if (typeof a.column === "string") { a.value_col = a.column; delete a.column; }
+				else if (typeof a.col === "string") { a.value_col = a.col; delete a.col; }
+				else if (typeof a.metric === "string") { a.value_col = a.metric; delete a.metric; }
+				else if (typeof a.field === "string") { a.value_col = a.field; delete a.field; }
+			}
+			// groupBy / by / groups → group_by
+			if (a.group_by === undefined) {
+				if (a.groupBy !== undefined) { a.group_by = a.groupBy; delete a.groupBy; }
+				else if (a.by !== undefined) { a.group_by = a.by; delete a.by; }
+				else if (a.groups !== undefined) { a.group_by = a.groups; delete a.groups; }
+			}
+		}
 		const argRes = tool.args.safeParse(step.args);
 		if (!argRes.success) {
 			throw new PlanValidationError(
 				`step ${step.id} (${step.tool}) bad args: ${argRes.error.message}`,
 				step.id,
 			);
+		}
+	}
+
+	// Layer 2.5 (audit 2026-05-16): auto-canonicalize step-id var refs.
+	// Many smaller models (llama-3.3-70b-instruct hit this 47× in the
+	// Phase 2 sweep) emit `${s1}` to mean "step s1's output" without
+	// having declared `output_var: "s1"` on step 1. The pattern is
+	// natural — step IDs already exist — so we promote the step ID to
+	// also serve as the implicit output_var. Same for `${s1_output}`
+	// and `${step1}` aliases.
+	const stepIds = new Set(plan.steps.map((s) => s.id));
+	for (const step of plan.steps) {
+		const refs = collectVarRefs(step.args);
+		for (const r of refs) {
+			// Direct id match (e.g. ${s1} → step.id "s1")
+			if (stepIds.has(r)) {
+				const prior = plan.steps.find((s) => s.id === r);
+				if (prior && prior !== step && prior.output_var === undefined) {
+					prior.output_var = r;
+				}
+				continue;
+			}
+			// "_output" suffix (e.g. ${s1_output} → step.id "s1")
+			const stripped = r.replace(/_output$/, "");
+			if (stripped !== r && stepIds.has(stripped)) {
+				const prior = plan.steps.find((s) => s.id === stripped);
+				if (prior && prior !== step && prior.output_var === undefined) {
+					prior.output_var = r;
+				}
+			}
 		}
 	}
 
@@ -243,4 +331,34 @@ function collectVarRefs(
 		for (const v of Object.values(value)) collectVarRefs(v, out, depth + 1);
 	}
 	return out;
+}
+
+/**
+ * Rewrite non-canonical `steps[].id` values to the canonical "s1, s2, ..."
+ * form. Step IDs are only used to point validation errors at a row in the
+ * UI; variable refs use `output_var`, not `id`. So this is a safe transform.
+ *
+ * If `input` is not a plan-shaped object, this returns it unchanged — the
+ * subsequent PlanSchema.safeParse will produce the right error message.
+ */
+const CANONICAL_STEP_ID = /^s\d+$/;
+function canonicalizeStepIds(input: unknown): unknown {
+	if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+	const obj = input as { steps?: unknown };
+	if (!Array.isArray(obj.steps)) return input;
+	let needsRewrite = false;
+	for (const s of obj.steps) {
+		if (!s || typeof s !== "object") continue;
+		const id = (s as { id?: unknown }).id;
+		if (typeof id !== "string" || !CANONICAL_STEP_ID.test(id)) {
+			needsRewrite = true;
+			break;
+		}
+	}
+	if (!needsRewrite) return input;
+	const steps = obj.steps.map((s, i) => {
+		if (!s || typeof s !== "object") return s;
+		return { ...(s as Record<string, unknown>), id: `s${i + 1}` };
+	});
+	return { ...obj, steps };
 }

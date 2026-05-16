@@ -13,8 +13,13 @@
  * the dispatcher in index.ts picks the right one by `provider`.
  */
 
-/** Recognised provider ids. Only these four implement forced tool calls. */
-export type ProviderId = "anthropic" | "groq" | "openai" | "gemini";
+/** Recognised provider ids. All implement forced tool calls. */
+export type ProviderId =
+	| "anthropic"
+	| "groq"
+	| "openai"
+	| "gemini"
+	| "uf-navigator";
 
 export interface ForcedToolInput {
 	provider: ProviderId;
@@ -41,6 +46,14 @@ export interface ForcedToolInput {
 	temperature?: number;
 	maxTokens?: number;
 	signal?: AbortSignal;
+	/**
+	 * Reasoning effort for models that expose it (gpt-oss-120b/20b via UF
+	 * Navigator's LiteLLM proxy passes this through as `reasoning_effort`
+	 * in the request body). Adapters that don't recognise it silently
+	 * drop it. Default behaviour: omit, which lets the model use its own
+	 * default (`medium` for gpt-oss). Audit 2026-05-16 R.4-b.
+	 */
+	reasoningEffort?: "low" | "medium" | "high";
 	/**
 	 * Acknowledge that calling LLM APIs from the browser exposes the API
 	 * key to scripts on the page. All adapters refuse direct-from-browser

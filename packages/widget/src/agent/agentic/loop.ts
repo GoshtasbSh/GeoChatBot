@@ -143,8 +143,25 @@ export interface AgentLoopOptions {
 					iteration: number;
 					attempt: number;
 					waitMs: number;
+			  }
+			// Fired when the model calls ask_user. The host shows the question
+			// in the UI. The loop is paused until onClarify resolves.
+			| {
+					kind: "clarify-needed";
+					iteration: number;
+					question: string;
 			  },
 	) => void;
+	/**
+	 * Called when the model calls the `ask_user` inspection tool. The host
+	 * should surface the question to the user and resolve with their answer.
+	 * If omitted, the loop returns a fallback string and continues.
+	 *
+	 * The loop PAUSES while awaiting the answer, so the host must resolve
+	 * the promise (do not leave it pending forever — tie it to an abort
+	 * signal if needed).
+	 */
+	onClarify?: (question: string, signal?: AbortSignal) => Promise<string>;
 }
 
 /**
@@ -174,6 +191,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 		dangerouslyAllowBrowser,
 		llmCall = defaultOpenAICompatCall,
 		onStep,
+		onClarify,
 		maxRateLimitRetries = 2,
 		sleepImpl = defaultSleep,
 	} = opts;
@@ -373,6 +391,39 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 				continue;
 			}
 			consecutiveUnknown = 0;
+
+			// ── ask_user: pause the loop and wait for the human's answer ───────
+			if (tc.name === INSPECT_TOOLS.ask_user.id) {
+				const q = (tc.args as { question?: unknown }).question;
+				const questionText =
+					typeof q === "string" && q.trim() ? q.trim() : "Can you clarify?";
+				onStep?.({
+					kind: "clarify-needed",
+					iteration: iter,
+					question: questionText,
+				});
+				let answer: string;
+				if (onClarify) {
+					try {
+						answer = await onClarify(questionText, signal);
+					} catch {
+						// abort or timeout — bail out of the loop entirely
+						const err = new Error("geocode aborted");
+						err.name = "AbortError";
+						throw err;
+					}
+				} else {
+					answer =
+						"No clarification handler configured; proceed with your best guess.";
+				}
+				messages.push({
+					role: "tool",
+					tool_call_id: tc.id,
+					content: `User answered: ${answer}`,
+				});
+				continue;
+			}
+
 			const observation = await runInspection(tc.name, tc.args, ctx);
 			onStep?.({
 				kind: "tool",
@@ -418,7 +469,7 @@ async function defaultOpenAICompatCall(
 		);
 	}
 
-	const body = {
+	const body: Record<string, unknown> = {
 		model: req.model,
 		temperature: 0,
 		max_tokens: req.maxTokens ?? 1024,
@@ -433,6 +484,13 @@ async function defaultOpenAICompatCall(
 		// provider doesn't honor "required".
 		tool_choice: "required",
 	};
+	// R.4-b (audit 2026-05-16): for gpt-oss-* via UF Navigator's LiteLLM,
+	// request high reasoning effort on every inspection turn. Other
+	// providers ignore unknown body fields with HTTP 200.
+	const modelLower = req.model.toLowerCase();
+	if (modelLower.includes("gpt-oss")) {
+		body.reasoning_effort = "high";
+	}
 
 	const init: RequestInit = {
 		method: "POST",

@@ -31,35 +31,60 @@ const SummaryArgs = z.object({
 	text: z.string().min(1).max(MAX_SUMMARY_CHARS),
 });
 
-const PARTIAL_VAR = /\$\{([a-z_][a-z0-9_]*)\}/g;
+// AUDIT-2026-05-15 (UF-Navigator coverage): Llama 3.3 70B writes summaries
+// using JavaScript-style placeholders like ${stats[0].mean} expecting the
+// executor to interpolate them. We extend the original ${name} regex to
+// also capture optional `[index]` and `.field` accessors so the same
+// expansion works for those models. Pure addition — the existing
+// whole-string `${var}` guard in the tool's zod schema still applies.
+// Case-sensitive on purpose: output_var names are constrained to lowercase
+// snake_case by OutputVarRegex elsewhere, and DuckDB column lookups are
+// case-sensitive for the field accessor. The `i` flag would let `${Stats}`
+// or `${stats[0].MEAN}` look up something the runtime can never resolve.
+const PARTIAL_VAR =
+	/\$\{([a-z_][a-z0-9_]*)((?:\[\d+\])?(?:\.[a-z_][a-z0-9_]*)?)\}/g;
 
 export async function runRenderSummary(
 	args: Record<string, unknown>,
 	ctx: ExecCtx,
 ): Promise<RunnerResult> {
 	const { text: rawText } = SummaryArgs.parse(args);
-	// Resolve inline ${var} references in summary text. The main substitute()
-	// pass only handles whole-string ${var} (to block SQL injection), so an
-	// LLM that writes "There are ${count} rows." would produce a literal
-	// placeholder. Here we safely expand partial matches: we look up the output
-	// ref, query the first value from the resulting view, and substitute.
+	// Resolve inline ${var} (and ${var[0].field}) references in summary text.
+	// The main substitute() pass only handles whole-string ${var} (to block
+	// SQL injection), so an LLM that writes "There are ${count} rows." would
+	// produce a literal placeholder. Here we safely expand partial matches:
+	// look up the output ref, query the requested row, and substitute the
+	// named field (or the first field if no accessor is given).
 	let text = rawText;
 	for (const m of [...rawText.matchAll(PARTIAL_VAR)]) {
-		const [placeholder, varName] = m;
-		if (!varName) continue;
+		const [placeholder, varName, accessor] = m;
+		if (!varName || !placeholder) continue;
 		const ref = ctx.outputs.get(varName);
 		if (!ref || (ref.kind !== "table" && ref.kind !== "layer")) continue;
+
+		// Parse the accessor: `[N]` selects row N (default 0), `.field`
+		// selects a column (default = first field). Both optional.
+		let rowIndex = 0;
+		let fieldName: string | undefined;
+		if (accessor) {
+			const idxMatch = accessor.match(/^\[(\d+)\]/);
+			if (idxMatch?.[1]) rowIndex = Number.parseInt(idxMatch[1], 10);
+			const fieldMatch = accessor.match(/\.([a-z_][a-z0-9_]*)$/i);
+			if (fieldMatch?.[1]) fieldName = fieldMatch[1];
+		}
+
 		try {
+			// LIMIT rowIndex+1 + OFFSET rowIndex would be cleaner, but DuckDB
+			// requires LIMIT in some contexts; this is small either way.
 			const at = await ctx.engine.query(
-				`SELECT * FROM ${quoteIdent(ref.ref as string)} LIMIT 1`,
+				`SELECT * FROM ${quoteIdent(ref.ref as string)} LIMIT ${rowIndex + 1}`,
 			);
-			if (at.numRows === 0) continue;
-			const row = at.toArray()[0] as Record<string, unknown>;
-			const firstField = at.schema.fields[0]?.name;
-			if (!firstField) continue;
-			const val = row[firstField];
+			if (at.numRows <= rowIndex) continue;
+			const row = at.toArray()[rowIndex] as Record<string, unknown>;
+			const pickField = fieldName ?? at.schema.fields[0]?.name;
+			if (!pickField) continue;
+			const val = row[pickField];
 			if (val === null || val === undefined) continue;
-			if (!placeholder) continue;
 			text = text.replace(
 				placeholder,
 				String(typeof val === "bigint" ? Number(val) : val),

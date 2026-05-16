@@ -59,8 +59,16 @@ export function renderDatasetsBlock(datasets: DatasetProfile[]): string {
 			// these as opaque data — we still JSON.stringify and cap each value
 			// to keep prompt-injection attempts bounded and the prompt small.
 			const samples = renderColumnSamples(c.samples);
+			// R.4-f (audit 2026-05-16): hybrid semantic detection. Pure-regex
+			// pre-tag of the obvious types (lat/lon, address, ZIP, currency,
+			// phone, ISO date, WKT). Saves the planner an inspect.column_pattern
+			// round-trip on the most common cases. NL2SQL literature (Spider /
+			// BIRD) consistently shows schema-linking is the #1 bottleneck —
+			// even partial semantic hints lift accuracy markedly.
+			const hint = detectSemanticHint(c.name, c.type, c.samples);
+			const hintStr = hint ? ` hint:${hint}` : "";
 			lines.push(
-				`  - ${c.name}: ${c.type}${range}${nulls}${card}${samples}`.trimEnd(),
+				`  - ${c.name}: ${c.type}${range}${nulls}${card}${samples}${hintStr}`.trimEnd(),
 			);
 		}
 		if (d.sample.length) {
@@ -133,6 +141,95 @@ function renderColumnSamples(samples: unknown[] | undefined): string {
 	}
 	if (out.length === 0) return "";
 	return ` examples: [${out.join(", ")}]`;
+}
+
+/**
+ * Audit 2026-05-16 R.4-f. Detect the most common column semantics from
+ * the column name + a handful of sample values. Returns a single
+ * short tag (e.g. `latitude`, `currency`, `iso-date`) that the planner
+ * can use to short-circuit `inspect.column_pattern` round-trips.
+ *
+ * Conservative: only emits a hint when at least one sample matches the
+ * type pattern (or when the name is a strong signal on its own). Never
+ * fires on geometry columns (they're already covered by the dataset
+ * profile's `geometry` block).
+ */
+export function detectSemanticHint(
+	name: string,
+	type: string,
+	samples: unknown[] | undefined,
+): string | undefined {
+	const lname = String(name ?? "").toLowerCase();
+	const ltype = String(type ?? "").toLowerCase();
+	const sampleStrs: string[] = [];
+	if (Array.isArray(samples)) {
+		for (const s of samples.slice(0, 5)) {
+			if (s === null || s === undefined) continue;
+			const str = typeof s === "string" ? s : String(s);
+			if (str.length > 0 && str.length <= 200) sampleStrs.push(str);
+		}
+	}
+
+	// Name-only strong signals.
+	if (/^(lat|latitude|y_coord|y)$/i.test(name)) return "latitude";
+	if (/^(lon|lng|long|longitude|x_coord|x)$/i.test(name)) return "longitude";
+	if (/^(wkt|geom|geometry|the_geom)$/i.test(name)) return "wkt-geometry";
+	if (/(zip|zipcode|postal[_-]?code)/i.test(lname)) return "zip-or-postal";
+	if (/(country)/i.test(lname) && !/code/i.test(lname)) return "country-name";
+	if (/(country[_-]?code|iso[_-]?country)/i.test(lname)) return "country-code";
+	if (/^state$/i.test(name) || /(state[_-]?code|state[_-]?abbr)/i.test(lname))
+		return "state";
+
+	// Sample-based detection.
+	const allNumeric = sampleStrs.length > 0 &&
+		sampleStrs.every((s) => /^-?\d+(\.\d+)?$/.test(s.trim()));
+	if (allNumeric && ltype.includes("double")) {
+		const nums = sampleStrs.map((s) => Number.parseFloat(s));
+		const looksLat = nums.every((n) => Math.abs(n) <= 90);
+		const looksLon = nums.every((n) => Math.abs(n) <= 180);
+		if (looksLat && /(lat|y)/i.test(lname)) return "latitude";
+		if (looksLon && /(lon|lng|x)/i.test(lname)) return "longitude";
+	}
+
+	if (sampleStrs.some((s) => /^\$\s?\d/.test(s) || /^\d+[\d,]*\.\d{2}$/.test(s)))
+		return "currency";
+
+	if (sampleStrs.some((s) =>
+		/^\(\d{3}\)\s?\d{3}[-.\s]?\d{4}$|^\+?\d[\d\s().-]{7,}\d$/.test(s.trim()),
+	)) {
+		// Phone heuristic — at least one sample looks phone-shaped.
+		if (/(phone|tel|mobile|cell)/i.test(lname)) return "phone";
+	}
+
+	if (sampleStrs.some((s) => /^\d{4}-\d{2}-\d{2}/.test(s.trim())))
+		return "iso-date";
+
+	if (sampleStrs.some((s) => /^POINT\s*\(|^POLYGON\s*\(|^MULTIPOINT\s*\(|^MULTIPOLYGON\s*\(|^LINESTRING\s*\(/i.test(s.trim())))
+		return "wkt-geometry";
+
+	if (
+		sampleStrs.some(
+			(s) =>
+				/^\d{1,6}\s+[A-Z]/i.test(s.trim()) &&
+				/(st|street|ave|avenue|rd|road|blvd|boulevard|dr|drive|ln|lane|way|ct|court|pl|place)$/i.test(
+					s.trim().split(/\s+/).slice(-1)[0] ?? "",
+				),
+		)
+	) {
+		return "street-address";
+	}
+
+	// Low-cardinality categorical string — modeled as a string with a
+	// small number of distinct values (cardinality may be undefined here;
+	// the column's own renderer adds it separately).
+	if (ltype.includes("varchar") || ltype.includes("string")) {
+		if (sampleStrs.length >= 2 && sampleStrs.every((s) => s.length <= 40)) {
+			const uniq = new Set(sampleStrs.map((s) => s.toLowerCase())).size;
+			if (uniq <= 3 && sampleStrs.length >= 3) return "low-card-categorical";
+		}
+	}
+
+	return undefined;
 }
 
 function argSignature(t: ToolDef): string {

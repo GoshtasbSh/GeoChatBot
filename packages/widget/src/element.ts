@@ -274,7 +274,9 @@ export type GeoChatBotEvents = {
 				iteration: number;
 				attempt: number;
 				waitMs: number;
-		  };
+		  }
+		// Fired when the model calls ask_user — the loop is paused.
+		| { kind: "clarify-needed"; iteration: number; question: string };
 };
 
 const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
@@ -460,6 +462,9 @@ export class GeoChatBotElement extends LitElement {
       @keyframes gcb-pulse {
         0%, 100% { opacity: 1; transform: scale(1); }
         50% { opacity: 0.45; transform: scale(0.85); }
+      }
+      @keyframes gcb-spin {
+        to { transform: rotate(360deg); }
       }
 
       .err {
@@ -658,6 +663,16 @@ export class GeoChatBotElement extends LitElement {
 	@state() private _uploadOpen = false;
 	/** True while a plan is being produced or executed; disables the Ask button. */
 	@state() private _agentBusy = false;
+	/** Short status message shown in the floating progress bar while _agentBusy. */
+	@state() private _statusLine = "";
+	/**
+	 * Set when the agentic loop calls `ask_user` — holds the question text
+	 * the model is asking AND the resolve function that feeds the answer
+	 * back into the loop. Cleared when the user answers or the loop aborts.
+	 */
+	@state() private _pendingClarification:
+		| { question: string; resolve: (answer: string) => void }
+		| undefined = undefined;
 	/** Mirrors the persisted key for the masked header chip; never the raw bytes. */
 	@state() private _maskedKey: string | null = null;
 
@@ -722,6 +737,7 @@ export class GeoChatBotElement extends LitElement {
 		"groq",
 		"openai",
 		"gemini",
+		"uf-navigator",
 	]);
 
 	/**
@@ -839,6 +855,8 @@ export class GeoChatBotElement extends LitElement {
 				return "Groq";
 			case "gemini":
 				return "Gemini";
+			case "uf-navigator":
+				return "UF Navigator";
 		}
 	}
 
@@ -1013,10 +1031,30 @@ export class GeoChatBotElement extends LitElement {
 		return out;
 	}
 
+	/**
+	 * Dedicated handler for the `gcb:clarify-answer` event fired by
+	 * <gcb-ask-input> when the user answers the model's ask_user question.
+	 * Resolves `_pendingClarification` and updates the status line — that's
+	 * ALL it does. It never touches _agentBusy, never sets up a new ask()
+	 * lifecycle, never runs a finally block. The original _onAskFromInput
+	 * call (still suspended at `await this.ask(originalQuestion)`) stays in
+	 * charge of _agentBusy for the full duration, even across multiple
+	 * clarification rounds.
+	 */
+	private _onClarifyAnswer = (e: Event) => {
+		const answer = (e as CustomEvent<string>).detail;
+		if (!answer || !this._pendingClarification) return;
+		this._statusLine = "Continuing analysis…";
+		const { resolve } = this._pendingClarification;
+		this._pendingClarification = undefined;
+		resolve(answer);
+	};
+
 	private _onAskFromInput = async (e: Event) => {
 		const q = (e as CustomEvent<string>).detail;
 		if (!q || this._agentBusy) return;
 		this._agentBusy = true;
+		this._statusLine = "Thinking…";
 		const gen = this.generation;
 		try {
 			await this.ask(q);
@@ -1042,6 +1080,7 @@ export class GeoChatBotElement extends LitElement {
 			if (exec) await exec.catch(() => undefined);
 		} finally {
 			this._agentBusy = false;
+			this._statusLine = "";
 		}
 	};
 
@@ -1192,6 +1231,40 @@ export class GeoChatBotElement extends LitElement {
         <div slot="main" style="height:100%; overflow:hidden; display:flex; flex-direction:column;"
           @gcb:save-result=${this._onSaveResult}>
           ${this.error ? html`<div class="err">${this.error}</div>` : null}
+          <!-- ── Floating status bar (visible whenever the agent is busy) ── -->
+          ${
+            this._agentBusy && this._statusLine
+              ? html`<div style="
+                  display:flex;
+                  align-items:center;
+                  gap:10px;
+                  padding:10px 16px;
+                  background:var(--gcb-accent-soft-bg,#f5f3ff);
+                  border-bottom:1px solid var(--gcb-accent,#4338ca)33;
+                  font-size:13px;
+                  color:var(--gcb-accent,#4338ca);
+                  font-weight:500;
+                  flex-shrink:0;
+                ">
+                  <!-- pulsing spinner -->
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                    style="animation:gcb-spin 1s linear infinite;flex-shrink:0">
+                    <path d="M21 12a9 9 0 11-6.219-8.56"/>
+                  </svg>
+                  <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                    ${this._statusLine}
+                  </span>
+                  ${
+                    this._statusLine.includes("Geocoding")
+                      ? html`<span style="font-size:11px;opacity:.7;font-weight:400;flex-shrink:0;">
+                          US addresses use Census batch geocoder (fast); other addresses use Nominatim (1 req/s)
+                        </span>`
+                      : null
+                  }
+                </div>`
+              : null
+          }
           <result-canvas style="flex:1; min-height:0;"></result-canvas>
           <!-- Upload popover anchored under the topbar — opens via Add data button -->
           ${
@@ -1214,9 +1287,11 @@ export class GeoChatBotElement extends LitElement {
           <gcb-ask-input
             style="flex:1;"
             .disabledReason=${disabledReason}
-            .examples=${disabledReason === null ? this._exampleQuestions() : []}
-            ?busy=${this._agentBusy}
+            .examples=${disabledReason === null && !this._pendingClarification ? this._exampleQuestions() : []}
+            ?busy=${this._agentBusy && !this._pendingClarification}
+            .clarifyQuestion=${this._pendingClarification?.question ?? null}
             @gcb:ask=${this._onAskFromInput}
+            @gcb:clarify-answer=${this._onClarifyAnswer}
             @gcb:request-settings=${this._openSettings}
           ></gcb-ask-input>
         </div>
@@ -1600,7 +1675,28 @@ export class GeoChatBotElement extends LitElement {
 				onAgenticStep: (e) => {
 					this.dispatch("agentic-step", e as GeoChatBotEvents["agentic-step"]);
 					if (this.mode !== "headless") this._pushAgenticThought(e);
+					// Keep the status line current during the agentic reasoning loop.
+					if (e.kind === "reason") this._statusLine = "Analyzing your data…";
+					else if (e.kind === "tool")
+						this._statusLine = `Inspecting: ${e.toolId}…`;
+					else if (e.kind === "clarify-needed")
+						this._statusLine = "Waiting for your answer…";
+					else if (e.kind === "finalize")
+						this._statusLine = "Plan ready — preparing to run…";
 				},
+				onAgenticClarify: (question, signal) =>
+					new Promise<string>((resolve, reject) => {
+						// Surface the question in the widget UI and store the
+						// resolve so the user's next Ask input feeds back here.
+						this._pendingClarification = { question, resolve };
+						// If the abort signal fires before the user answers,
+						// clean up and reject so the loop tears down cleanly.
+						const onAbort = (): void => {
+							this._pendingClarification = undefined;
+							reject(new DOMException("AbortError", "AbortError"));
+						};
+						signal?.addEventListener("abort", onAbort, { once: true });
+					}),
 			});
 		}
 		// Capture the generation BEFORE awaiting the planner. If `clear()`
@@ -1786,6 +1882,9 @@ export class GeoChatBotElement extends LitElement {
 				| (HTMLElement & { clear?: () => void })
 				| null;
 			canvas?.clear?.();
+			// Re-open the original question turn so the canvas never shows
+			// "Ask a question" blank state while the executor is running.
+			if (this._lastQuestion) this._beginCanvasTurn(this._lastQuestion);
 		}
 
 		// AUDIT-W (2026-05-11) — execution-path decision recorded:
@@ -1826,7 +1925,25 @@ export class GeoChatBotElement extends LitElement {
 					onProgress: (e: ExecProgressEvent) => {
 						this.dispatch("progress", e);
 						if (this.mode !== "headless") this._pushPlanStatus(e);
+						// Update the floating status line with step info.
+						if (e.status === "running") {
+							const total = plan.steps.length;
+							const idx =
+								plan.steps.findIndex((s) => s.id === e.stepId) + 1;
+							const tool = plan.steps.find((s) => s.id === e.stepId)?.tool ?? e.stepId;
+							this._statusLine = `Step ${idx} / ${total} — ${tool}…`;
+						} else if (e.status === "success") {
+							const remaining = plan.steps.filter(
+								(s) =>
+									s.id > e.stepId ||
+									plan.steps.indexOf(s) > plan.steps.findIndex((ss) => ss.id === e.stepId),
+							).length;
+							if (remaining === 0) this._statusLine = "Rendering result…";
+						}
 					},
+				onSubProgress: (message: string) => {
+					this._statusLine = message;
+				},
 					onResult: (e: ExecResultEvent) => {
 						this.dispatch("result", e);
 						if (this.mode !== "headless") this._mountResult(e);
@@ -1896,6 +2013,8 @@ export class GeoChatBotElement extends LitElement {
 				return "https://api.groq.com/openai/v1/chat/completions";
 			case "openai":
 				return "https://api.openai.com/v1/chat/completions";
+			case "uf-navigator":
+				return "https://api.ai.it.ufl.edu/v1/chat/completions";
 			// Anthropic + Gemini have different multi-turn shapes; we don't
 			// run an agentic loop against them in this version.
 			default:
@@ -2095,6 +2214,17 @@ export class GeoChatBotElement extends LitElement {
 					kind: "rate-limit-wait",
 					iteration: e.iteration,
 					text: `Rate limit hit — waiting ${secs}s before retry ${e.attempt} (provider Retry-After respected)`,
+				});
+				return;
+			}
+			case "clarify-needed": {
+				// The model needs information only the user can provide (e.g. what
+				// city are these addresses in?). Surface the question as a special
+				// thought so the user sees it before they type in the input box.
+				canvas.appendThought({
+					kind: "clarify-needed",
+					iteration: e.iteration,
+					text: `❓ ${e.question}`,
 				});
 				return;
 			}
@@ -2315,6 +2445,7 @@ export class GeoChatBotElement extends LitElement {
 		// Phase 4 / 5 / 6 state — must be wiped to avoid cross-session leaks.
 		this._datasets = [];
 		this._pendingPlan = undefined;
+		this._pendingClarification = undefined;
 		this._planner = undefined;
 		this._apiKey = undefined;
 		this._criticOverride = undefined;

@@ -44,7 +44,7 @@ export const INSPECT_TOOLS = {
 			'Use this to confirm data shape — e.g. is the "Address" column actually street addresses, or labels?',
 		args: z.object({
 			dataset: z.string().min(1),
-			n: z.number().int().min(1).max(10).default(5),
+			n: z.number().int().min(1).max(20).default(5),
 		}),
 	},
 	distinct_values: {
@@ -55,7 +55,7 @@ export const INSPECT_TOOLS = {
 		args: z.object({
 			dataset: z.string().min(1),
 			column: z.string().min(1),
-			k: z.number().int().min(1).max(50).default(20),
+			k: z.number().int().min(1).max(100).default(20),
 		}),
 	},
 	column_pattern: {
@@ -75,6 +75,21 @@ export const INSPECT_TOOLS = {
 			"Use SPARINGLY — only when the existing inspect.* tools cannot answer a question. The query is validated as SELECT/WITH-only.",
 		args: z.object({
 			query: z.string().min(1).max(2000),
+		}),
+	},
+	ask_user: {
+		id: "ask_user",
+		description:
+			"Ask the user a clarifying question when a critical piece of context is missing and cannot be inferred from the data alone. " +
+			"Use ONLY when you genuinely cannot proceed — e.g. the dataset has street addresses but no city or state, " +
+			"so geocoding will fail without knowing the region. " +
+			"Do NOT ask for things you can infer from the data. Keep the question short and specific. " +
+			"After the user answers, use that answer in your plan (e.g. as region_hint in geocode.address). " +
+			"You may continue inspecting after the answer if needed to finalize the plan.",
+		args: z.object({
+			question: z.string().min(1).max(280).describe(
+				"The specific question to ask the user. Be concrete: e.g. 'What city and state are these addresses in? (e.g. Keystone Heights, FL, USA)'",
+			),
 		}),
 	},
 	finalize_plan: {

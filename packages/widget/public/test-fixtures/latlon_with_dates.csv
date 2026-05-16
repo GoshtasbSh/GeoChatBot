@@ -1,0 +1,501 @@
+event_id,lat,lon,event_type,event_date,severity,notes
+EV-00001,38.26048,-99.44535,tornado,2024-07-17,5,No injuries
+EV-00002,44.03148,-116.97288,flood,2024-01-21,4,Federal aid requested
+EV-00003,41.78502,-95.07726,wildfire,2023-05-03,2,Federal aid requested
+EV-00004,44.77617,-119.68061,blizzard,2023-08-12,1,Power outages reported
+EV-00005,33.34904,-102.60237,landslide,2023-06-08,1,Emergency response dispatched
+EV-00006,43.78452,-117.01922,hailstorm,2024-08-23,2,Roads closed
+EV-00007,39.38371,-72.46027,blizzard,2023-05-07,2,Local emergency declared
+EV-00008,34.58137,-79.98199,hailstorm,2023-05-04,1,Local emergency declared
+EV-00009,25.57018,-76.47211,tornado,2024-10-18,1,Local emergency declared
+EV-00010,41.96361,-108.10622,flood,2023-10-12,2,No injuries
+EV-00011,37.08711,-104.08498,drought,2023-07-28,4,
+EV-00012,48.52599,-110.28828,heatwave,2023-06-26,1,Emergency response dispatched
+EV-00013,42.37967,-105.71392,hailstorm,tomorrow,3,No injuries
+EV-00014,48.52048,-97.24519,tornado,2023-03-03,4,
+EV-00015,25.09516,-113.43075,hailstorm,2023-06-10,5,Federal aid requested
+EV-00016,30.33284,-81.30913,hurricane,2023-05-12,1,Cleanup ongoing
+EV-00017,27.11188,-103.65489,hailstorm,2024-12-15,4,No injuries
+EV-00018,41.30171,-103.69388,heatwave,2024-02-24,4,
+EV-00019,48.87745,-114.53352,hurricane,2024-06-04,,Residents sheltering in place
+EV-00020,35.14789,-83.37555,heatwave,not a date,3,Cleanup ongoing
+EV-00021,48.95376,-109.07579,earthquake,2023-02-22,4,No injuries
+EV-00022,27.56949,-89.76077,landslide,2024-01-05,1,Cleanup ongoing
+EV-00023,33.57136,-92.09981,heatwave,2023-11-15,3,Emergency response dispatched
+EV-00024,27.44238,-103.7169,wildfire,2024-11-09,2,Minor damage reported
+EV-00025,36.4761,-102.55473,heatwave,2023-05-25,3,Evacuations in progress
+EV-00026,31.13942,-71.84422,wildfire,2024-04-04,2,Roads closed
+EV-00027,46.46698,-99.18355,blizzard,2023-11-28,3,Emergency response dispatched
+EV-00028,37.55428,-73.30276,tornado,2023-12-23,2,Federal aid requested
+EV-00029,27.03406,-113.34314,blizzard,2023-04-26,4,
+EV-00030,38.30694,-97.89046,blizzard,2023-10-03,1,Roads closed
+EV-00031,34.26988,-101.25286,landslide,2023-03-11,1,Federal aid requested
+EV-00032,27.20837,-76.91488,flood,2023-03-14,5,Minor damage reported
+EV-00033,36.95255,-107.36078,hurricane,2023-06-23,2,Federal aid requested
+EV-00034,45.14834,-110.46489,blizzard,2024-03-21,3,Emergency response dispatched
+EV-00035,40.02469,-90.67511,landslide,2023-03-22,5,Local emergency declared
+EV-00036,45.06325,-92.31015,heatwave,2023-02-02,5,Evacuations in progress
+EV-00037,34.41467,-87.93851,hailstorm,2024-11-18,3,Residents sheltering in place
+EV-00038,30.12195,-78.17374,hailstorm,2024-05-15,1,No injuries
+EV-00039,34.39054,-98.06235,landslide,2024-10-05,3,Cleanup ongoing
+EV-00040,48.38435,-117.41556,flood,2024-09-18,1,Roads closed
+EV-00041,30.68679,-110.6207,tornado,2023-01-10,4,Power outages reported
+EV-00042,48.06715,-72.66597,wildfire,2024-10-24,3,
+EV-00043,36.45664,-95.14596,drought,2024-05-16,1,
+EV-00044,36.63611,-68.93218,hailstorm,2023-10-12,1,
+EV-00045,38.93797,-76.11472,wildfire,2024-05-18,1,Power outages reported
+EV-00046,46.06139,-82.80453,blizzard,2024-06-02,4,
+EV-00047,28.86638,-92.91307,heatwave,2023-07-17,4,Residents sheltering in place
+EV-00048,41.00997,-118.10896,wildfire,not a date,3,Cleanup ongoing
+EV-00049,28.97645,-95.47089,blizzard,2023-01-02,2,Roads closed
+EV-00050,35.42471,-89.83689,heatwave,2023-06-20,3,
+EV-00051,42.48298,-107.64441,hurricane,2024-09-27,,Local emergency declared
+EV-00052,35.87231,-124.03506,heatwave,2024-11-04,4,Minor damage reported
+EV-00053,35.86476,-68.9099,heatwave,2023-12-02,5,Federal aid requested
+EV-00054,43.36515,-102.94896,hailstorm,2023-01-19,1,
+EV-00055,31.84231,-116.21699,wildfire,2023-07-17,5,Minor damage reported
+EV-00056,36.96708,-92.46857,blizzard,2024-09-13,3,Roads closed
+EV-00057,32.55818,-104.45135,blizzard,2024-10-16,2,Residents sheltering in place
+EV-00058,31.46248,-70.39384,landslide,2024-05-23,2,Roads closed
+EV-00059,35.99509,-92.49172,drought,2024-05-04,5,Power outages reported
+EV-00060,44.45944,-69.63269,landslide,2023-05-02,3,Emergency response dispatched
+EV-00061,47.10024,-86.95362,hurricane,2024-04-07,5,Federal aid requested
+EV-00062,27.43182,-89.29073,earthquake,2023-04-02,5,Evacuations in progress
+EV-00063,26.50495,-105.84297,blizzard,2024-02-22,2,
+EV-00064,48.44777,-115.83942,landslide,2024-08-21,2,Residents sheltering in place
+EV-00065,31.13538,-121.56857,wildfire,2023-11-19,2,Minor damage reported
+EV-00066,34.44712,-76.41892,hurricane,2023-07-26,4,
+EV-00067,45.91858,-124.4625,blizzard,2023-06-10,4,Federal aid requested
+EV-00068,36.34781,-70.56349,hurricane,2024-05-07,,Roads closed
+EV-00069,41.96495,-124.18312,drought,2024-05-19,2,
+EV-00070,44.67475,-95.11372,wildfire,2023-07-22,1,
+EV-00071,35.93635,-70.72213,landslide,2023-05-13,2,Residents sheltering in place
+EV-00072,31.54865,-83.07281,flood,2023-05-21,3,Minor damage reported
+EV-00073,35.63487,-115.73642,tornado,2024-12-04,3,Evacuations in progress
+EV-00074,47.93401,-97.26545,hailstorm,2024-12-20,,Federal aid requested
+EV-00075,42.93376,-78.48429,blizzard,2023-04-22,5,Emergency response dispatched
+EV-00076,35.1687,-84.18156,tornado,2023-10-04,1,Federal aid requested
+EV-00077,38.31754,-116.30856,hailstorm,2024-09-15,1,Local emergency declared
+EV-00078,26.27354,-95.39823,earthquake,2023-08-05,5,Local emergency declared
+EV-00079,37.96993,-85.97947,tornado,2024-12-01,,Minor damage reported
+EV-00080,38.45778,-122.37319,hailstorm,2024-12-03,5,Emergency response dispatched
+EV-00081,24.79337,-101.28572,hailstorm,2023-11-24,4,Power outages reported
+EV-00082,45.74051,-72.4075,landslide,2024-02-22,5,
+EV-00083,26.96583,-67.41489,hurricane,2024-09-05,2,Minor damage reported
+EV-00084,35.5751,-83.29255,wildfire,2024-09-13,2,Cleanup ongoing
+EV-00085,30.89124,-70.6302,tornado,2023-01-26,4,Minor damage reported
+EV-00086,29.15204,-119.14799,drought,2023-08-20,1,Minor damage reported
+EV-00087,34.97407,-93.69393,landslide,2023-03-17,3,Local emergency declared
+EV-00088,38.43687,-80.19278,tornado,2024-04-10,2,Federal aid requested
+EV-00089,34.33901,-109.04107,landslide,2023-11-22,4,Minor damage reported
+EV-00090,47.53966,-86.06213,drought,2024-12-14,4,
+EV-00091,28.59697,-93.80016,blizzard,2023-04-10,2,Minor damage reported
+EV-00092,34.31694,-100.84254,hailstorm,2023-07-08,3,Emergency response dispatched
+EV-00093,45.17833,-119.63709,earthquake,2023-01-09,4,Local emergency declared
+EV-00094,45.84051,-114.08653,tornado,2023-08-07,3,Minor damage reported
+EV-00095,47.42899,-69.1995,tornado,2023-12-25,4,Local emergency declared
+EV-00096,33.9158,-111.1188,hurricane,2024-05-13,4,Cleanup ongoing
+EV-00097,30.53904,-95.25664,tornado,2024-08-04,4,Cleanup ongoing
+EV-00098,33.26762,-100.99205,heatwave,2023-12-05,,Local emergency declared
+EV-00099,42.0003,-107.87885,hailstorm,2023-06-08,4,Evacuations in progress
+EV-00100,37.76606,-70.27906,hailstorm,2024-05-25,4,Roads closed
+EV-00101,28.20584,-78.89142,earthquake,2023-03-24,5,Federal aid requested
+EV-00102,37.09861,-76.33403,flood,2023-11-02,1,Evacuations in progress
+EV-00103,41.67924,-124.4698,hailstorm,2024-06-02,5,Local emergency declared
+EV-00104,40.48211,-124.08756,hurricane,"March 1, 2024",5,Federal aid requested
+EV-00105,24.42856,-77.83688,tornado,2024-03-04,1,Evacuations in progress
+EV-00106,39.49452,-110.35974,drought,2024-05-26,,
+EV-00107,35.47494,-110.89394,flood,2023-05-22,1,Minor damage reported
+EV-00108,34.13196,-103.12417,hailstorm,2024-01-21,1,Emergency response dispatched
+EV-00109,45.13324,-87.59538,tornado,2024-10-28,1,Minor damage reported
+EV-00110,29.28543,-74.64922,blizzard,2024-05-02,1,Residents sheltering in place
+EV-00111,38.08775,-123.0917,drought,2024-01-07,5,
+EV-00112,47.22187,-107.64194,landslide,2023-10-27,4,Federal aid requested
+EV-00113,33.59616,-82.09478,drought,2023-09-24,3,
+EV-00114,29.8036,-120.59094,hailstorm,2024-06-01,3,Roads closed
+EV-00115,29.70346,-92.92381,heatwave,2024-07-06,5,Emergency response dispatched
+EV-00116,31.38449,-110.70591,drought,2023-02-09,2,No injuries
+EV-00117,31.91696,-118.82005,wildfire,2023-05-15,3,Emergency response dispatched
+EV-00118,26.18243,-100.00319,heatwave,2024-02-01,1,Emergency response dispatched
+EV-00119,38.95109,-106.18304,blizzard,2024-01-10,4,Emergency response dispatched
+EV-00120,46.63019,-68.26596,hurricane,2023-11-13,2,
+EV-00121,30.71017,-116.53578,landslide,2023-07-09,4,Emergency response dispatched
+EV-00122,30.29249,-110.69778,hurricane,2024-10-20,2,No injuries
+EV-00123,24.16918,-102.04987,wildfire,2024-06-15,3,Local emergency declared
+EV-00124,31.51088,-90.01375,hurricane,2023-08-11,2,Cleanup ongoing
+EV-00125,42.37186,-88.29166,landslide,2023-06-13,3,Power outages reported
+EV-00126,26.8472,-92.29667,hailstorm,2023-11-25,5,
+EV-00127,47.57437,-112.84039,hurricane,2024-12-03,4,No injuries
+EV-00128,30.05053,-86.79755,heatwave,2024-07-03,4,Roads closed
+EV-00129,34.02013,-95.61647,heatwave,2024-09-02,3,Federal aid requested
+EV-00130,39.95451,-120.07105,heatwave,2023-11-22,3,
+EV-00131,25.10742,-67.95072,flood,2024-06-26,4,
+EV-00132,30.46846,-95.38078,blizzard,2023-08-12,4,Local emergency declared
+EV-00133,27.76862,-67.13324,flood,2024-02-10,4,Emergency response dispatched
+EV-00134,44.78294,-82.65126,hailstorm,2024-05-11,4,Federal aid requested
+EV-00135,32.70751,-119.33786,flood,2024-06-03,3,
+EV-00136,24.56463,-105.10148,blizzard,2023-11-26,2,Evacuations in progress
+EV-00137,28.36133,-115.71213,drought,2024-08-08,4,No injuries
+EV-00138,33.88956,-82.23147,tornado,2023-08-19,4,Evacuations in progress
+EV-00139,30.95862,-84.18193,landslide,2023-10-04,5,
+EV-00140,28.92686,-118.39061,drought,2024-09-21,3,Local emergency declared
+EV-00141,38.67512,-104.82037,flood,2024-10-06,3,Local emergency declared
+EV-00142,40.80275,-106.83523,blizzard,2023-05-04,2,No injuries
+EV-00143,33.71158,-90.4073,blizzard,2024-07-06,4,No injuries
+EV-00144,28.17164,-108.24758,earthquake,2023-06-27,4,Cleanup ongoing
+EV-00145,36.11522,-113.68255,drought,2024-09-17,4,Roads closed
+EV-00146,41.75356,-99.2566,hurricane,2023-02-19,1,Evacuations in progress
+EV-00147,24.81738,-111.95908,blizzard,2024-03-25,4,Roads closed
+EV-00148,36.77015,-91.78258,hailstorm,2024-09-27,3,Minor damage reported
+EV-00149,37.65883,-67.59301,hailstorm,2023-12-27,2,Minor damage reported
+EV-00150,30.57038,-74.99242,tornado,2023-08-28,1,Evacuations in progress
+EV-00151,44.26757,-90.90041,wildfire,2024-12-20,4,
+EV-00152,43.62123,-77.81527,wildfire,2023-10-12,5,Federal aid requested
+EV-00153,32.09134,-84.16488,wildfire,2024-10-09,5,Emergency response dispatched
+EV-00154,48.0693,-79.42992,tornado,2023-05-28,2,No injuries
+EV-00155,27.65609,-106.31839,hurricane,2023-11-13,4,
+EV-00156,39.69532,-103.24,landslide,2023-11-26,1,Residents sheltering in place
+EV-00157,35.36739,-96.69342,flood,2023-12-03,4,Cleanup ongoing
+EV-00158,43.89195,-101.93248,landslide,2024-04-16,3,Residents sheltering in place
+EV-00159,37.68276,-117.42553,hailstorm,2024-06-22,,
+EV-00160,24.40703,-71.09289,tornado,2023-08-15,1,Power outages reported
+EV-00161,48.89235,-72.25438,landslide,2024-03-28,3,
+EV-00162,30.25973,-103.43306,drought,2023-01-13,3,Evacuations in progress
+EV-00163,40.38713,-84.18551,tornado,2023-04-16,1,
+EV-00164,36.98611,-99.18612,wildfire,2023-12-11,1,Power outages reported
+EV-00165,35.94251,-111.72108,landslide,2023-12-26,1,
+EV-00166,46.02472,-117.0465,heatwave,2023-11-22,2,
+EV-00167,24.21187,-87.29883,drought,2024-06-24,2,No injuries
+EV-00168,39.4019,-99.34174,drought,2023-02-04,,Local emergency declared
+EV-00169,32.78839,-100.09545,heatwave,2023-04-09,1,Local emergency declared
+EV-00170,42.02949,-108.47459,tornado,2023-11-10,2,Federal aid requested
+EV-00171,42.69609,-107.85856,hailstorm,2023-04-16,4,
+EV-00172,39.95206,-120.8813,drought,2023-06-11,2,Local emergency declared
+EV-00173,33.13531,-85.38936,hurricane,2024-02-01,5,
+EV-00174,29.39357,-71.4904,drought,2024-09-10,5,Power outages reported
+EV-00175,26.0607,-93.87924,tornado,2023-05-03,,
+EV-00176,48.35783,-115.98813,tornado,2024-07-19,1,Power outages reported
+EV-00177,25.44765,-119.99966,wildfire,2024-02-15,5,Residents sheltering in place
+EV-00178,26.98608,-83.94176,wildfire,2023-03-16,3,Residents sheltering in place
+EV-00179,33.29674,-81.51297,hurricane,2024-12-04,1,Power outages reported
+EV-00180,37.09636,-109.74892,heatwave,2023-08-15,5,Roads closed
+EV-00181,28.17203,-115.87602,earthquake,2023-10-22,1,Federal aid requested
+EV-00182,25.10095,-74.95015,wildfire,2023-01-16,3,No injuries
+EV-00183,47.279,-75.26586,hurricane,2024-04-11,2,Cleanup ongoing
+EV-00184,44.64992,-91.85091,blizzard,2023-09-22,1,
+EV-00185,48.53535,-69.66339,landslide,2023-08-28,3,Residents sheltering in place
+EV-00186,26.15964,-98.50872,tornado,2024-04-10,5,Local emergency declared
+EV-00187,35.59817,-90.68193,wildfire,2024-04-24,5,Evacuations in progress
+EV-00188,24.15945,-101.21791,drought,2023-09-12,1,Minor damage reported
+EV-00189,45.22515,-82.82153,wildfire,2023-04-17,2,Minor damage reported
+EV-00190,41.79131,-119.60445,heatwave,2023-09-14,3,Emergency response dispatched
+EV-00191,26.38943,-117.2562,wildfire,2024-02-19,5,
+EV-00192,29.91929,-109.86253,tornado,2024-07-23,3,Residents sheltering in place
+EV-00193,25.86719,-113.24267,drought,2023-03-04,2,Cleanup ongoing
+EV-00194,27.01842,-104.21933,flood,2023-08-10,4,Emergency response dispatched
+EV-00195,27.94038,-85.20882,tornado,2023-04-27,3,
+EV-00196,48.21,-102.01782,earthquake,2023-11-10,3,No injuries
+EV-00197,47.80242,-75.43312,flood,2023-02-15,1,No injuries
+EV-00198,24.29892,-76.8384,heatwave,2023-03-07,4,Emergency response dispatched
+EV-00199,38.65297,-71.78914,wildfire,2023-01-03,,Roads closed
+EV-00200,26.29947,-75.85802,heatwave,2024-02-02,4,
+EV-00201,34.82891,-82.98301,tornado,2024-01-13,4,
+EV-00202,46.70761,-109.05106,hurricane,2024-03-02,5,Evacuations in progress
+EV-00203,36.47229,-73.79884,tornado,2024-01-03,3,Power outages reported
+EV-00204,40.06631,-78.76252,landslide,2023-11-26,5,Power outages reported
+EV-00205,35.99211,-79.67676,earthquake,2024-10-17,3,No injuries
+EV-00206,31.97194,-112.29683,tornado,2024-01-26,4,Local emergency declared
+EV-00207,48.3495,-119.19221,heatwave,2023-05-18,1,Evacuations in progress
+EV-00208,45.16263,-78.75134,heatwave,2024-03-06,2,Cleanup ongoing
+EV-00209,24.70516,-84.36747,hailstorm,2023-10-07,4,No injuries
+EV-00210,24.94909,-121.74226,heatwave,2023-01-17,4,
+EV-00211,29.03661,-117.43161,wildfire,2023-06-02,1,
+EV-00212,43.35916,-75.90411,hurricane,2024-02-12,4,Cleanup ongoing
+EV-00213,32.06508,-68.40008,blizzard,2024-11-16,3,
+EV-00214,41.33901,-71.12698,hurricane,2024-04-22,5,Power outages reported
+EV-00215,42.34987,-107.918,earthquake,2023-12-01,5,Local emergency declared
+EV-00216,28.55204,-106.54342,landslide,2023-11-19,1,No injuries
+EV-00217,42.63358,-111.19624,hailstorm,2024-03-21,1,Cleanup ongoing
+EV-00218,24.28489,-112.83831,drought,2023-06-09,1,Minor damage reported
+EV-00219,34.9555,-100.66011,flood,2023-07-16,4,Power outages reported
+EV-00220,44.72017,-79.25366,hurricane,2023-03-15,1,Minor damage reported
+EV-00221,24.50195,-109.85459,flood,2023-02-11,2,No injuries
+EV-00222,37.67616,-72.9088,drought,2023-06-20,5,Minor damage reported
+EV-00223,47.56106,-115.43016,drought,2024-03-02,1,Evacuations in progress
+EV-00224,41.42992,-83.12179,drought,2024-11-10,3,Minor damage reported
+EV-00225,38.29425,-76.28844,heatwave,2023-01-12,1,Residents sheltering in place
+EV-00226,36.00821,-119.37476,flood,2023-03-21,3,Roads closed
+EV-00227,31.70884,-101.94689,wildfire,2024-11-09,1,Power outages reported
+EV-00228,33.27551,-102.87618,tornado,2024/13/45,3,Residents sheltering in place
+EV-00229,44.92697,-92.2737,landslide,2023-12-22,1,
+EV-00230,44.2045,-100.98877,blizzard,2023-09-02,4,Power outages reported
+EV-00231,41.1767,-70.69104,blizzard,2023-08-10,1,Minor damage reported
+EV-00232,38.2805,-95.02459,wildfire,2023-02-25,4,
+EV-00233,48.30412,-78.10928,tornado,2023-01-14,1,Power outages reported
+EV-00234,48.93173,-88.62088,blizzard,2024-06-24,1,
+EV-00235,33.93387,-106.08465,heatwave,2024-09-15,1,Local emergency declared
+EV-00236,37.06405,-100.66356,flood,2024-03-05,,Emergency response dispatched
+EV-00237,38.06709,-119.14255,heatwave,2024-09-12,4,Roads closed
+EV-00238,39.22405,-122.82699,earthquake,2024-07-05,5,Power outages reported
+EV-00239,33.89482,-74.02046,earthquake,2023-01-24,4,Cleanup ongoing
+EV-00240,32.44665,-78.96818,tornado,2024-05-27,4,Emergency response dispatched
+EV-00241,27.35964,-68.49527,tornado,2024-06-09,4,Emergency response dispatched
+EV-00242,35.04291,-72.0209,blizzard,2024-12-16,5,Minor damage reported
+EV-00243,43.78726,-121.19422,wildfire,2024-03-25,5,Minor damage reported
+EV-00244,28.81909,-76.69006,landslide,2023-04-02,4,
+EV-00245,41.61585,-109.10931,landslide,2024-09-13,1,Evacuations in progress
+EV-00246,36.21967,-99.126,flood,2024-10-18,3,Residents sheltering in place
+EV-00247,31.12673,-102.57919,tornado,2023-10-25,2,Evacuations in progress
+EV-00248,30.72709,-101.24858,heatwave,2023-11-01,,No injuries
+EV-00249,44.02162,-112.02134,landslide,2024-12-23,3,Power outages reported
+EV-00250,35.47495,-112.34387,earthquake,2024-11-17,5,Emergency response dispatched
+EV-00251,36.78784,-86.58338,flood,2024-09-21,5,Residents sheltering in place
+EV-00252,36.04346,-105.49555,tornado,2024-11-11,3,Residents sheltering in place
+EV-00253,27.74823,-80.60249,hailstorm,2023-10-13,3,Minor damage reported
+EV-00254,48.93673,-109.95328,tornado,2024-07-13,1,Local emergency declared
+EV-00255,32.57918,-83.62458,blizzard,2024-11-12,5,No injuries
+EV-00256,28.5284,-119.33902,landslide,2023-12-09,5,No injuries
+EV-00257,40.36087,-112.1093,landslide,2023-12-28,,Cleanup ongoing
+EV-00258,30.51398,-107.94503,flood,2023-08-02,5,Local emergency declared
+EV-00259,35.80549,-113.71646,wildfire,2023-11-13,5,Minor damage reported
+EV-00260,27.43413,-113.3828,flood,??,2,No injuries
+EV-00261,36.18952,-88.4001,hurricane,2023-06-21,1,
+EV-00262,29.23456,-80.13455,drought,2023-08-26,1,
+EV-00263,39.83719,-101.60318,earthquake,2024-07-01,1,Cleanup ongoing
+EV-00264,46.30016,-81.10283,tornado,2023-01-22,1,Evacuations in progress
+EV-00265,41.33812,-105.02771,flood,2023-02-13,,No injuries
+EV-00266,44.5961,-107.70427,drought,2024-08-24,5,Cleanup ongoing
+EV-00267,46.19935,-67.2626,drought,2024-08-12,2,
+EV-00268,24.47812,-111.98936,flood,2023-04-24,,No injuries
+EV-00269,33.16479,-87.26866,earthquake,2023-07-21,,Local emergency declared
+EV-00270,38.8481,-122.2183,flood,2023-11-27,1,
+EV-00271,34.41939,-102.94528,hurricane,2024-08-23,2,Minor damage reported
+EV-00272,34.52179,-119.14317,blizzard,2024-10-20,2,Emergency response dispatched
+EV-00273,41.96916,-118.1714,blizzard,2023-02-16,2,Residents sheltering in place
+EV-00274,48.32799,-104.24053,hailstorm,2024-05-06,1,Evacuations in progress
+EV-00275,32.26509,-124.8412,flood,2023-02-27,5,No injuries
+EV-00276,43.48816,-120.6472,hurricane,2023-05-21,2,Residents sheltering in place
+EV-00277,35.60693,-119.21108,drought,2023-01-28,3,Cleanup ongoing
+EV-00278,42.4635,-119.49009,landslide,2023-01-28,2,No injuries
+EV-00279,32.93819,-99.61256,flood,2024-12-03,3,No injuries
+EV-00280,34.01944,-69.18602,flood,2024-07-23,4,No injuries
+EV-00281,27.31279,-82.86816,hailstorm,2023-02-14,5,Local emergency declared
+EV-00282,28.53151,-102.97445,flood,2024-10-01,2,Roads closed
+EV-00283,46.18985,-99.4401,blizzard,2023-05-21,3,
+EV-00284,43.18822,-91.55436,flood,2023-11-28,3,Local emergency declared
+EV-00285,34.8212,-82.85419,blizzard,2024-06-22,4,
+EV-00286,46.30155,-89.45099,wildfire,2023-11-06,5,Roads closed
+EV-00287,25.87163,-96.48442,drought,2023-06-09,1,Federal aid requested
+EV-00288,34.08192,-111.37,hailstorm,2024-08-26,5,Roads closed
+EV-00289,31.90154,-68.1211,blizzard,2023-02-13,4,
+EV-00290,24.00424,-119.72806,landslide,2024-09-18,2,Roads closed
+EV-00291,33.08356,-121.85204,hailstorm,2023-08-11,5,Local emergency declared
+EV-00292,41.91645,-103.92892,landslide,2024-02-04,2,
+EV-00293,44.7471,-69.06285,wildfire,2024-09-17,3,Minor damage reported
+EV-00294,36.31055,-77.33336,flood,2024-02-09,5,
+EV-00295,47.25541,-102.212,drought,2024-04-23,3,
+EV-00296,25.16251,-88.27205,hailstorm,2023-08-15,5,No injuries
+EV-00297,24.10844,-82.29959,heatwave,2024-10-16,5,No injuries
+EV-00298,28.34126,-77.71584,blizzard,2023-07-22,5,Cleanup ongoing
+EV-00299,46.03476,-100.71744,wildfire,2023-05-13,3,Roads closed
+EV-00300,27.4545,-90.05358,tornado,2024-12-18,3,Federal aid requested
+EV-00301,29.02223,-88.79828,blizzard,2024-11-12,2,No injuries
+EV-00302,37.56229,-88.06111,blizzard,2023-06-18,4,Power outages reported
+EV-00303,31.1482,-75.85654,earthquake,2023-09-04,1,Minor damage reported
+EV-00304,28.99756,-81.48927,earthquake,2023-05-22,3,
+EV-00305,41.26487,-107.88185,blizzard,2023-06-27,4,
+EV-00306,45.62104,-81.94006,drought,2024-04-17,3,Minor damage reported
+EV-00307,33.68887,-69.51129,heatwave,2024-09-02,1,Evacuations in progress
+EV-00308,45.72125,-75.09421,heatwave,2024-04-21,3,Federal aid requested
+EV-00309,28.91173,-82.95496,wildfire,2023-05-15,2,Emergency response dispatched
+EV-00310,48.06188,-82.36539,wildfire,2023-07-02,4,Residents sheltering in place
+EV-00311,28.02322,-75.93118,landslide,2023-06-15,2,
+EV-00312,38.92201,-80.12766,landslide,2024-08-26,5,Emergency response dispatched
+EV-00313,37.13488,-69.49471,flood,2023-09-06,4,Power outages reported
+EV-00314,32.73507,-73.76299,blizzard,2024-06-12,3,Local emergency declared
+EV-00315,35.87143,-92.44259,heatwave,2023-02-22,3,Local emergency declared
+EV-00316,30.09568,-122.68712,hurricane,2024-07-26,1,Federal aid requested
+EV-00317,24.61764,-95.02167,hurricane,2024-09-26,5,Minor damage reported
+EV-00318,46.45704,-113.83428,tornado,2023-02-06,5,Emergency response dispatched
+EV-00319,40.75838,-80.13223,flood,2024-02-07,5,Power outages reported
+EV-00320,42.67227,-116.08223,earthquake,2024-12-11,1,
+EV-00321,28.4498,-110.38934,drought,2023-10-27,2,Power outages reported
+EV-00322,35.27814,-101.54201,flood,2024-01-13,1,Local emergency declared
+EV-00323,42.89901,-91.03474,heatwave,2023-06-17,1,Residents sheltering in place
+EV-00324,26.16263,-80.61409,tornado,2024-07-13,1,Federal aid requested
+EV-00325,27.40954,-102.32243,earthquake,2024-11-05,3,Cleanup ongoing
+EV-00326,37.8381,-92.80595,blizzard,2023-01-01,5,Federal aid requested
+EV-00327,47.67448,-107.32791,wildfire,2024-04-14,5,
+EV-00328,29.5197,-76.58459,hailstorm,2023-02-06,5,Federal aid requested
+EV-00329,40.11686,-120.75761,landslide,2023-05-04,2,Roads closed
+EV-00330,32.92846,-86.06486,tornado,2023-02-10,5,
+EV-00331,31.94465,-98.86253,landslide,2024-12-19,2,Cleanup ongoing
+EV-00332,47.96647,-115.21891,hurricane,2024-04-26,2,Power outages reported
+EV-00333,45.00275,-117.21026,hailstorm,2024-08-15,4,Residents sheltering in place
+EV-00334,37.7918,-114.80533,hurricane,2023-05-28,2,Evacuations in progress
+EV-00335,42.33862,-88.6561,heatwave,2023-01-28,5,Local emergency declared
+EV-00336,34.12836,-90.77789,hailstorm,2023-09-09,5,Federal aid requested
+EV-00337,40.3477,-116.37929,wildfire,2024-04-25,5,Residents sheltering in place
+EV-00338,35.61753,-95.3961,wildfire,2024-06-17,1,Local emergency declared
+EV-00339,42.93015,-116.8585,hailstorm,2023-03-19,5,No injuries
+EV-00340,47.47938,-122.65565,tornado,2024-04-03,3,Minor damage reported
+EV-00341,36.94713,-79.09529,landslide,2024-08-15,1,
+EV-00342,26.58063,-68.8304,drought,2024-12-09,5,No injuries
+EV-00343,40.34188,-103.81279,blizzard,2023-09-09,4,Evacuations in progress
+EV-00344,34.14606,-77.60027,blizzard,2024-08-26,4,Minor damage reported
+EV-00345,46.05086,-99.48588,wildfire,2023-02-17,3,No injuries
+EV-00346,33.05557,-83.39644,hailstorm,2023-11-08,4,Emergency response dispatched
+EV-00347,40.88074,-97.21677,earthquake,2023-11-27,,
+EV-00348,27.19713,-90.64384,earthquake,2023-11-17,1,No injuries
+EV-00349,28.15853,-71.49808,flood,2024-10-19,1,Residents sheltering in place
+EV-00350,29.41484,-89.8215,wildfire,2024-08-06,2,Local emergency declared
+EV-00351,43.8654,-77.41372,hailstorm,2023-10-22,5,Cleanup ongoing
+EV-00352,38.91333,-121.00711,blizzard,2024-07-05,1,
+EV-00353,45.48979,-95.74715,heatwave,2024-03-20,1,
+EV-00354,38.99534,-74.09035,earthquake,2023-02-16,2,Federal aid requested
+EV-00355,46.42422,-80.05752,drought,2024-09-14,3,Federal aid requested
+EV-00356,29.73716,-78.46659,wildfire,2024-06-19,5,
+EV-00357,30.36295,-80.58018,earthquake,2023-05-20,5,Evacuations in progress
+EV-00358,41.72872,-79.2135,drought,2023-09-01,4,Cleanup ongoing
+EV-00359,33.05674,-116.02284,heatwave,2024-05-28,5,Cleanup ongoing
+EV-00360,30.88901,-85.52487,blizzard,2023-07-18,5,Cleanup ongoing
+EV-00361,37.87278,-110.2809,tornado,2024-10-12,4,Emergency response dispatched
+EV-00362,35.16487,-84.43994,blizzard,2023-02-07,5,Cleanup ongoing
+EV-00363,39.35063,-85.29526,hailstorm,2023-03-13,1,No injuries
+EV-00364,47.14654,-99.74811,earthquake,2023-05-08,3,
+EV-00365,42.11237,-71.02027,earthquake,2024-10-21,5,Local emergency declared
+EV-00366,47.6429,-77.42673,hurricane,2024-08-01,,Federal aid requested
+EV-00367,28.86866,-79.53035,wildfire,2023-10-06,1,Minor damage reported
+EV-00368,26.17107,-108.99566,blizzard,2024-06-22,4,Evacuations in progress
+EV-00369,24.38416,-84.18993,landslide,2023-09-10,5,Cleanup ongoing
+EV-00370,48.08219,-108.96254,wildfire,2023-08-13,5,
+EV-00371,34.17837,-118.82503,hurricane,2023-09-10,,Federal aid requested
+EV-00372,45.90283,-77.83745,landslide,2024-12-15,4,Evacuations in progress
+EV-00373,48.03097,-98.38679,flood,2024-10-28,1,Residents sheltering in place
+EV-00374,33.56683,-79.25795,landslide,2023-11-23,2,Power outages reported
+EV-00375,36.91261,-124.43605,flood,2024-04-10,1,Cleanup ongoing
+EV-00376,37.86379,-114.64783,hailstorm,2024-06-07,,Evacuations in progress
+EV-00377,42.42781,-111.37804,heatwave,2023-05-07,2,Evacuations in progress
+EV-00378,32.90068,-79.82157,earthquake,2023-02-22,4,Federal aid requested
+EV-00379,45.20026,-103.4706,hurricane,2024-08-19,3,Federal aid requested
+EV-00380,33.94699,-81.49018,earthquake,2023-01-17,4,Federal aid requested
+EV-00381,36.56188,-102.16442,earthquake,2023-08-04,5,Minor damage reported
+EV-00382,40.85258,-102.99318,blizzard,2023-06-12,5,No injuries
+EV-00383,30.57123,-109.37432,landslide,2024-06-06,4,Power outages reported
+EV-00384,33.12695,-101.76563,flood,2024-03-19,2,Evacuations in progress
+EV-00385,42.02039,-78.36292,hailstorm,2024-07-07,2,No injuries
+EV-00386,44.14171,-114.75678,hailstorm,2024-03-28,5,Cleanup ongoing
+EV-00387,31.50085,-92.39597,hurricane,2023-07-04,2,
+EV-00388,35.91349,-88.46799,blizzard,2024-12-11,3,Federal aid requested
+EV-00389,47.29611,-110.05254,tornado,2023-07-04,3,Local emergency declared
+EV-00390,38.42134,-87.3078,hailstorm,2023-05-12,3,Roads closed
+EV-00391,46.24081,-102.89788,drought,2024-08-21,2,Cleanup ongoing
+EV-00392,39.78184,-91.84502,hurricane,2023-02-06,3,Cleanup ongoing
+EV-00393,41.76084,-89.88767,hailstorm,2024-05-15,3,Federal aid requested
+EV-00394,34.34973,-114.3346,tornado,2023-03-24,,Emergency response dispatched
+EV-00395,28.17276,-119.02546,drought,2023-08-18,1,
+EV-00396,37.09957,-67.2312,drought,2023-05-20,2,
+EV-00397,31.73427,-110.651,wildfire,2024-08-21,2,
+EV-00398,24.71428,-86.51415,hailstorm,2024-08-15,,Federal aid requested
+EV-00399,27.37787,-69.9878,drought,15-03-2024,4,Local emergency declared
+EV-00400,37.0865,-87.90736,hailstorm,2024-06-16,5,Emergency response dispatched
+EV-00401,31.6967,-101.09218,landslide,2023-05-01,1,No injuries
+EV-00402,31.16906,-93.96426,heatwave,3/15/2024,1,Residents sheltering in place
+EV-00403,29.78038,-124.58136,wildfire,2024-04-14,5,Evacuations in progress
+EV-00404,41.87345,-87.53253,blizzard,2024-04-09,1,Evacuations in progress
+EV-00405,43.11346,-72.22264,tornado,2024-05-21,5,Power outages reported
+EV-00406,45.33705,-114.42038,heatwave,2024-02-21,4,Residents sheltering in place
+EV-00407,36.2999,-106.40266,flood,2023-01-18,1,
+EV-00408,31.05286,-117.74773,earthquake,2024-12-01,2,
+EV-00409,36.33949,-105.16905,landslide,2024-08-12,4,Minor damage reported
+EV-00410,26.00558,-81.46696,hailstorm,3-15-24,4,
+EV-00411,28.54009,-73.04946,tornado,2024-07-27,1,
+EV-00412,33.61995,-68.45161,blizzard,2023-12-02,2,Emergency response dispatched
+EV-00413,40.6502,-112.91007,earthquake,2024-11-10,3,
+EV-00414,42.61811,-93.12436,earthquake,2023-05-16,3,
+EV-00415,45.59144,-112.36828,hurricane,2023-04-21,4,No injuries
+EV-00416,38.61742,-102.04312,heatwave,2023-01-02,5,Roads closed
+EV-00417,27.8748,-80.29377,earthquake,2023-03-16,1,Cleanup ongoing
+EV-00418,25.49438,-87.61466,landslide,2023-03-16,2,Federal aid requested
+EV-00419,44.13813,-99.5543,hurricane,2023-01-23,4,No injuries
+EV-00420,46.46658,-96.85248,heatwave,2024-09-10,5,Evacuations in progress
+EV-00421,28.66567,-104.83545,wildfire,2024-05-28,,Federal aid requested
+EV-00422,25.72191,-116.00852,drought,2024-05-18,3,Federal aid requested
+EV-00423,42.34144,-73.78992,drought,2024-10-08,3,Federal aid requested
+EV-00424,28.74674,-85.373,flood,2023-10-10,3,Cleanup ongoing
+EV-00425,26.40641,-86.78432,tornado,2023-03-06,1,Roads closed
+EV-00426,26.46884,-91.88129,hurricane,2024-11-16,5,Local emergency declared
+EV-00427,25.22714,-112.19808,hailstorm,2023-01-07,4,Emergency response dispatched
+EV-00428,44.0255,-121.47939,blizzard,2024-06-26,1,Residents sheltering in place
+EV-00429,25.01633,-120.91749,tornado,2024-02-07,5,
+EV-00430,37.29153,-114.0113,drought,2023-10-21,2,Federal aid requested
+EV-00431,42.65271,-80.55556,wildfire,2024-11-15,4,No injuries
+EV-00432,37.74914,-95.72782,blizzard,2023-09-20,4,Cleanup ongoing
+EV-00433,48.78657,-106.17006,heatwave,2024-07-25,4,Cleanup ongoing
+EV-00434,30.01806,-93.35368,hailstorm,2024-09-24,3,Roads closed
+EV-00435,47.99561,-124.98865,earthquake,2023-05-20,1,Residents sheltering in place
+EV-00436,31.50835,-112.13057,blizzard,2024-01-25,3,Federal aid requested
+EV-00437,38.26671,-91.84651,hurricane,2023-01-15,3,
+EV-00438,33.17707,-91.23497,drought,2023-05-26,3,
+EV-00439,38.22662,-112.38864,heatwave,2023-12-11,4,
+EV-00440,44.48788,-119.46888,landslide,2024-01-24,5,Minor damage reported
+EV-00441,32.69826,-77.60578,earthquake,2024-02-28,2,Local emergency declared
+EV-00442,39.84718,-88.33277,wildfire,2023-05-17,1,Local emergency declared
+EV-00443,32.17079,-84.52942,heatwave,2023-01-22,,Local emergency declared
+EV-00444,36.61823,-112.11903,heatwave,2024-07-05,2,Roads closed
+EV-00445,42.63288,-93.20716,wildfire,2024-02-13,5,No injuries
+EV-00446,36.02306,-113.50971,tornado,2024-11-19,2,Federal aid requested
+EV-00447,30.05788,-109.55709,drought,2024-06-22,,
+EV-00448,34.58852,-104.79814,landslide,2024-06-20,,No injuries
+EV-00449,39.40552,-67.57077,tornado,2024-10-05,4,
+EV-00450,28.99213,-103.31839,wildfire,2023-02-24,1,Local emergency declared
+EV-00451,45.71881,-77.43223,earthquake,2023-06-23,1,Roads closed
+EV-00452,32.29692,-82.07925,hailstorm,2023-04-18,5,Federal aid requested
+EV-00453,39.57605,-67.44648,wildfire,2023-07-19,5,
+EV-00454,25.50275,-113.35963,hurricane,2024-01-15,1,
+EV-00455,40.57454,-72.05361,tornado,2024-02-01,3,Power outages reported
+EV-00456,48.49482,-95.50466,tornado,2023-06-16,5,No injuries
+EV-00457,36.51627,-98.4368,drought,2023-01-08,5,Roads closed
+EV-00458,42.60977,-123.93441,hurricane,2024-06-21,3,Federal aid requested
+EV-00459,44.29732,-88.70404,drought,2024-01-18,3,Cleanup ongoing
+EV-00460,40.42329,-119.90789,drought,2024-09-22,5,Evacuations in progress
+EV-00461,30.00902,-116.14055,wildfire,2024-10-11,4,Evacuations in progress
+EV-00462,38.52577,-85.32518,wildfire,2023-03-10,5,Power outages reported
+EV-00463,40.40579,-92.23903,wildfire,2023-06-03,5,Emergency response dispatched
+EV-00464,31.93994,-73.98099,wildfire,2023-06-14,,Residents sheltering in place
+EV-00465,43.4777,-118.80726,heatwave,2023-01-25,5,Local emergency declared
+EV-00466,39.30905,-90.41108,hailstorm,2023-11-01,3,
+EV-00467,27.35217,-75.92398,drought,2024-12-21,3,
+EV-00468,36.28614,-117.02426,hurricane,3/15/2024,4,Minor damage reported
+EV-00469,47.75495,-112.09186,heatwave,2023-04-03,2,Roads closed
+EV-00470,36.24857,-106.15605,drought,2024-04-14,4,Local emergency declared
+EV-00471,42.00502,-102.13926,tornado,2023-09-04,4,Minor damage reported
+EV-00472,36.96757,-102.05455,tornado,2023-09-13,5,Minor damage reported
+EV-00473,31.27948,-101.91369,earthquake,2024-05-15,,Local emergency declared
+EV-00474,41.24882,-72.58681,wildfire,2024-11-15,1,Emergency response dispatched
+EV-00475,43.46828,-70.60514,hailstorm,2023-07-14,3,No injuries
+EV-00476,38.75789,-83.66721,flood,2023-08-03,3,No injuries
+EV-00477,26.27978,-84.03885,heatwave,2024-02-17,4,Federal aid requested
+EV-00478,47.74385,-103.03664,wildfire,2024-01-25,2,Local emergency declared
+EV-00479,28.0531,-116.61277,hurricane,2023-07-10,3,Roads closed
+EV-00480,39.66132,-118.18187,hailstorm,2023-04-01,5,Minor damage reported
+EV-00481,36.44069,-96.07875,hailstorm,2023-10-16,,Roads closed
+EV-00482,34.25378,-120.39451,tornado,2023-04-18,3,Federal aid requested
+EV-00483,25.22297,-116.40114,hurricane,2024-01-05,1,Local emergency declared
+EV-00484,32.27778,-119.91324,heatwave,2023-07-06,2,Local emergency declared
+EV-00485,38.30706,-92.39372,hurricane,2024-12-19,3,Emergency response dispatched
+EV-00486,32.07055,-72.94327,hailstorm,2023-07-27,5,
+EV-00487,27.36364,-84.71207,heatwave,2024-06-17,4,Evacuations in progress
+EV-00488,25.45461,-91.86071,drought,2023-08-24,5,Residents sheltering in place
+EV-00489,39.22112,-106.64366,hailstorm,2024-03-20,5,Roads closed
+EV-00490,44.19951,-73.74751,earthquake,2023-12-10,2,
+EV-00491,35.62214,-78.78951,landslide,2023-10-14,4,
+EV-00492,38.01039,-88.02479,hurricane,2023-11-07,3,Emergency response dispatched
+EV-00493,31.5071,-93.10037,heatwave,2023-02-22,3,Local emergency declared
+EV-00494,48.00282,-76.74152,hailstorm,2023-06-27,3,Roads closed
+EV-00495,43.93136,-87.55217,landslide,2024-03-21,4,Federal aid requested
+EV-00496,35.56175,-77.77834,blizzard,2023-09-10,5,Cleanup ongoing
+EV-00497,37.39714,-112.92078,landslide,2024-06-03,2,Minor damage reported
+EV-00498,48.59047,-88.66237,flood,2023-10-20,4,
+EV-00499,45.61484,-81.41067,tornado,2024-12-02,3,Roads closed
+EV-00500,33.28959,-76.89147,landslide,2024-04-17,3,

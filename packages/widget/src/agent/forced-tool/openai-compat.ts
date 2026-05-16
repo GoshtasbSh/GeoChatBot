@@ -39,7 +39,7 @@ export async function callOpenAICompat(
 		? `${input.cachedSystemPrompt}\n\n${input.systemPrompt}`
 		: input.cachedSystemPrompt;
 
-	const body = {
+	const body: Record<string, unknown> = {
 		model: input.model,
 		temperature: input.temperature ?? 0,
 		max_tokens: input.maxTokens ?? 2048,
@@ -59,6 +59,15 @@ export async function callOpenAICompat(
 		],
 		tool_choice: { type: "function", function: { name: input.toolName } },
 	};
+	// R.4-b (audit 2026-05-16): gpt-oss-120b/20b accept a `reasoning_effort`
+	// body field via LiteLLM. Per gpt-oss model card, higher effort improves
+	// tool-call reliability at the cost of latency; planner should request
+	// `high`, while a chat-only caller can save tokens with `low`. Other
+	// OpenAI-compatible providers (Groq, OpenAI proper) ignore unknown
+	// body fields with HTTP 200, so this is safe to always send.
+	if (input.reasoningEffort !== undefined) {
+		body.reasoning_effort = input.reasoningEffort;
+	}
 
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",

@@ -33,9 +33,15 @@ const baseInput = (provider: ForcedToolInput["provider"]): ForcedToolInput => ({
 });
 
 describe("PROVIDER_CATALOGUE", () => {
-	it("lists exactly four providers", () => {
+	it("lists the supported providers in the canonical UI order", () => {
 		const ids = PROVIDER_CATALOGUE.map((p) => p.id);
-		expect(ids).toEqual(["groq", "gemini", "anthropic", "openai"]);
+		expect(ids).toEqual([
+			"groq",
+			"gemini",
+			"anthropic",
+			"openai",
+			"uf-navigator",
+		]);
 	});
 
 	it("default provider is Groq (free tier)", () => {

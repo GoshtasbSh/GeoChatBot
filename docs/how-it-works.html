@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeoChatBot — How It Works</title>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --surface: #111827;
+    --surface2: #1a2235;
+    --border: #1e2d45;
+    --accent: #00c896;
+    --accent2: #4f8ef7;
+    --accent3: #f7b84f;
+    --accent4: #e05c8a;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --rag: #7c3aed;
+    --glow: rgba(0,200,150,0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated starfield */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.15) 0%, transparent 100%),
+      radial-gradient(1px 1px at 30% 70%, rgba(255,255,255,0.1) 0%, transparent 100%),
+      radial-gradient(1px 1px at 60% 40%, rgba(255,255,255,0.12) 0%, transparent 100%),
+      radial-gradient(1px 1px at 80% 80%, rgba(255,255,255,0.08) 0%, transparent 100%),
+      radial-gradient(1px 1px at 50% 10%, rgba(255,255,255,0.1) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    padding: 40px 32px 80px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 60px;
+  }
+  .header h1 {
+    font-size: 2.4rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 50%, var(--accent3) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.03em;
+  }
+  .header p {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 1rem;
+  }
+
+  /* Pipeline row */
+  .pipeline {
+    display: grid;
+    grid-template-columns: 200px 24px 1fr 24px 1fr 24px 220px;
+    gap: 0;
+    align-items: start;
+    margin-bottom: 48px;
+  }
+
+  /* Arrow between columns */
+  .arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 52px;
+    color: var(--muted);
+    font-size: 20px;
+    position: relative;
+  }
+  .arrow::after {
+    content: '';
+    position: absolute;
+    width: 24px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent));
+    animation: flowRight 1.5s ease-in-out infinite;
+  }
+  @keyframes flowRight {
+    0% { opacity: 0.3; transform: scaleX(0.6); }
+    50% { opacity: 1; transform: scaleX(1); }
+    100% { opacity: 0.3; transform: scaleX(0.6); }
+  }
+
+  /* Box base */
+  .box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 18px;
+    position: relative;
+    transition: box-shadow 0.3s;
+  }
+  .box:hover {
+    box-shadow: 0 0 30px rgba(79,142,247,0.12);
+  }
+  .box-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .box-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .box-desc {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* Color variants */
+  .box-user { border-color: var(--accent2); }
+  .box-user .box-title { color: var(--accent2); }
+  .box-user::before {
+    content: ''; position: absolute; inset: -1px; border-radius: 16px;
+    background: linear-gradient(135deg, rgba(79,142,247,0.06), transparent);
+    pointer-events: none;
+  }
+
+  .box-llm { border-color: var(--accent); }
+  .box-llm .box-title { color: var(--accent); }
+  .box-llm::before {
+    content: ''; position: absolute; inset: -1px; border-radius: 16px;
+    background: linear-gradient(135deg, rgba(0,200,150,0.06), transparent);
+    pointer-events: none;
+  }
+
+  .box-exec { border-color: var(--accent3); }
+  .box-exec .box-title { color: var(--accent3); }
+  .box-exec::before {
+    content: ''; position: absolute; inset: -1px; border-radius: 16px;
+    background: linear-gradient(135deg, rgba(247,184,79,0.06), transparent);
+    pointer-events: none;
+  }
+
+  .box-render { border-color: var(--accent4); }
+  .box-render .box-title { color: var(--accent4); }
+
+  /* LLM brain section */
+  .llm-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* Tabs inside LLM section */
+  .mode-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .mode-tab {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: default;
+  }
+  .mode-tab.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,200,150,0.08);
+  }
+  .mode-tab.secondary {
+    border-color: var(--accent2);
+    color: var(--accent2);
+    background: rgba(79,142,247,0.08);
+  }
+
+  /* Agentic loop detail */
+  .agentic-loop {
+    background: var(--surface2);
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-top: 4px;
+  }
+  .agentic-loop-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent2);
+    margin-bottom: 12px;
+  }
+  .loop-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .loop-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .loop-icon.reason { background: rgba(79,142,247,0.15); color: var(--accent2); }
+  .loop-icon.tool   { background: rgba(0,200,150,0.15); color: var(--accent); }
+  .loop-icon.observe{ background: rgba(247,184,79,0.15); color: var(--accent3); }
+  .loop-icon.finalize{ background: rgba(224,92,138,0.15); color: var(--accent4); }
+
+  .loop-text { font-size: 0.76rem; line-height: 1.45; }
+  .loop-text strong { display: block; font-weight: 600; color: var(--text); }
+  .loop-text span { color: var(--muted); }
+
+  .loop-back {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.68rem;
+    color: var(--muted);
+    margin-left: 38px;
+    margin-top: -4px;
+    margin-bottom: 6px;
+  }
+  .loop-back-line {
+    flex: 1;
+    height: 1px;
+    border-top: 1px dashed var(--border);
+  }
+
+  /* RAG sidebar */
+  .rag-section {
+    background: var(--surface2);
+    border: 1px solid rgba(124,58,237,0.4);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .rag-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--rag);
+    margin-bottom: 10px;
+  }
+  .rag-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.76rem;
+  }
+  .rag-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--rag);
+    margin-top: 5px;
+    flex-shrink: 0;
+  }
+
+  /* Executor section */
+  .exec-section { display: flex; flex-direction: column; gap: 12px; }
+
+  .tool-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .tool-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tool-chip .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+  }
+  .dot-geo { background: var(--accent); }
+  .dot-stat { background: var(--accent2); }
+  .dot-sql { background: var(--accent3); }
+  .dot-render { background: var(--accent4); }
+
+  /* Validator + critic badge */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 20px;
+    border: 1px solid;
+    margin-right: 5px;
+  }
+  .badge-validate { border-color: var(--accent3); color: var(--accent3); background: rgba(247,184,79,0.08); }
+  .badge-critic   { border-color: var(--accent4); color: var(--accent4); background: rgba(224,92,138,0.08); }
+  .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  /* Result cards */
+  .result-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .result-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.78rem;
+  }
+  .result-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .result-icon.map     { background: rgba(0,200,150,0.12); }
+  .result-icon.chart   { background: rgba(79,142,247,0.12); }
+  .result-icon.table   { background: rgba(247,184,79,0.12); }
+  .result-icon.summary { background: rgba(224,92,138,0.12); }
+
+  /* ─── Deep-dive section ─── */
+  .deep-dive {
+    margin-top: 60px;
+  }
+  .deep-dive h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 32px;
+    color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .deep-dive h2 span { color: var(--accent); }
+
+  .cards-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 32px;
+  }
+
+  .detail-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px;
+  }
+  .detail-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .detail-card-icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .detail-card-title { font-size: 1rem; font-weight: 700; }
+  .detail-card-sub { font-size: 0.72rem; color: var(--muted); }
+
+  .prop-list { list-style: none; }
+  .prop-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.78rem;
+    line-height: 1.45;
+  }
+  .prop-list li:last-child { border-bottom: none; }
+  .prop-key {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+    background: rgba(0,200,150,0.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .prop-val { color: var(--muted); }
+
+  /* Plan JSON example */
+  .plan-example {
+    background: #0a0f1c;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.77rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    margin-top: 32px;
+  }
+  .plan-example .comment { color: #4a5568; }
+  .plan-example .key { color: var(--accent2); }
+  .plan-example .str { color: var(--accent3); }
+  .plan-example .kw  { color: var(--accent4); }
+  .plan-example .num { color: var(--accent); }
+
+  /* Full flow diagram (detailed) */
+  .flow-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 32px;
+    padding: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+  .flow-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+  }
+  .flow-node {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin: 4px;
+  }
+  .flow-node-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .flow-node-body { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
+  .flow-connector {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    color: var(--muted);
+    font-size: 18px;
+  }
+  .flow-down-arrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 18px;
+    color: var(--muted);
+  }
+
+  /* Animated pulse on accent elements */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .pulse { animation: pulse 2.5s ease-in-out infinite; }
+
+  /* Token counter strip */
+  .token-strip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex;
+    gap: 20px;
+    font-size: 0.76rem;
+    align-items: center;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .token-item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .token-val { font-weight: 700; color: var(--text); font-family: monospace; }
+
+  /* Separator */
+  .sep { height: 1px; background: var(--border); margin: 40px 0; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>GeoChatBot — How It Works</h1>
+    <p>From user question to rendered map, chart, or answer — every step explained</p>
+  </div>
+
+  <!-- ═══ MAIN PIPELINE ═══ -->
+  <div class="pipeline">
+
+    <!-- 1. USER INPUT -->
+    <div class="box box-user">
+      <div class="box-label">Step 1</div>
+      <div class="box-title">User Input</div>
+      <div class="box-desc" style="margin-bottom:14px;">
+        You drop a CSV, GeoJSON, Parquet, or Shapefile, then type a plain-English question.
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;font-size:0.75rem;border:1px solid var(--border);">
+        <div style="color:var(--muted);margin-bottom:5px;font-size:0.66rem;text-transform:uppercase;letter-spacing:.08em;">Example</div>
+        <div style="color:var(--text);font-style:italic;">"Show a bar chart of population by city"</div>
+      </div>
+      <div style="margin-top:12px;font-size:0.72rem;color:var(--muted);">
+        Data never leaves your browser — DuckDB-WASM runs locally.
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+
+    <!-- 2. LLM PLANNER -->
+    <div class="llm-section">
+
+      <!-- Provider badge -->
+      <div class="box box-llm">
+        <div class="box-label">Step 2 — LLM Planner</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div class="box-title">Plan Generation</div>
+          <div style="font-size:0.68rem;background:rgba(0,200,150,0.08);border:1px solid rgba(0,200,150,0.3);padding:3px 8px;border-radius:20px;color:var(--accent);">
+            gpt-oss-120b ✦ recommended
+          </div>
+        </div>
+
+        <div class="mode-tabs">
+          <div class="mode-tab active">Single-shot</div>
+          <div class="mode-tab secondary">Agentic ReAct</div>
+        </div>
+
+        <div style="font-size:0.76rem;color:var(--muted);margin:8px 0 12px;line-height:1.5;">
+          <strong style="color:var(--text);">Single-shot:</strong> system prompt + tool catalogue + dataset profile → one forced-tool call → Plan JSON.
+          <br><br>
+          <strong style="color:var(--text);">Agentic (ReAct loop):</strong> model reasons, calls inspection tools, then finalises.
+        </div>
+
+        <!-- Agentic loop detail -->
+        <div class="agentic-loop">
+          <div class="agentic-loop-title">⟳ Agentic ReAct Loop (up to 5 iterations)</div>
+
+          <div class="loop-step">
+            <div class="loop-icon reason">🧠</div>
+            <div class="loop-text">
+              <strong>Reason</strong>
+              <span>Model reads system prompt + dataset profile + conversation history, emits free-text thinking</span>
+            </div>
+          </div>
+
+          <div class="loop-step">
+            <div class="loop-icon tool">🔍</div>
+            <div class="loop-text">
+              <strong>Inspection tool call</strong>
+              <span>sample_rows · distinct_values · column_pattern · probe_sql → learns actual data shape</span>
+            </div>
+          </div>
+
+          <div class="loop-step">
+            <div class="loop-icon observe">👁</div>
+            <div class="loop-text">
+              <strong>Observe</strong>
+              <span>Tool result appended as assistant turn. Loop continues if still uncertain.</span>
+            </div>
+          </div>
+
+          <div class="loop-back">
+            <div class="loop-back-line"></div>
+            <span>repeat ↑</span>
+            <div class="loop-back-line"></div>
+          </div>
+
+          <div class="loop-step">
+            <div class="loop-icon finalize">✅</div>
+            <div class="loop-text">
+              <strong>finalize_plan</strong>
+              <span>Model calls the submit_plan forced-tool → structured Plan JSON returned</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- RAG block -->
+        <div class="rag-section" style="margin-top:12px;">
+          <div class="rag-title">🔮 RAG Retrieval (single-shot only)</div>
+          <div class="rag-step">
+            <div class="rag-dot"></div>
+            <div style="font-size:0.76rem;color:var(--muted);line-height:1.5;">
+              Your question is <strong style="color:var(--text);">embedded</strong> (in-browser WASM embedder)
+            </div>
+          </div>
+          <div class="rag-step">
+            <div class="rag-dot"></div>
+            <div style="font-size:0.76rem;color:var(--muted);line-height:1.5;">
+              Top-K <strong style="color:var(--text);">few-shot examples</strong> retrieved from IndexedDB corpus
+            </div>
+          </div>
+          <div class="rag-step">
+            <div class="rag-dot"></div>
+            <div style="font-size:0.76rem;color:var(--muted);line-height:1.5;">
+              Retrieved docs injected into the <strong style="color:var(--text);">system prompt</strong> before the LLM call
+            </div>
+          </div>
+          <div class="token-strip">
+            <div class="token-item">📋 <span class="token-val">~4–6k</span> cached system tokens</div>
+            <div class="token-item">🔎 <span class="token-val">~1–2k</span> dynamic RAG block</div>
+            <div class="token-item">⚡ <span class="token-val">~2s</span> gpt-oss-120b</div>
+          </div>
+        </div>
+
+        <!-- Validation badges -->
+        <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+          <div class="badge badge-validate"><div class="badge-dot"></div>validatePlan()</div>
+          <div style="font-size:0.72rem;color:var(--muted);">— zod schema · tool names · output_var refs · last step = render.*</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+
+    <!-- 3. EXECUTOR -->
+    <div class="exec-section">
+      <div class="box box-exec">
+        <div class="box-label">Step 3 — Local Executor</div>
+        <div class="box-title">DuckDB-WASM Runner</div>
+        <div class="box-desc" style="margin-bottom:12px;">
+          Runs each plan step sequentially in your browser. Outputs flow as Arrow tables between steps via <code style="font-size:0.7rem;background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:4px;">output_var</code>.
+        </div>
+
+        <div class="tool-grid">
+          <div class="tool-chip"><div class="dot dot-geo"></div>geometry.*</div>
+          <div class="tool-chip"><div class="dot dot-stat"></div>stats.*</div>
+          <div class="tool-chip"><div class="dot dot-sql"></div>sql</div>
+          <div class="tool-chip"><div class="dot dot-geo"></div>joins.*</div>
+          <div class="tool-chip"><div class="dot dot-geo"></div>geocode</div>
+          <div class="tool-chip"><div class="dot dot-render"></div>render.*</div>
+          <div class="tool-chip"><div class="dot dot-render"></div>report.*</div>
+          <div class="tool-chip"><div class="dot dot-stat"></div>H3 hex bin</div>
+        </div>
+
+        <!-- Critic block -->
+        <div style="margin-top:12px;background:var(--surface2);border:1px solid rgba(224,92,138,0.3);border-radius:10px;padding:12px 14px;">
+          <div style="font-size:0.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent4);margin-bottom:8px;">
+            🩺 Critic LLM (auto-repair)
+          </div>
+          <div style="font-size:0.76rem;color:var(--muted);line-height:1.5;">
+            If a step fails, the Critic LLM receives the error + plan context and returns a <strong style="color:var(--text);">patched step</strong>. Executor retries once. Surfaces as <code style="font-size:0.7rem;background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:4px;">error</code> event if repair fails.
+          </div>
+        </div>
+
+        <!-- Click-path audit finding badge -->
+        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+          <div class="badge badge-critic"><div class="badge-dot"></div>Critic</div>
+          <span style="font-size:0.72rem;color:var(--muted);">Abort-signal cancel · gen-guard · retry budget = 1</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+
+    <!-- 4. RENDER -->
+    <div class="box box-render" style="min-width:200px;">
+      <div class="box-label">Step 4</div>
+      <div class="box-title">Result Renderer</div>
+      <div class="box-desc" style="margin-bottom:12px;">
+        Executor emits a typed result payload. The result-canvas mounts the matching renderer.
+      </div>
+
+      <div class="result-cards">
+        <div class="result-card">
+          <div class="result-icon map">🗺</div>
+          <div>
+            <div style="font-weight:600;font-size:0.8rem;color:var(--accent);">Map</div>
+            <div style="font-size:0.72rem;color:var(--muted);">GeoJSON layer, auto-fly-to bounds</div>
+          </div>
+        </div>
+        <div class="result-card">
+          <div class="result-icon chart">📊</div>
+          <div>
+            <div style="font-weight:600;font-size:0.8rem;color:var(--accent2);">Chart</div>
+            <div style="font-size:0.72rem;color:var(--muted);">bar · line · scatter · histogram</div>
+          </div>
+        </div>
+        <div class="result-card">
+          <div class="result-icon table">🗃</div>
+          <div>
+            <div style="font-weight:600;font-size:0.8rem;color:var(--accent3);">Table</div>
+            <div style="font-size:0.72rem;color:var(--muted);">Paginated Arrow rows, exportable</div>
+          </div>
+        </div>
+        <div class="result-card">
+          <div class="result-icon summary">💬</div>
+          <div>
+            <div style="font-weight:600;font-size:0.8rem;color:var(--accent4);">Summary</div>
+            <div style="font-size:0.72rem;color:var(--muted);">Plain-English answer card</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;font-size:0.72rem;color:var(--muted);line-height:1.5;">
+        Results persist across sessions via IndexedDB Saves store. Layers auto-added to the map Contents panel.
+      </div>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- ═══ DEEP DIVE ═══ -->
+  <div class="deep-dive">
+    <h2>🔬 Deep Dive — <span>Architecture Details</span></h2>
+
+    <div class="cards-row">
+      <!-- Planner input detail -->
+      <div class="detail-card">
+        <div class="detail-card-head">
+          <div class="detail-card-icon" style="background:rgba(0,200,150,0.1);">📝</div>
+          <div>
+            <div class="detail-card-title">Planner System Prompt</div>
+            <div class="detail-card-sub">What the LLM sees on every call</div>
+          </div>
+        </div>
+        <ul class="prop-list">
+          <li>
+            <span class="prop-key">cached</span>
+            <span class="prop-val">Static preamble + tool catalogue (28 tools, ~3k tokens). Prompt-cached across calls.</span>
+          </li>
+          <li>
+            <span class="prop-key">dynamic</span>
+            <span class="prop-val">Dataset profile: column names, types, row count, sample row — per-question.</span>
+          </li>
+          <li>
+            <span class="prop-key">RAG</span>
+            <span class="prop-val">Top-5 retrieved few-shot examples from IndexedDB, embedded at call time.</span>
+          </li>
+          <li>
+            <span class="prop-key">fence</span>
+            <span class="prop-val">Dataset values wrapped in &lt;&lt;&lt;UNTRUSTED&gt;&gt;&gt; fence — prompt injection guard.</span>
+          </li>
+          <li>
+            <span class="prop-key">retry</span>
+            <span class="prop-val">If validatePlan() fails, error message appended and model asked once more.</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Plan structure -->
+      <div class="detail-card">
+        <div class="detail-card-head">
+          <div class="detail-card-icon" style="background:rgba(79,142,247,0.1);">📦</div>
+          <div>
+            <div class="detail-card-title">Plan JSON Structure</div>
+            <div class="detail-card-sub">What the LLM must return</div>
+          </div>
+        </div>
+        <ul class="prop-list">
+          <li><span class="prop-key">goal</span><span class="prop-val">Human-readable sentence describing what the plan will do.</span></li>
+          <li><span class="prop-key">dataset_refs</span><span class="prop-val">Array of dataset names the plan will read. Validated against loaded datasets.</span></li>
+          <li><span class="prop-key">assumptions</span><span class="prop-val">Optional clarifying notes the model makes about the question.</span></li>
+          <li><span class="prop-key">steps[]</span><span class="prop-val">Ordered tool calls. Each step: <code style="color:var(--accent)">id</code>, <code style="color:var(--accent)">tool</code>, <code style="color:var(--accent)">args</code>, <code style="color:var(--accent)">output_var</code>, <code style="color:var(--accent)">why</code>.</span></li>
+          <li><span class="prop-key">last step</span><span class="prop-val">MUST be render.* or report.* — enforced by validatePlan().</span></li>
+        </ul>
+      </div>
+
+      <!-- Tool categories -->
+      <div class="detail-card">
+        <div class="detail-card-head">
+          <div class="detail-card-icon" style="background:rgba(247,184,79,0.1);">🛠</div>
+          <div>
+            <div class="detail-card-title">28 Registered Tools</div>
+            <div class="detail-card-sub">Available in every plan</div>
+          </div>
+        </div>
+        <ul class="prop-list">
+          <li><span class="prop-key">stats.*</span><span class="prop-val">aggregate, summary_stats, hex_bin, density_grid, morans_i, getis_ord_gi, distance_matrix</span></li>
+          <li><span class="prop-key">geometry.*</span><span class="prop-val">buffer, intersect, union, difference, dissolve, centroid, convex_hull, voronoi, simplify, reproject</span></li>
+          <li><span class="prop-key">joins.*</span><span class="prop-val">spatial_join, nearest_neighbor, point_in_polygon</span></li>
+          <li><span class="prop-key">sql</span><span class="prop-val">Raw DuckDB SQL. Sanitised with allowlist parser before execution.</span></li>
+          <li><span class="prop-key">render.*</span><span class="prop-val">map, chart, table, summary</span></li>
+          <li><span class="prop-key">report.*</span><span class="prop-val">quickscan — auto describes a dataset</span></li>
+          <li><span class="prop-key">geocode</span><span class="prop-val">Address → lat/lon via Nominatim</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Plan JSON example -->
+    <div style="font-size:0.85rem;font-weight:600;margin-bottom:12px;color:var(--text);">
+      Example: <span style="color:var(--muted);">"Show a bar chart of population by city"</span> → Plan JSON
+    </div>
+    <div class="plan-example">
+<span class="comment">// gpt-oss-120b returned this in ~2s (single forced-tool call)</span>
+{
+  <span class="key">"goal"</span>: <span class="str">"Aggregate population by city and render a bar chart"</span>,
+  <span class="key">"dataset_refs"</span>: [<span class="str">"points"</span>],
+  <span class="key">"assumptions"</span>: [<span class="str">"'name' column = city, 'population' column = numeric"</span>],
+  <span class="key">"steps"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="str">"s1"</span>,
+      <span class="key">"tool"</span>: <span class="str">"stats.aggregate"</span>,
+      <span class="key">"args"</span>: {
+        <span class="key">"layer"</span>: <span class="str">"points"</span>,
+        <span class="key">"group_by"</span>: <span class="str">"name"</span>,
+        <span class="key">"agg_fn"</span>: <span class="str">"sum"</span>,
+        <span class="key">"value_col"</span>: <span class="str">"population"</span>
+      },
+      <span class="key">"output_var"</span>: <span class="str">"agg"</span>,
+      <span class="key">"why"</span>: <span class="str">"Group-sum population per city name"</span>
+    },
+    {
+      <span class="key">"id"</span>: <span class="str">"s2"</span>,
+      <span class="key">"tool"</span>: <span class="str">"render.chart"</span>,
+      <span class="key">"args"</span>: {
+        <span class="key">"table"</span>: <span class="str">"${agg}"</span>,   <span class="comment">// ← output_var reference from s1</span>
+        <span class="key">"kind"</span>: <span class="str">"bar"</span>,
+        <span class="key">"x"</span>: <span class="str">"name"</span>,
+        <span class="key">"y"</span>: <span class="str">"sum_population"</span>
+      },
+      <span class="key">"why"</span>: <span class="str">"Visualise the result as a bar chart"</span>
+    }
+  ]
+}
+    </div>
+
+    <!-- Full annotated flow -->
+    <div style="font-size:0.85rem;font-weight:600;margin:32px 0 16px;color:var(--text);">
+      Full annotated execution sequence
+    </div>
+    <div class="flow-detail">
+
+      <!-- Row 1 -->
+      <div class="flow-row">
+        <div class="flow-node" style="border-color:rgba(79,142,247,0.4);">
+          <div class="flow-node-title" style="color:var(--accent2);">1. pushData(file)</div>
+          <div class="flow-node-body">CSV/GeoJSON parsed by DuckDB-WASM. Schema introspected. DatasetProfile built (columns, sample row, row count). Emits dataset-loaded event.</div>
+        </div>
+        <div class="flow-connector">→</div>
+        <div class="flow-node" style="border-color:rgba(124,58,237,0.4);">
+          <div class="flow-node-title" style="color:var(--rag);">2. RAG embed (optional)</div>
+          <div class="flow-node-body">Question embedded in-browser. kNN search over IndexedDB corpus. Top-5 examples appended to system prompt. Disabled in agentic mode (inspection probes replace static examples).</div>
+        </div>
+        <div class="flow-connector">→</div>
+        <div class="flow-node" style="border-color:rgba(0,200,150,0.4);">
+          <div class="flow-node-title" style="color:var(--accent);">3. callForcedTool()</div>
+          <div class="flow-node-body">POST /v1/chat/completions with tool_choice="submit_plan". Provider: gpt-oss-120b. Returns tool_calls[0].function.arguments → raw Plan object.</div>
+        </div>
+      </div>
+
+      <div class="flow-down-arrow">↓</div>
+
+      <!-- Row 2 -->
+      <div class="flow-row">
+        <div class="flow-node" style="border-color:rgba(247,184,79,0.4);">
+          <div class="flow-node-title" style="color:var(--accent3);">4. validatePlan()</div>
+          <div class="flow-node-body">canonicalizeStepIds() → zod PlanSchema parse → tool existence check → args parse → output_var forward-ref check → last step = render.*. If fail, retry with error feedback once.</div>
+        </div>
+        <div class="flow-connector">→</div>
+        <div class="flow-node" style="border-color:rgba(0,200,150,0.4);">
+          <div class="flow-node-title" style="color:var(--accent);">5. plan event → approvePlan()</div>
+          <div class="flow-node-body">Widget dispatches plan event. Host (or headless auto-approve) calls approvePlan(planId). _pendingPlan cleared. _execute() fires as fire-and-forget.</div>
+        </div>
+        <div class="flow-connector">→</div>
+        <div class="flow-node" style="border-color:rgba(247,184,79,0.4);">
+          <div class="flow-node-title" style="color:var(--accent3);">6. Executor step loop</div>
+          <div class="flow-node-body">Each step runs its runner (runners/render.ts, stats.ts, etc.). SQL steps pre-validated. Output stored in Map&lt;output_var, ArrowTable&gt;. Progress events fire per step.</div>
+        </div>
+      </div>
+
+      <div class="flow-down-arrow">↓</div>
+
+      <!-- Row 3 -->
+      <div class="flow-row">
+        <div class="flow-node" style="border-color:rgba(224,92,138,0.4);">
+          <div class="flow-node-title" style="color:var(--accent4);">7. Critic (on failure)</div>
+          <div class="flow-node-body">Step error? Critic LLM sees: original plan + failing step + error message. Returns patched step. Executor retries the patched step once. AbortSignal propagated.</div>
+        </div>
+        <div class="flow-connector">→</div>
+        <div class="flow-node" style="border-color:rgba(224,92,138,0.4);">
+          <div class="flow-node-title" style="color:var(--accent4);">8. Result payload</div>
+          <div class="flow-node-body">render.*/report.* runner returns: {kind: "summary"|"table"|"chart"|"layer", …data}. Emits result event. result-canvas mounts the matching renderer component.</div>
+        </div>
+        <div class="flow-connector">→</div>
+        <div class="flow-node" style="border-color:rgba(79,142,247,0.4);">
+          <div class="flow-node-title" style="color:var(--accent2);">9. Persist + display</div>
+          <div class="flow-node-body">Layer added to map Contents. Result saved to IndexedDB Saves store. Approved (question, plan) pair optionally saved as future few-shot via memoryEnabled flag.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div style="margin-top:48px;text-align:center;font-size:0.75rem;color:var(--muted);">
+    GeoChatBot · browser-native spatial agent · DuckDB-WASM + LiteLLM/UF Navigator · No data leaves your browser
+  </div>
+
+</div>
+</body>
+</html>

@@ -26,3 +26,5 @@ export { createAnthropic } from "./anthropic.js";
 export type { AnthropicOptions } from "./anthropic.js";
 export { createGemini } from "./gemini.js";
 export type { GeminiOptions } from "./gemini.js";
+export { createUFNavigator } from "./uf-navigator.js";
+export type { UFNavigatorOptions } from "./uf-navigator.js";
