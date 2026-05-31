@@ -2083,9 +2083,6 @@ export class GeoChatBotElement extends LitElement {
 					const gen = this.generation;
 					this._statusLine =
 						"That approach didn't work — retrying with a different strategy…";
-					// Clear the failed-attempt error; the retry may succeed and we
-					// don't want a stale error card behind a good result.
-					this.error = null;
 					let newPlan: Plan | undefined;
 					try {
 						newPlan = await this._planner?.plan({
@@ -2100,6 +2097,10 @@ export class GeoChatBotElement extends LitElement {
 						}
 					}
 					if (newPlan && gen === this.generation && !abort.signal.aborted) {
+						// Only now that we're committing to the retry, clear the
+						// failed-attempt error so a stale card doesn't sit behind
+						// the (hopefully good) recovered result.
+						this.error = null;
 						const newId = `plan_${Date.now().toString(36)}_${Math.random()
 							.toString(36)
 							.slice(2, 8)}`;
@@ -2109,6 +2110,11 @@ export class GeoChatBotElement extends LitElement {
 							datasets: this._datasets,
 						});
 						await this._execute(newId, newPlan, attempt + 1);
+					} else if (honestMessage && !this.error) {
+						// Couldn't actually retry (planner missing/returned nothing,
+						// or session moved on) — fall back to the honest message
+						// rather than leaving a degenerate result unexplained.
+						this.error = honestMessage;
 					}
 				} else if (honestMessage) {
 					// Out of attempts on a degenerate outcome: explain it (don't
