@@ -30,6 +30,11 @@ import { augmentProfile } from "./agent/profile/augment.js";
 import { PlanValidationError, validatePlan } from "./agent/validate-plan.js";
 import { validateSql } from "./agent/validate-sql.js";
 import { friendlyExecError } from "./agent/verify/error-message.js";
+import {
+	type GuardResult,
+	guardColorBy,
+	guardLayerNonEmpty,
+} from "./agent/verify/outcome-guards.js";
 import type {
 	BinaryInput,
 	DatasetProfile,
@@ -287,6 +292,13 @@ export type GeoChatBotEvents = {
 		// Fired when the model calls ask_user — the loop is paused.
 		| { kind: "clarify-needed"; iteration: number; question: string };
 };
+
+/**
+ * Reliable loop: total plan→execute→verify attempts per question (1 initial
+ * + up to 1 strategy-level recovery re-plan). Bounded to keep cost/latency
+ * predictable on the UF Navigator provider.
+ */
+const RELIABLE_MAX_ATTEMPTS = 2;
 
 const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
 	"dataset-loaded": "geochatbot:dataset-loaded",
@@ -1844,7 +1856,11 @@ export class GeoChatBotElement extends LitElement {
 	 * `agent/executor/client.ts` and ships in Phase 5 expansion when
 	 * the engine is moved off the main thread.
 	 */
-	private async _execute(planId: string, plan: Plan): Promise<void> {
+	private async _execute(
+		planId: string,
+		plan: Plan,
+		attempt = 1,
+	): Promise<void> {
 		// Pre-validate every `sql` step at the §4 boundary. This is an
 		// early-rejection convenience for fast UI feedback only — the
 		// canonical gate is `runners/sql.ts`, which validates every SQL
@@ -1934,6 +1950,12 @@ export class GeoChatBotElement extends LitElement {
 		// down promptly instead of running to completion in the background.
 		const abort = new AbortController();
 		this._execAbort = abort;
+		// Reliable loop: collect rendered results so we can verify the
+		// OUTCOME (not just per-step success) once execution finishes, and
+		// note whether a terminal error already fired (those are surfaced via
+		// onError → friendlyExecError and must not trigger outcome-recovery).
+		const collectedResults: ResultPayload[] = [];
+		let sawError = false;
 		try {
 			await exec.execute(
 				plan,
@@ -1964,6 +1986,7 @@ export class GeoChatBotElement extends LitElement {
 					},
 					onResult: (e: ExecResultEvent) => {
 						this.dispatch("result", e);
+						collectedResults.push(e);
 						if (this.mode !== "headless") this._mountResult(e);
 					},
 					onIntermediate: (e) => {
@@ -1975,6 +1998,7 @@ export class GeoChatBotElement extends LitElement {
 						void this._registerIntermediateLayer(e.ref, e.outputVar);
 					},
 					onError: (e) => {
+						sawError = true;
 						this.dispatch("error", e);
 						this.error = friendlyExecError(e.message);
 					},
@@ -2004,12 +2028,111 @@ export class GeoChatBotElement extends LitElement {
 				},
 				abort.signal,
 			);
+
+			// ── Reliable loop: verify the OUTCOME, then recover or be honest ──
+			// Only when execution did not already surface a terminal error and
+			// the run wasn't aborted. The single-step critic above patches
+			// failing *steps*; this verifies the *result* the user actually
+			// got (empty layer, degenerate color-by) — the gap that let a
+			// 306-point all-one-color map ship as "success".
+			if (!sawError && !abort.signal.aborted) {
+				const verdict = this._verifyOutcome(collectedResults);
+				if (!verdict.ok) {
+					const canRecover =
+						attempt < RELIABLE_MAX_ATTEMPTS &&
+						!!this._planner &&
+						this._lastQuestion.trim() !== "";
+					if (canRecover) {
+						// Re-plan with the failure reason injected as feedback so
+						// the planner tries a DIFFERENT strategy (e.g. bucketize a
+						// free-text column before color-by), then re-execute.
+						const gen = this.generation;
+						this._statusLine =
+							"Result looked off — retrying with a different approach…";
+						let newPlan: Plan | undefined;
+						try {
+							newPlan = await this._planner?.plan({
+								question: this._lastQuestion,
+								datasets: this._datasets,
+								feedback: verdict.feedback,
+								signal: abort.signal,
+							});
+						} catch (err) {
+							if (!(err instanceof Error && err.name === "AbortError")) {
+								this.error = errMessage(err, "recovery plan failed");
+							}
+						}
+						if (newPlan && gen === this.generation && !abort.signal.aborted) {
+							const newId = `plan_${Date.now().toString(36)}_${Math.random()
+								.toString(36)
+								.slice(2, 8)}`;
+							this.dispatch("plan", {
+								planId: newId,
+								plan: newPlan,
+								datasets: this._datasets,
+							});
+							await this._execute(newId, newPlan, attempt + 1);
+						}
+					} else {
+						// Out of attempts (or no planner): be honest, never ship a
+						// silently-degenerate result without explanation.
+						this.error = verdict.message;
+					}
+				}
+			}
 		} finally {
 			// Only clear our reference if THIS execution still owns the controller.
 			// A clear() mid-flight may have already swapped in a new one (or
 			// aborted ours). Either way, never clobber a successor's controller.
 			if (this._execAbort === abort) this._execAbort = undefined;
 		}
+	}
+
+	/**
+	 * Deterministic outcome verification over the results a plan rendered.
+	 * Returns `ok: true` when nothing looks degenerate. On failure, `feedback`
+	 * is the re-plan directive (injected into the planner) and `message` is the
+	 * honest user-facing explanation used when recovery is exhausted.
+	 *
+	 * Guards are intentionally conservative so they never fire on small,
+	 * legitimate results: the color-by degeneracy check only applies at >= 20
+	 * features (mirrors computeLegend's own degeneracy threshold), and empty
+	 * layers are always flagged.
+	 */
+	private _verifyOutcome(results: ReadonlyArray<ResultPayload>): {
+		ok: boolean;
+		feedback: string;
+		message: string;
+	} {
+		const fails: GuardResult[] = [];
+		for (const r of results) {
+			if (r.kind !== "layer") continue;
+			const features = (r.geojson?.features ?? []) as GeoJSON.Feature[];
+			const nonEmpty = guardLayerNonEmpty(features.length);
+			if (!nonEmpty.ok) {
+				fails.push(nonEmpty);
+				continue;
+			}
+			const style = r.style as Parameters<typeof guardColorBy>[1] | undefined;
+			if (style?.colorBy && features.length >= 20) {
+				const cb = guardColorBy(features, style);
+				if (!cb.ok) fails.push(cb);
+			}
+		}
+		if (fails.length === 0) return { ok: true, feedback: "", message: "" };
+		const lines = fails.map(
+			(f) => `- ${f.reason}${f.suggestedFix ? ` → ${f.suggestedFix}` : ""}`,
+		);
+		const feedback =
+			`Your previous plan produced a poor result:\n${lines.join("\n")}\n` +
+			"Try a DIFFERENT strategy: if grouping or coloring by a free-text " +
+			"column, insert a transform.bucketize step to derive clean categories " +
+			"first; otherwise pick a cleaner column, relax the filter, or add a region.";
+		const fix = fails.find((f) => f.suggestedFix)?.suggestedFix;
+		const message =
+			`The result still looks off: ${fails.map((f) => f.reason).join("; ")}.` +
+			(fix ? ` Suggestion: ${fix}` : "");
+		return { ok: false, feedback, message };
 	}
 
 	/**
