@@ -16,6 +16,7 @@
 
 import { z } from "zod";
 import { lookupPlace } from "../../data/gazetteer.js";
+import type { DatasetProfile } from "../../prompts/builders.js";
 import { registerRunner } from "../runtime.js";
 import { materializeView, quoteIdent, resolveTable } from "../sql-helpers.js";
 import type { ExecCtx, RunnerResult } from "../types.js";
@@ -30,10 +31,29 @@ const MAX_GEOCODE_ROWS = 400;
 
 const GeocodeArgs = z.object({
 	layer: z.unknown(),
-	address_cols: z.array(z.string().min(1)).min(1),
+	address_cols: z.array(z.string().min(1)).optional(),
 	country_code: z.string().length(2).optional(),
 	region_hint: z.string().min(1).max(120).optional(),
 });
+
+export function pickAddressCols(
+	profile: Pick<DatasetProfile, "columns">,
+): string[] {
+	const order = ["address", "city", "state", "zip", "country"];
+	return profile.columns
+		.filter((c) => c.role && order.includes(c.role))
+		.sort(
+			(a, b) =>
+				order.indexOf(a.role as string) - order.indexOf(b.role as string),
+		)
+		.map((c) => c.name);
+}
+
+export function pickRegionHint(
+	profile: Pick<DatasetProfile, "inferredRegion">,
+): string | undefined {
+	return profile.inferredRegion?.label;
+}
 
 interface GeocodeHit {
 	rid: number;
@@ -56,10 +76,26 @@ export async function runGeocodeAddress(
 		GeocodeArgs.parse(args);
 	const view = resolveTable(layer, ctx);
 
+	// Auto-fill address_cols and region_hint from the active dataset profile
+	// when the planner didn't specify them. Explicit args always take priority.
+	const profile = ctx.activeProfile;
+	const effectiveAddressCols =
+		address_cols && address_cols.length > 0
+			? address_cols
+			: profile
+				? pickAddressCols(profile)
+				: [];
+	if (effectiveAddressCols.length === 0)
+		throw new Error(
+			"geocode.address: no address columns given and none could be inferred from the dataset profile (need a column with role 'address').",
+		);
+	const effectiveRegionHint =
+		region_hint ?? (profile ? pickRegionHint(profile) : undefined);
+
 	// Concatenate address columns with ", " separators, casting NULLs to
 	// empty strings so a missing zip or country doesn't produce the literal
 	// word "null" in the search query.
-	const concatExpr = address_cols
+	const concatExpr = effectiveAddressCols
 		.map((c) => `COALESCE(CAST(${quoteIdent(c)} AS VARCHAR), '')`)
 		.join(` || ', ' || `);
 
@@ -79,17 +115,23 @@ export async function runGeocodeAddress(
 		);
 	}
 
-	// Resolve a viewbox from region_hint before the per-row loop.
+	// Resolve a viewbox from effectiveRegionHint before the per-row loop.
 	// Nominatim rural-coverage improves dramatically when the search is
 	// constrained to the correct city/county via viewbox+bounded=1.
 	// Evidence: "6116 Harvard Ave, Keystone Heights FL" → 0 results;
 	// "6116 Harvard Ave" + viewbox around Keystone Heights → FOUND.
 	let viewbox: Viewbox | undefined;
-	if (region_hint?.trim()) {
+	if (effectiveRegionHint?.trim()) {
 		// R.4-c: try the local mini-gazetteer first to skip a Nominatim hop.
-		const cached = lookupPlace(region_hint.trim());
+		const cached = lookupPlace(effectiveRegionHint.trim());
 		if (cached) {
-			const PAD = 0.3; // ~20 miles — covers any city or county
+			const PAD = 0.08;
+			// Tightened from 0.3° (~20 mi) → 0.08° (~5 mi). The wider box
+			// caused mainland-county street centroids to match small-island
+			// queries (CRITICAL-03: Cedar Key addresses resolved to inland
+			// Levy County locations 7-21 mi away). 0.08° still covers small
+			// US cities and rural ZIPs in a single hit; queries for larger
+			// metros should pass region_hint at the city level.
 			viewbox = {
 				lonMin: cached.lon - PAD,
 				latMin: cached.lat - PAD,
@@ -99,13 +141,19 @@ export async function runGeocodeAddress(
 		} else {
 			ctx.onSubProgress?.("Locating region…");
 			const center = await geocodeOne(
-				region_hint.trim(),
+				effectiveRegionHint.trim(),
 				country_code,
 				undefined,
 				ctx.signal,
 			);
 			if (center) {
-				const PAD = 0.3; // ~20 miles — covers any city or county
+				const PAD = 0.08;
+				// Tightened from 0.3° (~20 mi) → 0.08° (~5 mi). The wider box
+				// caused mainland-county street centroids to match small-island
+				// queries (CRITICAL-03: Cedar Key addresses resolved to inland
+				// Levy County locations 7-21 mi away). 0.08° still covers small
+				// US cities and rural ZIPs in a single hit; queries for larger
+				// metros should pass region_hint at the city level.
 				viewbox = {
 					lonMin: center.lon - PAD,
 					latMin: center.lat - PAD,
@@ -118,46 +166,116 @@ export async function runGeocodeAddress(
 
 	const hits: GeocodeHit[] = [];
 	let attempts = 0;
-	for (let i = 0; i < rows.length; i++) {
+
+	// Stage 1 — Census Bureau geocoder (parallel, US-only).
+	//
+	// Census TIGER/Line has comprehensive coverage of US street addresses
+	// including small towns where Nominatim/OSM lacks data (e.g. Keystone
+	// Heights, FL had ~95% of audit-CSV addresses indexed by Census but
+	// 0% in OSM). We try Census FIRST when country_code is "us" (or no
+	// country_code is set), and only fall back to Nominatim for the rows
+	// that don't match. Census supports parallel requests (no documented
+	// rate limit) and resolves ~5x faster than 1 req/s Nominatim.
+	const isUS = !country_code || country_code.toLowerCase() === "us";
+	const censusUnmatched: Array<{ rid: number; addr: string }> = [];
+	if (isUS) {
+		const candidates: Array<{ rid: number; addr: string }> = [];
+		for (const row of rows) {
+			if (!row) continue;
+			const rid = Number(row._gcb_rid);
+			const baseAddr = String(row._gcb_addr ?? "")
+				.replace(/,\s*,/g, ",")
+				.replace(/^\s*,\s*|\s*,\s*$/g, "")
+				.trim();
+			if (!baseAddr) continue;
+			// Always append effectiveRegionHint when calling Census — Census's
+			// TIGER lookup wants city+state+ZIP context. The viewbox is
+			// only for Nominatim.
+			const addr = effectiveRegionHint?.trim()
+				? `${baseAddr}, ${effectiveRegionHint.trim()}`
+				: baseAddr;
+			candidates.push({ rid, addr });
+		}
+		attempts += candidates.length;
+		const CENSUS_PARALLEL = 6;
+		for (let i = 0; i < candidates.length; i += CENSUS_PARALLEL) {
+			if (ctx.signal?.aborted) {
+				const err = new Error("geocode aborted");
+				err.name = "AbortError";
+				throw err;
+			}
+			const chunk = candidates.slice(i, i + CENSUS_PARALLEL);
+			const results = await Promise.all(
+				chunk.map((c) => censusOne(c.addr, ctx.signal)),
+			);
+			for (let j = 0; j < chunk.length; j++) {
+				const c = chunk[j];
+				const r = results[j];
+				if (!c) continue;
+				if (r) {
+					hits.push({ rid: c.rid, lon: r.lon, lat: r.lat });
+				} else {
+					censusUnmatched.push(c);
+				}
+			}
+			if (ctx.onSubProgress) {
+				const done = Math.min(i + CENSUS_PARALLEL, candidates.length);
+				ctx.onSubProgress(
+					`Census geocode ${done} of ${candidates.length} (${hits.length} matched)…`,
+				);
+			}
+		}
+	}
+
+	// Stage 2 — Nominatim fallback for rows Census couldn't match (or
+	// non-US datasets). Uses the original 1 req/s, viewbox-bounded path.
+	const fallbackRows = isUS
+		? censusUnmatched
+		: rows
+				.filter((r): r is { _gcb_rid: number | bigint; _gcb_addr: unknown } =>
+					Boolean(r),
+				)
+				.map((row) => {
+					const baseAddr = String(row._gcb_addr ?? "")
+						.replace(/,\s*,/g, ",")
+						.replace(/^\s*,\s*|\s*,\s*$/g, "")
+						.trim();
+					return { rid: Number(row._gcb_rid), addr: baseAddr };
+				})
+				.filter((c) => c.addr.length > 0);
+	if (!isUS) attempts += fallbackRows.length;
+
+	for (let i = 0; i < fallbackRows.length; i++) {
 		if (ctx.signal?.aborted) {
 			const err = new Error("geocode aborted");
 			err.name = "AbortError";
 			throw err;
 		}
-		const row = rows[i];
-		if (!row) continue;
-		const rid = Number(row._gcb_rid);
-		let addr = String(row._gcb_addr ?? "")
-			.replace(/,\s*,/g, ",")
-			.replace(/^\s*,\s*|\s*,\s*$/g, "")
-			.trim();
-		if (!addr) continue;
-		// With a viewbox, send ONLY the street address — the viewbox supplies
-		// the geographic context and appending city/state confuses Nominatim's
-		// rural-address parser. Without a viewbox, append region_hint.
-		if (!viewbox && region_hint?.trim()) {
-			addr = `${addr}, ${region_hint.trim()}`;
+		const c = fallbackRows[i];
+		if (!c) continue;
+		let addr = c.addr;
+		if (!viewbox && effectiveRegionHint?.trim()) {
+			addr = `${addr}, ${effectiveRegionHint.trim()}`;
 		}
-		attempts++;
 		const hit = await geocodeOne(
 			addr,
 			viewbox ? undefined : country_code,
 			viewbox,
 			ctx.signal,
 		);
-		if (hit) hits.push({ rid, lon: hit.lon, lat: hit.lat });
-		if (ctx.onSubProgress && (i % 5 === 0 || i === rows.length - 1)) {
+		if (hit) hits.push({ rid: c.rid, lon: hit.lon, lat: hit.lat });
+		if (ctx.onSubProgress && (i % 5 === 0 || i === fallbackRows.length - 1)) {
 			ctx.onSubProgress(
-				`Geocoding address ${i + 1} of ${rows.length} (${hits.length} matched so far)…`,
+				`Nominatim fallback ${i + 1} of ${fallbackRows.length} (${hits.length} total matched)…`,
 			);
 		}
-		if (i < rows.length - 1) await sleep(RATE_LIMIT_MS, ctx.signal);
+		if (i < fallbackRows.length - 1) await sleep(RATE_LIMIT_MS, ctx.signal);
 	}
 
 	if (hits.length === 0) {
-		const colList = address_cols.map((c) => `"${c}"`).join(", ");
+		const colList = effectiveAddressCols.map((c) => `"${c}"`).join(", ");
 		throw new Error(
-			`geocode.address: 0 of ${attempts} addresses resolved. Address columns tried: ${colList}${region_hint ? ` with region_hint="${region_hint}"` : ""}${country_code ? ` country_code="${country_code}"` : ""}. Likely fixes: (1) include a city/state/zip column in address_cols; (2) set region_hint to the city or state the data is in (e.g. "Cedar Key, FL, USA"); (3) set country_code (e.g. "us"). Single-street-column data without context cannot be geocoded.`,
+			`geocode.address: 0 of ${attempts} addresses resolved. Address columns tried: ${colList}${effectiveRegionHint ? ` with region_hint="${effectiveRegionHint}"` : ""}${country_code ? ` country_code="${country_code}"` : ""}. Likely fixes: (1) include a city/state/zip column in address_cols; (2) set region_hint to the city or state the data is in (e.g. "Cedar Key, FL, USA"); (3) set country_code (e.g. "us"). Single-street-column data without context cannot be geocoded.`,
 		);
 	}
 
@@ -221,6 +339,65 @@ async function geocodeOne(
 		const lon = Number.parseFloat(first.lon);
 		if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 		return { lat, lon };
+	} catch (err) {
+		if (err instanceof Error && err.name === "AbortError") throw err;
+		return null;
+	}
+}
+
+/**
+ * Census Bureau geocoder for US street addresses. TIGER/Line has
+ * comprehensive coverage including small towns where OSM lacks data.
+ * No API key required, supports CORS, parallel-safe.
+ *
+ * Returns null on no match, network error, or non-200 response. Aborts
+ * propagate via the signal.
+ */
+/**
+ * Census endpoint. The U.S. Census Bureau API does NOT emit
+ * Access-Control-Allow-Origin, so direct browser calls are blocked by
+ * CORS. We default to a same-origin path (`/api/census-geocode/...`)
+ * so a dev Vite proxy or production reverse-proxy can forward the
+ * request server-side. Hosts that don't proxy can override at build
+ * time via `__GEOCHATBOT_CENSUS_URL__` (define) or by setting
+ * `window.__GEOCHATBOT_CENSUS_URL__` before the widget loads.
+ */
+const CENSUS_URL_DEFAULT = "/api/census-geocode/locations/onelineaddress";
+function getCensusUrl(): string {
+	const w = (globalThis as { __GEOCHATBOT_CENSUS_URL__?: string })
+		.__GEOCHATBOT_CENSUS_URL__;
+	if (typeof w === "string" && w.length > 0) return w;
+	return CENSUS_URL_DEFAULT;
+}
+
+async function censusOne(
+	addr: string,
+	signal?: AbortSignal,
+): Promise<{ lon: number; lat: number } | null> {
+	try {
+		const params = new URLSearchParams({
+			address: addr,
+			benchmark: "Public_AR_Current",
+			format: "json",
+		});
+		const url = `${getCensusUrl()}?${params.toString()}`;
+		const init: RequestInit = { headers: { Accept: "application/json" } };
+		if (signal) init.signal = signal;
+		const resp = await fetch(url, init);
+		if (!resp.ok) return null;
+		const body = (await resp.json()) as {
+			result?: {
+				addressMatches?: Array<{
+					coordinates?: { x?: number; y?: number };
+				}>;
+			};
+		};
+		const first = body.result?.addressMatches?.[0];
+		const x = first?.coordinates?.x;
+		const y = first?.coordinates?.y;
+		if (typeof x !== "number" || typeof y !== "number") return null;
+		if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+		return { lon: x, lat: y };
 	} catch (err) {
 		if (err instanceof Error && err.name === "AbortError") throw err;
 		return null;

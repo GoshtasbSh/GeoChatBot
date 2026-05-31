@@ -60,6 +60,12 @@ export interface ExecCtx {
 	 * human-readable string. The host routes it to the status overlay.
 	 */
 	onSubProgress?: (message: string) => void;
+	/**
+	 * The active dataset's planner profile (with column roles + inferred
+	 * region), when available. Lets self-grounding runners (e.g. the
+	 * geocoder) auto-fill arguments the planner didn't specify.
+	 */
+	activeProfile?: import("../prompts/builders.js").DatasetProfile;
 }
 
 /** Headless-equivalent payload for `render.*` runners. */
@@ -178,6 +184,20 @@ export interface ExecutorCallbacks {
 	 * `undefined` (or omitting the callback) is equivalent to `'abort'`.
 	 */
 	onStepError?: (ctx: StepErrorContext) => Promise<CriticDecision | undefined>;
+	/**
+	 * Intermediate layer/table output produced by a non-render step (e.g.
+	 * geocode.address → layer ref). Fired so the host can profile the new
+	 * view and add it to the planner's dataset_refs on the NEXT turn —
+	 * otherwise the planner cannot reference layers produced earlier in
+	 * the same conversation (HIGH-04: chat memory loses layer references).
+	 */
+	onIntermediate?: (e: {
+		planId: string;
+		stepId: string;
+		outputVar: string;
+		outputKind: "layer" | "table";
+		ref: string;
+	}) => void;
 }
 
 /** Convenience predicate for branching on output kind. */
