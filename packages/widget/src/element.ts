@@ -25,6 +25,7 @@ import type {
 	DatasetProfile as PlannerDatasetProfile,
 	ProviderId,
 } from "./agent/index.js";
+import { makeAnthropicLoopCall } from "./agent/agentic/loop-anthropic.js";
 import type { PlannerLLMInput } from "./agent/llm.js";
 import { augmentProfile } from "./agent/profile/augment.js";
 import { PlanValidationError, validatePlan } from "./agent/validate-plan.js";
@@ -1689,18 +1690,26 @@ export class GeoChatBotElement extends LitElement {
 			// immediate feedback.
 			if (wantAgentic && !agenticActive) {
 				const reason = !agenticEndpoint
-					? `agentic mode is not supported for provider "${this._llmProvider}" — falling back to single-shot. Use Groq or OpenAI for the multi-turn loop.`
+					? `agentic mode is not supported for provider "${this._llmProvider}" — falling back to single-shot. Use Anthropic (Claude), OpenAI, or Groq for the multi-turn loop.`
 					: "agentic mode requires a loaded dataset (the inspection tools query DuckDB) — falling back to single-shot until you add data.";
 				// Dispatch as a non-blocking warning so the host can surface it
 				// in a toast/banner without aborting the user's question.
 				this.dispatch("error", { code: "AGENTIC_FALLBACK", message: reason });
 			}
+			// For Anthropic, inject the native-format loop adapter so the
+			// agentic ReAct loop calls Anthropic's Messages API directly
+			// instead of an OpenAI-compat endpoint.
+			const anthropicAgenticCall =
+				agenticActive && this._llmProvider === "anthropic"
+					? makeAnthropicLoopCall()
+					: undefined;
 			this._planner = new Planner({
 				provider: this._llmProvider,
 				apiKey: this._apiKey,
 				model: this._model,
 				dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
 				...(this._llmCall ? { llmCall: this._llmCall } : {}),
+				...(anthropicAgenticCall ? { agenticLlmCall: anthropicAgenticCall } : {}),
 				mode: agenticActive ? "agentic" : "single-shot",
 				retrieval: this.retrievalMode,
 				memoryEnabled: this.memoryEnabled,
@@ -2264,8 +2273,12 @@ export class GeoChatBotElement extends LitElement {
 				return "https://api.openai.com/v1/chat/completions";
 			case "uf-navigator":
 				return "https://api.ai.it.ufl.edu/v1/chat/completions";
-			// Anthropic + Gemini have different multi-turn shapes; we don't
-			// run an agentic loop against them in this version.
+			// Anthropic uses a native adapter (not OpenAI-compat endpoint).
+			// Return a sentinel so agenticActive=true; the Planner ignores
+			// agenticEndpoint when an explicit llmCall is provided.
+			case "anthropic":
+				return "anthropic-native";
+			// Gemini has a different multi-turn shape; not yet supported.
 			default:
 				return undefined;
 		}
