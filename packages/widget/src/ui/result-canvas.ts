@@ -19,7 +19,7 @@
 import { LitElement, type TemplateResult, css, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import type { ResultPayload } from "../agent/executor/types.js";
-import type { GeoJsonInputLayer } from "./MapView.js";
+import { computeLegend, type GeoJsonInputLayer } from "./MapView.js";
 import { tokensCSS } from "./tokens.js";
 
 /**
@@ -149,7 +149,15 @@ export class ResultCanvas extends LitElement {
         color: var(--gcb-accent); font-family: var(--gcb-font-mono);
       }
 
-      .msg.user { justify-content: flex-end; padding-left: 80px; }
+      /* User turns span the full canvas width and push the bubble to the
+         far right edge — chat-app style (assistant left, user right).
+         Without overriding the 860px .msg cap the bubble stalled in the
+         middle of wide screens. */
+      .msg.user {
+        max-width: none;
+        justify-content: flex-end;
+        padding-left: 80px;
+      }
       .bubble {
         display: inline-block;
         background: var(--gcb-user-bg); color: #fff;
@@ -265,7 +273,93 @@ export class ResultCanvas extends LitElement {
         padding: 1px 4px;
         border-radius: 3px;
       }
-      gcb-map { display: block; height: 260px; }
+      .map-legend-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin: 6px 12px 0;
+        padding: 8px 10px;
+        background: var(--gcb-bg-3);
+        border: 1px solid var(--gcb-line);
+        border-radius: 6px;
+        font-size: 11px;
+        color: var(--gcb-ink);
+        max-width: 100%;
+      }
+      .map-legend-panel-title {
+        color: var(--gcb-ink-muted);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .map-legend-panel-title code {
+        text-transform: none;
+        letter-spacing: 0;
+        background: transparent;
+        border: 0;
+        padding: 0;
+        color: var(--gcb-ink);
+        font-weight: 700;
+      }
+      .map-legend-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+      }
+      .map-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 220px;
+      }
+      .map-legend-swatch {
+        display: inline-block;
+        flex: 0 0 auto;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        border: 1px solid var(--gcb-line);
+      }
+      .map-legend-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .map-legend-count {
+        color: var(--gcb-ink-muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .map-legend-gradient {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .map-legend-gradient-bar {
+        flex: 1;
+        height: 10px;
+        border-radius: 3px;
+        border: 1px solid var(--gcb-line);
+      }
+      .map-legend-gradient-tick {
+        font-variant-numeric: tabular-nums;
+        color: var(--gcb-ink-muted);
+      }
+      .map-legend-more {
+        color: var(--gcb-ink-muted);
+        font-style: italic;
+      }
+      .map-legend-warning {
+        margin-top: 4px;
+        padding: 6px 8px;
+        background: var(--gcb-warn-bg, #fff8e1);
+        color: var(--gcb-warn-fg, #7a5a00);
+        border: 1px solid var(--gcb-warn-line, #f5d27a);
+        border-radius: 4px;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      gcb-map { display: block; height: 340px; }
       .map-loading {
         font-size: 12px; color: var(--gcb-ink-muted);
         padding: 60px 12px; text-align: center;
@@ -600,6 +694,65 @@ export class ResultCanvas extends LitElement {
 			: [];
 		const title = `chart · ${spec.x} vs ${spec.y}`;
 
+		if (spec.kind === "line" && data.length > 0) {
+			// SVG line chart for temporal / sequential data
+			const W = 520;
+			const H = 140;
+			const PAD = { top: 12, right: 16, bottom: 28, left: 42 };
+			const innerW = W - PAD.left - PAD.right;
+			const innerH = H - PAD.top - PAD.bottom;
+			const yVals = data.map((d) => Number(d.y) || 0);
+			const yMin = Math.min(...yVals);
+			const yMax = Math.max(...yVals, yMin + 1);
+			const xScale = (i: number) => PAD.left + (i / (data.length - 1 || 1)) * innerW;
+			const yScale = (v: number) =>
+				PAD.top + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
+			const pts = data.map((d, i) => `${xScale(i).toFixed(1)},${yScale(Number(d.y) || 0).toFixed(1)}`).join(" ");
+			// X-axis tick labels: show up to 6 evenly spaced
+			const tickIdxs = data.length <= 6
+				? data.map((_, i) => i)
+				: [0, Math.floor(data.length / 4), Math.floor(data.length / 2), Math.floor(3 * data.length / 4), data.length - 1];
+			const yTicks = [yMin, (yMin + yMax) / 2, yMax];
+			return html`
+        <div class="card">
+          <div class="card-hdr">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polyline points="22 12 18 12 15 17 9 7 6 12 2 12"/>
+            </svg>
+            <span class="card-lbl">Chart · line · ${spec.x} vs ${spec.y}</span>
+            ${this._saveBtn("chart", p, title, turn)}
+          </div>
+          <div class="chart-bd" style="overflow-x:auto">
+            <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;display:block">
+              <!-- y-axis ticks -->
+              ${yTicks.map((v) => html`
+                <line x1="${PAD.left}" y1="${yScale(v).toFixed(1)}" x2="${PAD.left + innerW}" y2="${yScale(v).toFixed(1)}"
+                  stroke="var(--gcb-border,#ddd)" stroke-width="0.5"/>
+                <text x="${PAD.left - 4}" y="${yScale(v).toFixed(1)}" text-anchor="end" dominant-baseline="middle"
+                  fill="var(--gcb-text-muted,#888)" font-size="9">${fmtNum(v)}</text>
+              `)}
+              <!-- polyline -->
+              <polyline points="${pts}" fill="none" stroke="var(--gcb-accent,#10b981)" stroke-width="2" stroke-linejoin="round"/>
+              <!-- dots -->
+              ${data.map((d, i) => html`
+                <circle cx="${xScale(i).toFixed(1)}" cy="${yScale(Number(d.y) || 0).toFixed(1)}" r="3"
+                  fill="var(--gcb-accent,#10b981)">
+                  <title>${String(d.x ?? "")}: ${fmtNum(Number(d.y) || 0)}</title>
+                </circle>
+              `)}
+              <!-- x-axis labels -->
+              ${tickIdxs.map((i) => html`
+                <text x="${xScale(i).toFixed(1)}" y="${H - 6}" text-anchor="middle"
+                  fill="var(--gcb-text-muted,#888)" font-size="9">
+                  ${String(data[i]?.x ?? "").slice(0, 10)}
+                </text>
+              `)}
+            </svg>
+          </div>
+        </div>
+      `;
+		}
+
 		if (
 			(spec.kind === "bar" || spec.kind === "grouped_bar") &&
 			data.length > 0
@@ -722,9 +875,10 @@ export class ResultCanvas extends LitElement {
 				? { style: safeStyle }
 				: {}),
 		};
-		const legend = safeStyle?.colorBy
+		const legendHeader = safeStyle?.colorBy
 			? html`<span class="map-legend">colored by <code>${safeStyle.colorBy}</code></span>`
 			: nothing;
+		const legendPanel = this._renderLegend(inputLayer);
 		return html`
       <div class="card">
         <div class="card-hdr">
@@ -733,7 +887,7 @@ export class ResultCanvas extends LitElement {
             <circle cx="12" cy="10" r="3"/>
           </svg>
           <span class="card-lbl">Map · ${layerName} · ${featCount} features</span>
-          ${legend}
+          ${legendHeader}
           ${this._saveBtn("map", p, mapTitle, turn)}
         </div>
         <div class="map-bd">
@@ -749,9 +903,92 @@ export class ResultCanvas extends LitElement {
             Layer added to Contents
           </div>
         </div>
+        ${legendPanel}
       </div>
     `;
 	}
+
+	private _renderLegend(input: GeoJsonInputLayer): TemplateResult | typeof nothing {
+		if (!input.style?.colorBy) return nothing;
+		const features = (input.geojson?.features as GeoJSON.Feature[]) ?? [];
+		if (features.length === 0) return nothing;
+		const spec = computeLegend(features, input.style);
+		if (spec.kind === "none" || spec.entries.length === 0) return nothing;
+		const title = html`
+      <div class="map-legend-panel-title">
+        ${spec.kind === "categorical" ? "Categories" : "Range"} ·
+        <code>${spec.colorBy ?? ""}</code>
+      </div>
+    `;
+		if (spec.kind === "categorical") {
+			return html`
+        <div class="map-legend-panel" role="group" aria-label="Map legend">
+          ${title}
+          <div class="map-legend-list">
+            ${spec.entries.map(
+							(e) => html`
+              <span class="map-legend-item" title=${e.label}>
+                <span
+                  class="map-legend-swatch"
+                  style=${`background: rgba(${e.swatch[0]}, ${e.swatch[1]}, ${e.swatch[2]}, ${(e.swatch[3] ?? 200) / 255})`}
+                  aria-hidden="true"
+                ></span>
+                <span class="map-legend-label">${e.label}</span>
+                ${
+									e.count !== undefined
+										? html`<span class="map-legend-count">(${e.count})</span>`
+										: nothing
+								}
+              </span>
+            `,
+						)}
+          </div>
+          ${
+						spec.hiddenCategoryCount && spec.hiddenCategoryCount > 0
+							? html`<div class="map-legend-more">+${spec.hiddenCategoryCount} more (top ${spec.entries.length} of ${spec.totalCategoryCount} shown)</div>`
+							: nothing
+					}
+          ${
+						spec.warning
+							? html`<div class="map-legend-warning" role="status">⚠ ${spec.warning}</div>`
+							: nothing
+					}
+        </div>
+      `;
+		}
+		// quantile / linear: gradient bar + min/max ticks
+		const gradient = spec.entries
+			.map(
+				(e, i) =>
+					`rgba(${e.swatch[0]}, ${e.swatch[1]}, ${e.swatch[2]}, ${(e.swatch[3] ?? 200) / 255}) ${(i / (spec.entries.length - 1 || 1)) * 100}%`,
+			)
+			.join(", ");
+		const [lo, hi] = spec.range ?? [0, 0];
+		return html`
+      <div class="map-legend-panel" role="group" aria-label="Map legend">
+        ${title}
+        <div class="map-legend-gradient">
+          <span class="map-legend-gradient-tick">${formatLegendTick(lo)}</span>
+          <span
+            class="map-legend-gradient-bar"
+            style=${`background: linear-gradient(to right, ${gradient})`}
+            aria-hidden="true"
+          ></span>
+          <span class="map-legend-gradient-tick">${formatLegendTick(hi)}</span>
+        </div>
+      </div>
+    `;
+	}
+}
+
+function formatLegendTick(n: number): string {
+	if (!Number.isFinite(n)) return "";
+	const abs = Math.abs(n);
+	if (abs >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+	if (abs >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+	if (abs >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+	if (abs >= 10) return n.toFixed(0);
+	return n.toFixed(2);
 }
 
 function formatCell(v: unknown): string {

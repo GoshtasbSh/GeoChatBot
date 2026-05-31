@@ -308,7 +308,7 @@ const RELIABLE_MAX_ATTEMPTS = 2;
  * re-planning the same approach won't help.
  */
 const REPLANNABLE_ERROR =
-	/unknown dataset|not implemented|no runner registered|not in the available tool|missing_runner|unknown tool|\$\{/;
+	/unknown dataset|not implemented|no runner registered|not in the available tool|missing_runner|unknown tool|\$\{|output_var.*collides|collides with loaded dataset/i;
 // A literal `${` reaching SQL means an unsubstituted step-output variable — a
 // recurring LLM mistake (writing `FROM ${x}` instead of `FROM x`). Matched
 // above so it re-plans; the `\$\{` token is specific enough not to collide
@@ -2066,6 +2066,8 @@ export class GeoChatBotElement extends LitElement {
 				// it. (Runtime failures the step-critic owns are left as-is.)
 				recoveryFeedback = UNSUBSTITUTED_VAR.test(execErrorMsg ?? "")
 					? `Your previous plan FAILED with: "${execErrorMsg}". A SQL step referenced a prior step's output using \${...} syntax, which is NOT substituted inside SQL text. Reference a prior step's output by its bare output_var name as a table (e.g. "FROM my_output"), or pass the layer via a 'layer' argument — never "\${my_output}" inside a query. Re-plan accordingly.`
+					: /output_var.*collides|collides with loaded dataset/i.test(execErrorMsg ?? "")
+					? `Your previous plan FAILED because an output_var name collided with an existing dataset name: "${execErrorMsg}". Choose a completely different output_var — use short generic names like "filtered", "result", "s1_out", "step_out" — never reuse the name of any dataset already loaded. Re-plan with a unique output_var.`
 					: `Your previous plan FAILED with this error: "${execErrorMsg}". That tool or dataset is unavailable. Re-plan with a DIFFERENT, simpler approach using ONLY the loaded dataset and basic tools (sql, render.map, render.table, render.chart, stats.aggregate). Do not reference the failing tool or dataset again.`;
 				// honestMessage falls back to the friendlyExecError already set.
 			} else if (!sawError) {
@@ -2151,25 +2153,45 @@ export class GeoChatBotElement extends LitElement {
 	} {
 		const fails: GuardResult[] = [];
 		for (const r of results) {
-			// render.map falls back to a "Cannot map … but it does have
-			// address-like columns" SUMMARY when a step dropped the geometry
-			// (e.g. a bucketize SQL that read FROM the original table instead
-			// of the geocoded output). The data IS geocodable, so re-plan with
-			// the right chaining instead of shipping a non-map. (The genuinely
-			// non-spatial variant says "no address-like columns" — left alone.)
-			if (
-				r.kind === "summary" &&
-				/cannot map/i.test(r.text) &&
-				/address-like columns/i.test(r.text)
-			) {
-				fails.push({
-					ok: false,
-					severity: "fail",
-					reason: "map could not render — the geometry was lost",
-					suggestedFix:
-						"geocode the address columns FIRST, then run any SQL/bucketize step on the GEOCODED output (not the original table), and keep all columns (SELECT *) so the geometry survives to render.map",
-				});
-				continue;
+			// render.map falls back to a "Cannot map …" SUMMARY when a step
+			// dropped the geometry.  Two distinct sub-cases:
+			//
+			// A) "… but it does have address-like columns" — the table came from
+			//    a SQL step on the raw (un-geocoded) CSV.  Recovery: geocode first,
+			//    then SQL on the geocoded output.
+			//
+			// B) "no geometry column, no lat/lon columns, and no address-like
+			//    columns" — the table probably came from a SQL step on a GeoJSON
+			//    source that already had geometry, but SELECT dropped it.
+			//    Recovery: rewrite the SQL with SELECT * (or explicitly include
+			//    the geometry column).
+			if (r.kind === "summary" && /cannot map/i.test(r.text)) {
+				const hasAddressHint = /address-like columns/i.test(r.text);
+				const noGeomNoAddr =
+					/no geometry column/i.test(r.text) &&
+					/no lat\/lon/i.test(r.text) &&
+					/no address-like/i.test(r.text);
+				if (noGeomNoAddr) {
+					// GeoJSON / polygon source — geometry was dropped by SQL SELECT
+					fails.push({
+						ok: false,
+						severity: "fail",
+						reason: "map could not render — SQL step dropped the geometry column",
+						suggestedFix:
+							"rewrite the SQL step to use SELECT * FROM [table] WHERE ... instead of listing specific columns — this preserves the geometry column that render.map needs",
+					});
+				} else if (hasAddressHint) {
+					// CSV with addresses — SQL ran on un-geocoded table
+					fails.push({
+						ok: false,
+						severity: "fail",
+						reason: "map could not render — the geometry was lost",
+						suggestedFix:
+							"geocode the address columns FIRST, then run any SQL/bucketize step on the GEOCODED output (not the original table), and keep all columns (SELECT *) so the geometry survives to render.map",
+					});
+				}
+				// If neither pattern matched it's an unrecognised variant — skip
+				if (noGeomNoAddr || hasAddressHint) continue;
 			}
 			// A summary still containing ${...} means the model wrote a template
 			// it expected the system to fill — render.summary shows text

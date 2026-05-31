@@ -515,6 +515,20 @@ a command.
         render.map(layer, style={radiusBy:"sales"})       ← only fields you need
   - Reference dataset names EXACTLY as in the profile.
   - For \`output_var: foo\` on step s1, later steps use \`\${foo}\`.
+  - **output_var names MUST NOT match any dataset name already in the
+    profile.** Use fresh generic names: "filtered", "result", "s1_out",
+    "agg_out". Reusing a loaded dataset name causes a collision error.
+  - **GeoJSON / polygon sources + sql + render.map: always SELECT * (or
+    explicitly include the geometry column) so render.map can find it.**
+    BAD:  sql("SELECT id, area FROM parcels WHERE land_use='Conservation'")
+    GOOD: sql("SELECT * FROM parcels WHERE land_use='Conservation'")
+  - **"distribution" / "histogram" questions on numeric columns: use
+    WIDTH_BUCKET or CASE WHEN to create bins, NOT GROUP BY exact value.**
+    Example (5 buckets over rating 0–5):
+      SELECT CASE WHEN rating<1 THEN '0-1' WHEN rating<2 THEN '1-2'
+             WHEN rating<3 THEN '2-3' WHEN rating<4 THEN '3-4'
+             ELSE '4-5' END AS bucket, COUNT(*) AS count
+      FROM t GROUP BY 1 ORDER BY 1
   - LAST step must be render.* OR report.*.
   - NEVER finalize a map plan without confirmed spatial column or a
     geocode step. No spatial column AND no addresses → render.summary
