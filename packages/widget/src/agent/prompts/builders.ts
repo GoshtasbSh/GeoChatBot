@@ -27,8 +27,201 @@ export interface DatasetProfile {
 		 * "Notes" column) without exposing arbitrary user data.
 		 */
 		samples?: unknown[];
+		role?: import("../profile/roles.js").ColumnRole;
+		needsBucketing?: boolean;
 	}>;
 	sample: unknown[];
+	inferredRegion?: import("../profile/region.js").InferredRegion;
+}
+
+/**
+ * Color-by suitability score for a column. Higher = better candidate for
+ * `style.colorBy` on a map render. The planner reads the score when the
+ * user says "color code the points" without specifying a column.
+ *
+ * Scoring rubric (audit 2026-05-21 — landed alongside the legend fix):
+ *   3 — strong:  low-card categorical (3-12 distinct strings) OR a name
+ *                that screams "status/category/type/outcome/class" with
+ *                cardinality > 1 OR a continuous numeric (cardinality > 20).
+ *   2 — medium:  boolean, low-card date, or a string with cardinality
+ *                13-30 (acceptable but may need bucketing).
+ *   1 — weak:    high-card free text (cardinality > 30) — should be
+ *                bucketed via SQL before render, not passed raw.
+ *   0 — no:      address-like, WKT, ID-like unique strings, single-value
+ *                columns, the geometry column itself.
+ */
+export type ColorByScore = 0 | 1 | 2 | 3;
+export interface ColorByCandidate {
+	score: ColorByScore;
+	reason: string;
+}
+
+const STATUS_NAME_RE =
+	/(^|[_\s-])(status|state|type|category|outcome|result|class|group|kind|disposition|level|severity|stage|phase|tier|grade|condition|label|tag)([_\s-]|$)/i;
+
+/**
+ * Compute the color-by suitability of a single column from already-known
+ * profile metadata (cardinality, type, name, samples). Pure function so
+ * unit tests can pin the rubric without spinning up Arrow/DuckDB.
+ */
+export function scoreColorByCandidate(args: {
+	name: string;
+	type: string;
+	cardinality?: number;
+	samples?: unknown[];
+	rows?: number;
+	geometryColumn?: string;
+}): ColorByCandidate {
+	const { name, type, cardinality, samples, rows, geometryColumn } = args;
+	const lname = name.toLowerCase();
+	const ltype = type.toLowerCase();
+
+	if (geometryColumn && name === geometryColumn) {
+		return { score: 0, reason: "geometry column" };
+	}
+
+	// Hard "no" signals from the existing semantic-hint detector.
+	const semantic = detectSemanticHint(name, type, samples);
+	if (
+		semantic === "wkt-geometry" ||
+		semantic === "latitude" ||
+		semantic === "longitude" ||
+		semantic === "street-address"
+	) {
+		return { score: 0, reason: `${semantic} — not a color-by signal` };
+	}
+	if (
+		/(^|[_\s-])(id|uuid|guid|name|address|notes?|comment|description)([_\s-]|$)/i.test(
+			lname,
+		)
+	) {
+		// "Name"-like columns are usually unique-per-row; "address"/"notes"
+		// are free text. These should not be passed raw to colorBy.
+		if (
+			cardinality !== undefined &&
+			rows !== undefined &&
+			rows > 0 &&
+			cardinality / rows > 0.5
+		) {
+			return { score: 0, reason: "ID-like / unique-per-row column" };
+		}
+	}
+
+	// Cardinality of 0 or 1 = no information.
+	if (cardinality !== undefined && cardinality <= 1) {
+		return { score: 0, reason: "single distinct value" };
+	}
+
+	// Strong name-based signal.
+	const nameHit = STATUS_NAME_RE.test(lname);
+
+	// Boolean = always exactly 2 colors. Useful but limited.
+	if (ltype.includes("bool")) {
+		return { score: 2, reason: "boolean — produces 2 buckets" };
+	}
+
+	// Numeric: choropleth-style quantile/linear scale.
+	if (
+		ltype.includes("int") ||
+		ltype.includes("float") ||
+		ltype.includes("double") ||
+		ltype.includes("decimal")
+	) {
+		if (cardinality !== undefined && cardinality < 3) {
+			return { score: 1, reason: "near-constant numeric" };
+		}
+		if (cardinality !== undefined && cardinality > 20) {
+			return {
+				score: 3,
+				reason: "continuous numeric — good choropleth candidate",
+			};
+		}
+		return { score: 2, reason: "numeric with limited range" };
+	}
+
+	// String — the most common case.
+	if (
+		ltype.includes("utf8") ||
+		ltype.includes("string") ||
+		ltype.includes("varchar")
+	) {
+		if (cardinality === undefined) {
+			// Unknown cardinality: if the name is a strong signal, bump to medium.
+			return nameHit
+				? { score: 2, reason: "status-like name — verify with distinct_values" }
+				: { score: 1, reason: "string of unknown cardinality" };
+		}
+		if (cardinality >= 3 && cardinality <= 12) {
+			// 2026-05-21: status-like names take the 3/3 tier exclusively so
+			// `contact_status` beats `date` when both are technically low-card.
+			// A generic low-card column scores 2/3 — still picked when nothing
+			// better exists, but loses ties to a named status column.
+			return nameHit
+				? {
+						score: 3,
+						reason: `status-named low-card categorical (${cardinality} distinct)`,
+					}
+				: {
+						score: 2,
+						reason: `low-card categorical (${cardinality} distinct)`,
+					};
+		}
+		if (cardinality === 2) {
+			return { score: 2, reason: "binary categorical (2 distinct)" };
+		}
+		if (cardinality <= 30) {
+			return {
+				score: 2,
+				reason: `medium-card categorical (${cardinality} distinct)`,
+			};
+		}
+		// High cardinality: needs bucketing.
+		if (nameHit) {
+			return {
+				score: 2,
+				reason: `status-like name with high cardinality (${cardinality}) — bucket via SQL`,
+			};
+		}
+		return {
+			score: 1,
+			reason: `high-card free text (${cardinality} distinct) — bucket via SQL or skip`,
+		};
+	}
+
+	// Date/timestamp — usually too sparse to color by directly.
+	if (ltype.includes("date") || ltype.includes("timestamp")) {
+		if (cardinality !== undefined && cardinality >= 3 && cardinality <= 12) {
+			return { score: 2, reason: "low-card date — usable but noisy" };
+		}
+		return { score: 1, reason: "date — extract bucket via SQL first" };
+	}
+
+	return { score: 1, reason: "unclassified — verify before using" };
+}
+
+/** Rank a dataset's columns from best → worst color-by candidate.
+ *  Stable: ties preserve original column order. */
+export function rankColorByCandidates(
+	profile: DatasetProfile,
+): Array<{ name: string; score: ColorByScore; reason: string }> {
+	const out = profile.columns.map((c) => {
+		const cand = scoreColorByCandidate({
+			name: c.name,
+			type: c.type,
+			...(c.cardinality !== undefined ? { cardinality: c.cardinality } : {}),
+			...(c.samples !== undefined ? { samples: c.samples } : {}),
+			rows: profile.rows,
+			...(profile.geometry?.column
+				? { geometryColumn: profile.geometry.column }
+				: {}),
+		});
+		return { name: c.name, score: cand.score, reason: cand.reason };
+	});
+	// Stable sort by score desc.
+	return out
+		.map((c, i) => ({ ...c, _i: i }))
+		.sort((a, b) => b.score - a.score || a._i - b._i)
+		.map(({ _i, ...rest }) => rest);
 }
 
 const DATASET_CAP = 5;
@@ -67,8 +260,43 @@ export function renderDatasetsBlock(datasets: DatasetProfile[]): string {
 			// even partial semantic hints lift accuracy markedly.
 			const hint = detectSemanticHint(c.name, c.type, c.samples);
 			const hintStr = hint ? ` hint:${hint}` : "";
+			// 2026-05-21: color-by suitability hint. Weak models would
+			// otherwise blindly pick the first column for a bare "color
+			// code the points" request — producing a 2-color blob from a
+			// sparse date column. The score gives the planner a pre-
+			// computed ranking it can trust.
+			const cand = scoreColorByCandidate({
+				name: c.name,
+				type: c.type,
+				...(c.cardinality !== undefined ? { cardinality: c.cardinality } : {}),
+				...(c.samples !== undefined ? { samples: c.samples } : {}),
+				rows: d.rows,
+				...(d.geometry?.column ? { geometryColumn: d.geometry.column } : {}),
+			});
+			const candStr = ` colorBy:${cand.score}/3 (${cand.reason})`;
+			const roleStr = c.role
+				? `  [role: ${c.role}${c.needsBucketing ? "; needs bucketing before group/color" : ""}]`
+				: "";
 			lines.push(
-				`  - ${c.name}: ${c.type}${range}${nulls}${card}${samples}${hintStr}`.trimEnd(),
+				`  - ${c.name}: ${c.type}${range}${nulls}${card}${samples}${hintStr}${candStr}${roleStr}`.trimEnd(),
+			);
+		}
+		// Inferred region from city/state/lat/lon columns — gives the planner
+		// a starting bbox for spatial queries without an extra inspect round-trip.
+		if (d.inferredRegion) {
+			lines.push(`- inferred region: ${d.inferredRegion.label}`);
+		}
+		// Top 3 colorBy picks at the dataset level — saves the planner from
+		// scanning the per-column table when the user says "color code".
+		const ranked = rankColorByCandidates(d)
+			.filter((r) => r.score > 0)
+			.slice(0, 3);
+		if (ranked.length > 0) {
+			const summary = ranked.map((r) => `${r.name} (${r.score}/3)`).join(", ");
+			lines.push(`- best color-by candidates: ${summary}`);
+		} else {
+			lines.push(
+				"- best color-by candidates: NONE — no column scored above 0; ask the user which column to color by",
 			);
 		}
 		if (d.sample.length) {

@@ -26,6 +26,7 @@ import type {
 	ProviderId,
 } from "./agent/index.js";
 import type { PlannerLLMInput } from "./agent/llm.js";
+import { augmentProfile } from "./agent/profile/augment.js";
 import { PlanValidationError, validatePlan } from "./agent/validate-plan.js";
 import { validateSql } from "./agent/validate-sql.js";
 import type {
@@ -109,6 +110,13 @@ function toPlannerDatasetProfile(
 			type: c.arrowType,
 			nulls: c.nullCount,
 		};
+		// 2026-05-21: forward distinct count for categorical columns so
+		// the planner-side colorBy ranker (builders.ts:scoreColorByCandidate)
+		// can score this column instead of falling back to the "unknown
+		// cardinality" branch. Previously this was silently dropped.
+		if (c.categorical?.distinct !== undefined) {
+			out.cardinality = c.categorical.distinct;
+		}
 		const samples = deriveColumnSamples(c);
 		if (samples.length > 0) out.samples = samples;
 		return out;
@@ -135,7 +143,7 @@ function toPlannerDatasetProfile(
 			...(profile.geometry.bbox ? { bbox: profile.geometry.bbox } : {}),
 		};
 	}
-	return planner;
+	return augmentProfile(planner);
 }
 
 /**
@@ -1282,8 +1290,10 @@ export class GeoChatBotElement extends LitElement {
 					}
         </div>
 
-        <!-- DOCK: chat input -->
-        <div slot="dock" style="height:100%; display:flex; align-items:center; padding: 0 14px;">
+        <!-- DOCK: chat input. max-height + overflow lets the dock scroll
+             internally in the rare case its content exceeds 40vh; the
+             shell's fit-content(40vh) dock track sizes to this content. -->
+        <div slot="dock" style="display:flex; align-items:center; padding: 0 14px; max-height:40vh; overflow-y:auto;">
           <gcb-ask-input
             style="flex:1;"
             .disabledReason=${disabledReason}
@@ -1949,6 +1959,14 @@ export class GeoChatBotElement extends LitElement {
 						this.dispatch("result", e);
 						if (this.mode !== "headless") this._mountResult(e);
 					},
+					onIntermediate: (e) => {
+						// HIGH-04 fix: register the produced layer/table as a
+						// planner-visible dataset so the next conversation turn
+						// can reference it directly (e.g. "of those, how many
+						// completed?") instead of triggering a re-run of the
+						// upstream operation.
+						void this._registerIntermediateLayer(e.ref, e.outputVar);
+					},
 					onError: (e) => {
 						this.dispatch("error", e);
 						this.error = e.message;
@@ -2036,6 +2054,63 @@ export class GeoChatBotElement extends LitElement {
 	/** Test-only: substitute the executor engine for deterministic tests. */
 	__setExecutorEngine(engine: ExecutorEngine): void {
 		this._executorEngine = engine;
+	}
+
+	/**
+	 * HIGH-04 fix: when the executor produces an intermediate layer/table
+	 * (e.g. `geocoded` from a `geocode.address` step), profile the view
+	 * and add it to `_datasets` so the next planner turn can see it. Without
+	 * this, a follow-up like "how many of those geocoded?" would re-run
+	 * the upstream operation instead of querying the existing layer.
+	 *
+	 * Best-effort: never throws back to the executor. Failure to profile
+	 * just means the layer won't appear in the next dataset_refs block —
+	 * the layer still exists as a DuckDB view and can be referenced by
+	 * name if the planner happens to remember it.
+	 */
+	private async _registerIntermediateLayer(
+		ref: string,
+		outputVar: string,
+	): Promise<void> {
+		try {
+			const engine = this._resolveExecutorEngine();
+			if (!engine) return;
+			// Quote the view identifier: replace inner double-quotes by
+			// doubling, then wrap. Runner-emitted refs match
+			// /^[a-z_][a-z0-9_]*$/ so this is paranoid-safe.
+			const quoted = `"${ref.replace(/"/g, '""')}"`;
+			const sample = await engine.query(`SELECT * FROM ${quoted} LIMIT 5`);
+			const rowsArr = sample.toArray() as Array<Record<string, unknown>>;
+			const cols = rowsArr[0]
+				? Object.keys(rowsArr[0]).map((c) => ({
+						name: c,
+						type: "varchar",
+					}))
+				: [];
+			const countResult = await engine.query(
+				`SELECT COUNT(*) AS n FROM ${quoted}`,
+			);
+			const countRows = countResult.toArray() as Array<{ n: number | bigint }>;
+			const rows = Number(countRows[0]?.n ?? 0);
+			// Build a minimal PlannerDatasetProfile so the planner sees this
+			// layer in dataset_refs on the next turn. The name we register
+			// under is the friendly `outputVar` (e.g. "geocoded"), which is
+			// the same name the planner referenced in step.output_var on the
+			// prior plan — so anaphora resolution lines up.
+			const profile: PlannerDatasetProfile = {
+				name: outputVar,
+				kind: "layer",
+				rows,
+				columns: cols,
+				sample: rowsArr.slice(0, 3),
+			};
+			this._datasets = [
+				...this._datasets.filter((d) => d.name !== outputVar),
+				profile,
+			];
+		} catch {
+			// best-effort; failure must not abort the executor's plan
+		}
 	}
 
 	/** Mount a result payload into <result-canvas> in full mode. */
