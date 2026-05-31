@@ -6,3 +6,4 @@ import "./stats.js";
 import "./render.js";
 import "./geocode.js";
 import "./report.js";
+import "./bucketize.js";

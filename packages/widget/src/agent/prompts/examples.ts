@@ -980,6 +980,50 @@ export const EXAMPLES: Example[] = [
 			],
 		},
 	},
+	// 26a — Generic "color code the points" on messy categorical text.
+	// Demonstrates the bucket-then-color pattern from pattern 14a: when
+	// the candidate column has many unique-ish strings with semantic
+	// patterns (survey contact outcomes here), bucket via CASE WHEN
+	// before render.map — otherwise the hash palette collapses the
+	// data into noise.
+	{
+		question: "Color code the points.",
+		plan: {
+			goal: "Render the survey points colored by a meaningful bucketed status derived from the messy `First attempt` free-text column",
+			assumptions: [
+				"`First attempt` is high-cardinality free text with semantic patterns (completed/no-answer/gated/vacant/not-interested) and is the best categorical signal in the dataset",
+				"no clean low-cardinality status column exists, so we bucket via SQL before rendering",
+			],
+			dataset_refs: ["survey"],
+			steps: [
+				{
+					id: "s1",
+					tool: "sql",
+					args: {
+						query:
+							"SELECT *, CASE " +
+							"WHEN LOWER(\"First attempt\") LIKE '%completed%' OR LOWER(\"First attempt\") LIKE '%survey%' OR LOWER(\"First attempt\") LIKE '%took survey%' THEN 'completed' " +
+							"WHEN LOWER(\"First attempt\") LIKE '%no one home%' OR LOWER(\"First attempt\") LIKE '%no answer%' OR LOWER(\"First attempt\") LIKE '%not home%' THEN 'no_answer' " +
+							"WHEN LOWER(\"First attempt\") LIKE '%gated%' OR LOWER(\"First attempt\") LIKE '%locked%' OR LOWER(\"First attempt\") LIKE '%no trespass%' OR LOWER(\"First attempt\") LIKE '%inaccessible%' THEN 'inaccessible' " +
+							"WHEN LOWER(\"First attempt\") LIKE '%vacant%' OR LOWER(\"First attempt\") LIKE '%for sale%' OR LOWER(\"First attempt\") LIKE '%uninhabited%' OR LOWER(\"First attempt\") LIKE '%no house%' THEN 'vacant' " +
+							"WHEN LOWER(\"First attempt\") LIKE '%not interested%' OR LOWER(\"First attempt\") LIKE '%declined%' THEN 'declined' " +
+							"WHEN LOWER(\"First attempt\") LIKE '%flier%' OR LOWER(\"First attempt\") LIKE '%qr%' OR LOWER(\"First attempt\") LIKE '%come back%' OR LOWER(\"First attempt\") LIKE '%no time%' THEN 'follow_up' " +
+							"ELSE 'other' END AS contact_status FROM survey",
+					},
+					why: "Bucket the messy free-text column into 6 semantic categories so the categorical palette has meaningful groups instead of one color per unique string",
+				},
+				{
+					id: "s2",
+					tool: "render.map",
+					args: {
+						layer: "${s1}",
+						style: { colorBy: "contact_status" },
+					},
+					why: "Render the points colored by the derived contact_status column — categorical palette + legend now show 6 named outcomes",
+				},
+			],
+		},
+	},
 	// 27 — Choropleth: color polygons by a numeric attribute
 	{
 		question: "Show a choropleth of census tracts by median household income.",
@@ -1212,6 +1256,41 @@ export const EXAMPLES: Example[] = [
 						text: "Moran's I computed (see ${mi}). Interpretation: I > 0.3 strongly clustered, |I| < 0.1 essentially random, I < -0.3 strongly dispersed. The 500m distance band assumes city-scale data; for regional data use a larger threshold.",
 					},
 					why: "Explain the result and provide guidance on interpretation",
+				},
+			],
+		},
+	},
+	// 36 — Color-by-bucket: free-text status column → bucketize → color map
+	{
+		question:
+			"Color the survey points by their contact outcome (the 'First attempt' column has messy free text).",
+		plan: {
+			goal: "Render survey points color-coded by a clean bucketed status derived from the free-text 'First attempt' column",
+			assumptions: [
+				"'First attempt' is high-cardinality free text with semantic patterns (completed / refused / no-answer / inaccessible)",
+				"transform.bucketize collapses the text into a small set of clean labels so the categorical palette is meaningful",
+			],
+			dataset_refs: ["survey"],
+			steps: [
+				{
+					id: "s1",
+					tool: "transform.bucketize",
+					args: {
+						layer: "survey",
+						column: "First attempt",
+						out_column: "bucket",
+					},
+					output_var: "bucketed",
+					why: "Reduce the high-cardinality free-text column to ≤6 labeled categories so each color in the legend is meaningful",
+				},
+				{
+					id: "s2",
+					tool: "render.map",
+					args: {
+						layer: "${bucketed}",
+						style: { colorBy: "bucket" },
+					},
+					why: "Render each survey point colored by its contact-outcome bucket — categorical palette + legend now show named outcomes",
 				},
 			],
 		},
