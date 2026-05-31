@@ -308,7 +308,12 @@ const RELIABLE_MAX_ATTEMPTS = 2;
  * re-planning the same approach won't help.
  */
 const REPLANNABLE_ERROR =
-	/unknown dataset|not implemented|no runner registered|not in the available tool|missing_runner|unknown tool/i;
+	/unknown dataset|not implemented|no runner registered|not in the available tool|missing_runner|unknown tool|\$\{/;
+// A literal `${` reaching SQL means an unsubstituted step-output variable — a
+// recurring LLM mistake (writing `FROM ${x}` instead of `FROM x`). Matched
+// above so it re-plans; the `\$\{` token is specific enough not to collide
+// with the step-critic's ordinary SQL/runtime errors.
+const UNSUBSTITUTED_VAR = /\$\{/;
 
 const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
 	"dataset-loaded": "geochatbot:dataset-loaded",
@@ -2056,15 +2061,12 @@ export class GeoChatBotElement extends LitElement {
 			if (abort.signal.aborted) {
 				// interrupted — leave as-is
 			} else if (sawError && REPLANNABLE_ERROR.test(execErrorMsg ?? "")) {
-				// The plan named a tool/dataset/runner that doesn't exist or
-				// isn't implemented — a different plan can fix it. (Runtime
-				// failures the step-critic already handled are left as-is.)
-				recoveryFeedback =
-					`Your previous plan FAILED with this error: "${execErrorMsg}".\n` +
-					"That tool or dataset is unavailable. Re-plan with a DIFFERENT, " +
-					"simpler approach using ONLY the loaded dataset and basic tools " +
-					"(sql, render.map, render.table, render.chart, stats.aggregate). " +
-					"Do not reference the failing tool or dataset again.";
+				// The plan named a tool/dataset/runner that doesn't exist, or a
+				// SQL step left an unsubstituted ${var} — a different plan fixes
+				// it. (Runtime failures the step-critic owns are left as-is.)
+				recoveryFeedback = UNSUBSTITUTED_VAR.test(execErrorMsg ?? "")
+					? `Your previous plan FAILED with: "${execErrorMsg}". A SQL step referenced a prior step's output using \${...} syntax, which is NOT substituted inside SQL text. Reference a prior step's output by its bare output_var name as a table (e.g. "FROM my_output"), or pass the layer via a 'layer' argument — never "\${my_output}" inside a query. Re-plan accordingly.`
+					: `Your previous plan FAILED with this error: "${execErrorMsg}". That tool or dataset is unavailable. Re-plan with a DIFFERENT, simpler approach using ONLY the loaded dataset and basic tools (sql, render.map, render.table, render.chart, stats.aggregate). Do not reference the failing tool or dataset again.`;
 				// honestMessage falls back to the friendlyExecError already set.
 			} else if (!sawError) {
 				const verdict = this._verifyOutcome(collectedResults);
