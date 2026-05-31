@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFERRED_TOOL_IDS } from "../tools/deferred.js";
 import { listTools } from "../tools/registry.js";
 import type { ToolDef } from "../tools/types.js";
 import templateRaw from "./planner.system.md?raw";
@@ -310,7 +311,8 @@ export function renderDatasetsBlock(datasets: DatasetProfile[]): string {
 }
 
 export function renderToolsBlock(): string {
-	const tools = listTools();
+	// Hide deferred/unimplemented tools so the planner can't pick a dead-end.
+	const tools = listTools().filter((t) => !DEFERRED_TOOL_IDS.has(t.id));
 	const groups = new Map<string, ToolDef[]>();
 	for (const t of tools) {
 		const ns = t.id.includes(".") ? (t.id.split(".")[0] ?? t.id) : t.id;

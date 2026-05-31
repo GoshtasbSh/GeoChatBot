@@ -17,6 +17,7 @@
  */
 
 import { z } from "zod";
+import { DEFERRED_TOOL_IDS } from "../../tools/deferred.js";
 import { registerRunner } from "../runtime.js";
 import {
 	materializeView,
@@ -163,9 +164,8 @@ function deferred(toolId: string): import("../types.js").RuntimeRunner {
 	};
 }
 
-registerRunner("stats.hex_bin", deferred("stats.hex_bin"));
-registerRunner("stats.density_grid", deferred("stats.density_grid"));
-registerRunner("stats.morans_i", deferred("stats.morans_i"));
-registerRunner("stats.getis_ord_gi", deferred("stats.getis_ord_gi"));
-registerRunner("geometry.voronoi", deferred("geometry.voronoi"));
+// Registered as throwing stubs as a backstop; also hidden from the planner's
+// tool catalog (see tools/deferred.ts + prompts/builders.ts) so the model
+// can't pick them in the first place.
+for (const id of DEFERRED_TOOL_IDS) registerRunner(id, deferred(id));
 // geometry.reproject is now a passthrough in geometry.ts (not deferred).

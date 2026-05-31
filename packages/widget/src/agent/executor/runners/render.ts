@@ -259,7 +259,11 @@ export async function runRenderMap(
 		}
 		const properties: Record<string, unknown> = {};
 		for (const [k, v] of Object.entries(r)) {
-			if (k !== "__geom_json__") properties[k] = v;
+			// BigInt (DuckDB Int64) isn't JSON-serializable — coerce to Number
+			// so the FeatureCollection survives JSON.stringify on the result
+			// event / map mount. Mirrors arrowToJsonRows() for the chart path.
+			if (k !== "__geom_json__")
+				properties[k] = typeof v === "bigint" ? Number(v) : v;
 		}
 		features.push({ type: "Feature", geometry, properties });
 	}

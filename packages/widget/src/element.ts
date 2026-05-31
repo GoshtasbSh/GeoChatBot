@@ -30,6 +30,7 @@ import { augmentProfile } from "./agent/profile/augment.js";
 import { PlanValidationError, validatePlan } from "./agent/validate-plan.js";
 import { validateSql } from "./agent/validate-sql.js";
 import { friendlyExecError } from "./agent/verify/error-message.js";
+import { classifyFailure } from "./agent/verify/failure-classifier.js";
 import {
 	type GuardResult,
 	guardColorBy,
@@ -1956,6 +1957,7 @@ export class GeoChatBotElement extends LitElement {
 		// onError → friendlyExecError and must not trigger outcome-recovery).
 		const collectedResults: ResultPayload[] = [];
 		let sawError = false;
+		let execErrorMsg: string | undefined;
 		try {
 			await exec.execute(
 				plan,
@@ -1999,6 +2001,7 @@ export class GeoChatBotElement extends LitElement {
 					},
 					onError: (e) => {
 						sawError = true;
+						execErrorMsg = e.message;
 						this.dispatch("error", e);
 						this.error = friendlyExecError(e.message);
 					},
@@ -2029,55 +2032,84 @@ export class GeoChatBotElement extends LitElement {
 				abort.signal,
 			);
 
-			// ── Reliable loop: verify the OUTCOME, then recover or be honest ──
-			// Only when execution did not already surface a terminal error and
-			// the run wasn't aborted. The single-step critic above patches
-			// failing *steps*; this verifies the *result* the user actually
-			// got (empty layer, degenerate color-by) — the gap that let a
-			// 306-point all-one-color map ship as "success".
-			if (!sawError && !abort.signal.aborted) {
+			// ── Reliable loop: recover from a bad OUTCOME or a recoverable
+			// EXECUTION ERROR, else be honest. ────────────────────────────────
+			// The single-step critic above patches failing *step args*; this
+			// layer re-plans a DIFFERENT strategy when (a) the result the user
+			// got is degenerate (empty/one-color map — the gap that let a
+			// 306-point all-gray map ship as "success"), or (b) the plan died
+			// on a logic-class error (unknown dataset, unimplemented tool, bad
+			// column) where a different approach would work. Infra errors are
+			// left as the friendly message from onError (re-planning can't fix
+			// a proxy/network outage).
+			let recoveryFeedback: string | undefined;
+			let honestMessage: string | undefined;
+			if (abort.signal.aborted) {
+				// interrupted — leave as-is
+			} else if (sawError) {
+				const cls = classifyFailure({
+					kind: "error",
+					message: execErrorMsg ?? "execution error",
+				});
+				if (cls.cls === "logic") {
+					recoveryFeedback =
+						`Your previous plan FAILED with this error: "${execErrorMsg}".\n` +
+						"That tool, dataset, or column is unavailable or invalid. Re-plan " +
+						"with a DIFFERENT, simpler approach using ONLY the loaded dataset " +
+						"and basic tools (sql, render.map, render.table, render.chart, " +
+						"stats.aggregate). Do not reference the failing tool, dataset, or " +
+						"column again.";
+					// honestMessage falls back to the friendlyExecError already set.
+				}
+			} else {
 				const verdict = this._verifyOutcome(collectedResults);
 				if (!verdict.ok) {
-					const canRecover =
-						attempt < RELIABLE_MAX_ATTEMPTS &&
-						!!this._planner &&
-						this._lastQuestion.trim() !== "";
-					if (canRecover) {
-						// Re-plan with the failure reason injected as feedback so
-						// the planner tries a DIFFERENT strategy (e.g. bucketize a
-						// free-text column before color-by), then re-execute.
-						const gen = this.generation;
-						this._statusLine =
-							"Result looked off — retrying with a different approach…";
-						let newPlan: Plan | undefined;
-						try {
-							newPlan = await this._planner?.plan({
-								question: this._lastQuestion,
-								datasets: this._datasets,
-								feedback: verdict.feedback,
-								signal: abort.signal,
-							});
-						} catch (err) {
-							if (!(err instanceof Error && err.name === "AbortError")) {
-								this.error = errMessage(err, "recovery plan failed");
-							}
+					recoveryFeedback = verdict.feedback;
+					honestMessage = verdict.message;
+				}
+			}
+
+			if (recoveryFeedback) {
+				const canRecover =
+					attempt < RELIABLE_MAX_ATTEMPTS &&
+					!!this._planner &&
+					this._lastQuestion.trim() !== "";
+				if (canRecover) {
+					const gen = this.generation;
+					this._statusLine =
+						"That approach didn't work — retrying with a different strategy…";
+					// Clear the failed-attempt error; the retry may succeed and we
+					// don't want a stale error card behind a good result.
+					this.error = null;
+					let newPlan: Plan | undefined;
+					try {
+						newPlan = await this._planner?.plan({
+							question: this._lastQuestion,
+							datasets: this._datasets,
+							feedback: recoveryFeedback,
+							signal: abort.signal,
+						});
+					} catch (err) {
+						if (!(err instanceof Error && err.name === "AbortError")) {
+							this.error = errMessage(err, "recovery plan failed");
 						}
-						if (newPlan && gen === this.generation && !abort.signal.aborted) {
-							const newId = `plan_${Date.now().toString(36)}_${Math.random()
-								.toString(36)
-								.slice(2, 8)}`;
-							this.dispatch("plan", {
-								planId: newId,
-								plan: newPlan,
-								datasets: this._datasets,
-							});
-							await this._execute(newId, newPlan, attempt + 1);
-						}
-					} else {
-						// Out of attempts (or no planner): be honest, never ship a
-						// silently-degenerate result without explanation.
-						this.error = verdict.message;
 					}
+					if (newPlan && gen === this.generation && !abort.signal.aborted) {
+						const newId = `plan_${Date.now().toString(36)}_${Math.random()
+							.toString(36)
+							.slice(2, 8)}`;
+						this.dispatch("plan", {
+							planId: newId,
+							plan: newPlan,
+							datasets: this._datasets,
+						});
+						await this._execute(newId, newPlan, attempt + 1);
+					}
+				} else if (honestMessage) {
+					// Out of attempts on a degenerate outcome: explain it (don't
+					// silently ship a bad result). Execution errors already show
+					// the friendlyExecError from onError.
+					this.error = honestMessage;
 				}
 			}
 		} finally {
