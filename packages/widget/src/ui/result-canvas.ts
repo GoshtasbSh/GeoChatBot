@@ -502,6 +502,36 @@ export class ResultCanvas extends LitElement {
 		this._scrollToBottomNextTick();
 	}
 
+	/**
+	 * Replace the text of the most recent summary card in the latest turn.
+	 * Used by the grounding gate's CoVe corrector: when a summary contradicted
+	 * the computed table, we rewrite it in place (rather than appending a
+	 * second card) so the user only ever sees the corrected, grounded text.
+	 * No-op if the latest turn has no summary result.
+	 */
+	correctLastSummary(text: string): void {
+		if (this._turns.length === 0) return;
+		const lastIdx = this._turns.length - 1;
+		const last = this._turns[lastIdx];
+		if (!last) return;
+		// find the last summary result in this turn
+		let sIdx = -1;
+		for (let i = last.results.length - 1; i >= 0; i--) {
+			if (last.results[i]?.kind === "summary") {
+				sIdx = i;
+				break;
+			}
+		}
+		if (sIdx === -1) return;
+		const results = last.results.map((r, i) =>
+			i === sIdx && r.kind === "summary" ? { ...r, text } : r,
+		);
+		this._turns = [
+			...this._turns.slice(0, lastIdx),
+			{ ...last, results },
+		];
+	}
+
 	/** Reset all turns. Called between executions. */
 	clear(): void {
 		this._turns = [];

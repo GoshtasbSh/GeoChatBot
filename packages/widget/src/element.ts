@@ -26,16 +26,19 @@ import type {
 	ProviderId,
 } from "./agent/index.js";
 import { makeAnthropicLoopCall } from "./agent/agentic/loop-anthropic.js";
+import { callForcedTool } from "./agent/forced-tool/index.js";
 import type { PlannerLLMInput } from "./agent/llm.js";
 import { augmentProfile } from "./agent/profile/augment.js";
 import { PlanValidationError, validatePlan } from "./agent/validate-plan.js";
 import { validateSql } from "./agent/validate-sql.js";
+import { checkClaimGrounding } from "./agent/verify/claim-grounding.js";
 import { friendlyExecError } from "./agent/verify/error-message.js";
 import {
 	type GuardResult,
 	guardColorBy,
 	guardLayerNonEmpty,
 } from "./agent/verify/outcome-guards.js";
+import { correctSummary } from "./agent/verify/summary-corrector.js";
 import type {
 	BinaryInput,
 	DatasetProfile,
@@ -2082,8 +2085,27 @@ export class GeoChatBotElement extends LitElement {
 			} else if (!sawError) {
 				const verdict = this._verifyOutcome(collectedResults);
 				if (!verdict.ok) {
-					recoveryFeedback = verdict.feedback;
-					honestMessage = verdict.message;
+					// Grounding contradiction → CoVe single-call correction (the
+					// computed table is correct; only the prose is wrong, so a
+					// full re-plan would be wasteful). If the correction succeeds
+					// we rewrite the summary in place and skip re-planning entirely.
+					if (verdict.groundingFix && !abort.signal.aborted) {
+						const corrected = await this._correctGroundedSummary(
+							verdict.groundingFix,
+							abort.signal,
+						);
+						if (corrected && !abort.signal.aborted) {
+							this._canvas()?.correctLastSummary(corrected);
+							// fixed in place — nothing left to recover
+						} else if (!this.error) {
+							// CoVe failed → fall back to the honest message so we
+							// never silently ship the contradictory summary.
+							this.error = verdict.message;
+						}
+					} else {
+						recoveryFeedback = verdict.feedback;
+						honestMessage = verdict.message;
+					}
 				}
 			}
 
@@ -2159,9 +2181,27 @@ export class GeoChatBotElement extends LitElement {
 		ok: boolean;
 		feedback: string;
 		message: string;
+		/**
+		 * Set when a summary contradicts the table the same plan computed
+		 * (claim-grounding). The table is correct — only the prose is wrong —
+		 * so the recovery path is a single CoVe correction call, NOT a re-plan.
+		 */
+		groundingFix?: {
+			table: { columns: ReadonlyArray<string>; rows: ReadonlyArray<Record<string, unknown>> };
+			badSummary: string;
+			reason: string;
+		};
 	} {
 		const fails: GuardResult[] = [];
+		// Track the most recent table + summary so we can cross-check a
+		// summary's superlative/numeric claims against the computed data.
+		let lastTable:
+			| { columns: ReadonlyArray<string>; rows: ReadonlyArray<Record<string, unknown>> }
+			| undefined;
+		let lastSummary: string | undefined;
 		for (const r of results) {
+			if (r.kind === "table") lastTable = { columns: r.columns, rows: r.rows };
+			if (r.kind === "summary") lastSummary = r.text;
 			// render.map falls back to a "Cannot map …" SUMMARY when a step
 			// dropped the geometry.  Two distinct sub-cases:
 			//
@@ -2228,6 +2268,30 @@ export class GeoChatBotElement extends LitElement {
 				if (!cb.ok) fails.push(cb);
 			}
 		}
+		// Claim-grounding: if a summary contradicts the table the same plan
+		// computed (D9-Q3: table Middle=7.4 highest, summary "Elementary is
+		// highest"), flag it for the cheap CoVe correction path. Only when no
+		// harder guard already fired — a re-plan supersedes a text fix.
+		if (fails.length === 0 && lastTable && lastSummary) {
+			const grounding = checkClaimGrounding({
+				summary: lastSummary,
+				rows: lastTable.rows,
+				columns: lastTable.columns,
+			});
+			if (!grounding.ok) {
+				return {
+					ok: false,
+					feedback: "",
+					message: `The summary contradicted the computed data: ${grounding.reason}.`,
+					groundingFix: {
+						table: lastTable,
+						badSummary: lastSummary,
+						reason: grounding.reason,
+					},
+				};
+			}
+		}
+
 		if (fails.length === 0) return { ok: true, feedback: "", message: "" };
 		const lines = fails.map(
 			(f) => `- ${f.reason}${f.suggestedFix ? ` → ${f.suggestedFix}` : ""}`,
@@ -2242,6 +2306,45 @@ export class GeoChatBotElement extends LitElement {
 			`The result still looks off: ${fails.map((f) => f.reason).join("; ")}.` +
 			(fix ? ` Suggestion: ${fix}` : "");
 		return { ok: false, feedback, message };
+	}
+
+	/**
+	 * CoVe correction: make ONE forced-tool call to rewrite a summary that
+	 * contradicted its own computed table, grounded in the real cells.
+	 * Returns the corrected text, or null on any failure (caller falls back
+	 * to the honest message). Uses the active provider — works on UF
+	 * Navigator / Groq / OpenAI / Anthropic via the shared forced-tool layer.
+	 */
+	private async _correctGroundedSummary(
+		fix: {
+			table: { columns: ReadonlyArray<string>; rows: ReadonlyArray<Record<string, unknown>> };
+			badSummary: string;
+			reason: string;
+		},
+		signal: AbortSignal,
+	): Promise<string | null> {
+		if (!this._apiKey) return null;
+		if (!this._llmCall && !this.dangerouslyAllowBrowser) return null;
+		return correctSummary(
+			{
+				call: (input) =>
+					callForcedTool({
+						provider: this._llmProvider,
+						apiKey: this._apiKey as string,
+						model: this._model,
+						cachedSystemPrompt: input.cachedSystemPrompt,
+						userMessage: input.userMessage,
+						toolName: input.toolName,
+						toolDescription: input.toolDescription,
+						toolInputSchema: input.toolInputSchema,
+						temperature: 0,
+						maxTokens: 512,
+						signal,
+						dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
+					}),
+			},
+			{ table: fix.table, badSummary: fix.badSummary, reason: fix.reason },
+		);
 	}
 
 	/**
@@ -2273,11 +2376,13 @@ export class GeoChatBotElement extends LitElement {
 				return "https://api.openai.com/v1/chat/completions";
 			case "uf-navigator":
 				return "https://api.ai.it.ufl.edu/v1/chat/completions";
-			// Anthropic uses a native adapter (not OpenAI-compat endpoint).
-			// Return a sentinel so agenticActive=true; the Planner ignores
-			// agenticEndpoint when an explicit llmCall is provided.
+			// Anthropic uses a native adapter (not an OpenAI-compat endpoint).
+			// The sentinel makes agenticActive=true so the native loop runs —
+			// but only when the host hasn't injected a custom planner llmCall
+			// (tests/headless hosts do). With a custom llmCall we keep the
+			// single-shot path so that override is honored deterministically.
 			case "anthropic":
-				return "anthropic-native";
+				return this._llmCall ? undefined : "anthropic-native";
 			// Gemini has a different multi-turn shape; not yet supported.
 			default:
 				return undefined;
@@ -2410,6 +2515,7 @@ export class GeoChatBotElement extends LitElement {
 		setResult(p: { kind: string; [k: string]: unknown }): void;
 		setOrigin(o: { planId: string; stepId: string; question: string }): void;
 		beginTurn(q: string): void;
+		correctLastSummary(text: string): void;
 		clear(): void;
 	} | null {
 		return (
@@ -2421,6 +2527,7 @@ export class GeoChatBotElement extends LitElement {
 					question: string;
 				}): void;
 				beginTurn(q: string): void;
+				correctLastSummary(text: string): void;
 				clear(): void;
 			} | null) ?? null
 		);

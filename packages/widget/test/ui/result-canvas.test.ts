@@ -15,6 +15,7 @@ interface CanvasEl extends HTMLElement {
 	setResult(p: ResultPayload | unknown): void;
 	beginTurn(q: string): void;
 	setOrigin(o: { planId: string; stepId: string; question: string }): void;
+	correctLastSummary(text: string): void;
 	clear(): void;
 	_turns: Turn[];
 }
@@ -119,5 +120,28 @@ describe("<result-canvas>", () => {
 		expect(card).toBeTruthy();
 		const text = card?.textContent ?? "";
 		expect(text).toContain("between sites");
+	});
+
+	it("correctLastSummary replaces the most recent summary text in place", async () => {
+		const el = mount();
+		el.setResult({ kind: "table", rows: [{ level: "Middle", r: 7.4 }], columns: ["level", "r"] });
+		el.setResult({ kind: "summary", text: "Elementary is the highest." });
+		await el.updateComplete;
+		el.correctLastSummary("Middle is the highest at 7.4.");
+		await el.updateComplete;
+		// still exactly one summary card (replaced, not appended)
+		const summaries = el._turns[0]?.results.filter((r) => r.kind === "summary") ?? [];
+		expect(summaries.length).toBe(1);
+		expect((summaries[0] as { text: string }).text).toBe("Middle is the highest at 7.4.");
+		// table card untouched
+		expect(el._turns[0]?.results.filter((r) => r.kind === "table").length).toBe(1);
+	});
+
+	it("correctLastSummary is a no-op when there is no summary", async () => {
+		const el = mount();
+		el.setResult({ kind: "table", rows: [{ a: 1 }], columns: ["a"] });
+		await el.updateComplete;
+		expect(() => el.correctLastSummary("x")).not.toThrow();
+		expect(el._turns[0]?.results.filter((r) => r.kind === "summary").length).toBe(0);
 	});
 });
