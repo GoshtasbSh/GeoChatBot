@@ -15,7 +15,9 @@
  */
 
 import type { Plan } from "../types.js";
+import { BM25Index, reciprocalRankFusion } from "./bm25.js";
 import { SPATIAL_DOCS } from "./corpus.js";
+import { taskMatchBoost } from "./example-reranker.js";
 import { embedManyWithOverride, embedWithOverride } from "./embedder.js";
 import { VectorStore } from "./store.js";
 
@@ -65,6 +67,34 @@ const corpusStore = new VectorStore<CorpusMeta>(`corpus:${VERSION_TAG}`);
 const examplesStore = new VectorStore<ExampleMeta>(`examples:${VERSION_TAG}`);
 const memoryStore = new VectorStore<MemoryMeta>(`memory:${VERSION_TAG}`);
 
+// ── Hybrid (lexical) layer ──────────────────────────────────────────────────
+// BM25 indexes live in memory (cheap to (re)build from the static source each
+// page load) and run alongside the dense vector search. They catch exact
+// technical terms the MiniLM-L6 embedder blurs ("Moran's I", "choropleth",
+// "geocode"). id→source maps let a BM25-only hit (high lexical, low dense)
+// resolve back to its doc/example even when the vector search missed it.
+let corpusBm25 = new BM25Index();
+let examplesBm25 = new BM25Index();
+const corpusById = new Map<string, { title: string; text: string }>();
+const exampleById = new Map<string, { question: string; plan: Plan }>();
+let bm25Built = false;
+
+async function buildBm25(): Promise<void> {
+	if (bm25Built) return;
+	for (const d of SPATIAL_DOCS) {
+		const text = `${d.title}. ${d.body}`;
+		corpusBm25.add(d.id, text);
+		corpusById.set(d.id, { title: d.title, text });
+	}
+	const { EXAMPLES } = await import("../prompts/examples.js");
+	EXAMPLES.forEach((e, i) => {
+		const id = `ex:${i}`;
+		examplesBm25.add(id, e.question);
+		exampleById.set(id, { question: e.question, plan: e.plan });
+	});
+	bm25Built = true;
+}
+
 /**
  * Lazily embed and persist the static corpus + examples on first call.
  * Subsequent calls are no-ops (the on-disk store already has them).
@@ -72,7 +102,7 @@ const memoryStore = new VectorStore<MemoryMeta>(`memory:${VERSION_TAG}`);
 export async function initRetriever(): Promise<void> {
 	if (initPromise) return initPromise;
 	const p = (async () => {
-		await Promise.all([indexCorpus(), indexExamples()]);
+		await Promise.all([indexCorpus(), indexExamples(), buildBm25()]);
 	})();
 	// On failure, clear the latch so subsequent calls can retry. Without this,
 	// a one-time error (CSP block, network drop during model download) would
@@ -216,14 +246,46 @@ export async function retrieve(
 			? memoryStore.search(qvec, merged.maxExamples)
 			: Promise.resolve([]),
 	]);
-	const docs: RetrievedDoc[] = docHits
-		.filter((h) => h.score >= merged.minScore)
-		.slice(0, merged.maxDocs)
-		.map((h) => ({
-			title: (h.meta as CorpusMeta).title,
-			body: h.text,
-			score: h.score,
-		}));
+	// ── Hybrid fusion (docs): combine the dense ranking with a BM25 lexical
+	// ranking via RRF so an exact-keyword match the embedder blurred can still
+	// surface, then resolve the fused order back to docs. A BM25-only hit
+	// (absent from the dense top-k) resolves through corpusById. ────────────
+	const bm25DocHits = corpusBm25.search(q, merged.maxDocs * 2);
+	const vecDocById = new Map(docHits.map((h) => [h.id, h]));
+	const bm25DocIds = new Set(bm25DocHits.map((h) => h.id));
+	const fusedDocIds = reciprocalRankFusion([
+		docHits.map((h) => h.id),
+		bm25DocHits.map((h) => h.id),
+	]);
+	const docs: RetrievedDoc[] = [];
+	for (const id of fusedDocIds) {
+		if (docs.length >= merged.maxDocs) break;
+		const vh = vecDocById.get(id);
+		const passedDense = !!vh && vh.score >= merged.minScore;
+		const lexical = bm25DocIds.has(id);
+		if (!passedDense && !lexical) continue; // weak on both → drop
+		const meta = corpusById.get(id);
+		if (!meta) continue;
+		docs.push({
+			title: meta.title,
+			body: vh?.text ?? meta.text,
+			// keep a positive score; dense score when we have it, else a
+			// mid-confidence value for a lexical-only hit.
+			score: vh?.score ?? 0.5,
+		});
+	}
+	// ── Hybrid fusion (examples): a BM25 lexical ranking over the static
+	// example questions contributes a bounded, rank-based boost so a question
+	// that shares exact terms with a worked example rises — and a lexical-only
+	// match the dense search missed gets seeded into the pool. User-memory is
+	// dynamic (not in the BM25 index) and keeps its existing +0.05 bonus. ──
+	const bm25ExHits = examplesBm25.search(q, merged.maxExamples * 2);
+	const bm25BoostByQuestion = new Map<string, number>();
+	bm25ExHits.forEach((h, rank) => {
+		const ex = exampleById.get(h.id);
+		if (ex) bm25BoostByQuestion.set(ex.question, 0.1 / (1 + rank));
+	});
+
 	// Merge static-example and user-memory hits, dedupe by question text,
 	// and prefer user-memory when both have similar scores (memory reflects
 	// what the user actually approves, so it's higher signal).
@@ -236,16 +298,41 @@ export async function retrieve(
 			question: h.text,
 			plan: (h.meta as MemoryMeta).plan,
 			source: "user-memory",
-			score: h.score + 0.05, // small bonus to break ties in memory's favour
+			// +0.05 keeps memory ahead of a same-question static example; the
+			// lexical + task-type boosts are applied equally so the tie holds.
+			score:
+				h.score +
+				0.05 +
+				(bm25BoostByQuestion.get(h.text) ?? 0) +
+				taskMatchBoost(q, (h.meta as MemoryMeta).plan),
 		});
 	}
+	const denseExQuestions = new Set<string>();
 	for (const h of exHits) {
+		denseExQuestions.add(h.text);
 		if (h.score < merged.minScore) continue;
 		all.push({
 			question: h.text,
 			plan: (h.meta as ExampleMeta).plan,
 			source: "static-example",
-			score: h.score,
+			score:
+				h.score +
+				(bm25BoostByQuestion.get(h.text) ?? 0) +
+				taskMatchBoost(q, (h.meta as ExampleMeta).plan),
+		});
+	}
+	// Seed lexical-only example hits the dense search ranked below its cutoff,
+	// so an exact-keyword example match still reaches the planner.
+	for (const h of bm25ExHits) {
+		const ex = exampleById.get(h.id);
+		if (!ex || denseExQuestions.has(ex.question)) continue;
+		all.push({
+			question: ex.question,
+			plan: ex.plan,
+			source: "static-example",
+			score:
+				(bm25BoostByQuestion.get(ex.question) ?? 0.05) +
+				taskMatchBoost(q, ex.plan),
 		});
 	}
 	all.sort((a, b) => b.score - a.score);
@@ -262,6 +349,13 @@ export async function retrieve(
 /** Test-only: drop all stores. */
 export async function __resetRetrieverForTests(): Promise<void> {
 	initPromise = null;
+	// Reset the in-memory BM25 layer too so a test that mocks the examples
+	// module rebuilds the lexical index from the mock (not a stale real build).
+	bm25Built = false;
+	corpusBm25 = new BM25Index();
+	examplesBm25 = new BM25Index();
+	corpusById.clear();
+	exampleById.clear();
 	await Promise.all([
 		corpusStore.clear(),
 		examplesStore.clear(),

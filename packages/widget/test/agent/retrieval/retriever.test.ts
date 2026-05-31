@@ -139,6 +139,9 @@ describe("retrieve()", () => {
 	it("dedupes when memory and a static example both match the query", async () => {
 		// Static example #21 ends with "Show me the Florida community survey responses on a map."
 		// — repurpose its question text so memory and example collide.
+		// The memory plan ends in render.map too, so both examples share the
+		// same task type (the query is map-intent): task-match + lexical boosts
+		// apply equally, isolating the memory +0.05 tie-break this test targets.
 		const dupePlan: Plan = {
 			goal: "overridden-by-memory",
 			assumptions: [],
@@ -146,8 +149,8 @@ describe("retrieve()", () => {
 			steps: [
 				{
 					id: "s1",
-					tool: "render.summary",
-					args: { text: "memory wins" },
+					tool: "render.map",
+					args: { layer: "x" },
 					why: "final",
 				},
 			],
