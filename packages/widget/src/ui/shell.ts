@@ -39,7 +39,15 @@ export class GcbShell extends LitElement {
       :host {
         display: grid;
         grid-template-columns: ${RAIL_W}px ${PANEL_W}px 1fr;
-        grid-template-rows: ${TOPBAR_H}px 1fr ${DOCK_H_MIN}px;
+        /* Dock track is content-sized (fit-content) with a 76px floor via
+           the .dock min-height: when the ask input grows (suggestion
+           chips, clarification banner, multiline) the row expands and the
+           'main' chat area (1fr) gives up the space, so the whole widget
+           stays within 100vh and nothing is clipped by the :host
+           overflow:hidden. Past 40vh the dock scrolls internally. A fixed
+           76px track (or 'auto', which does NOT pull intrinsic height
+           through the <slot>) used to clip the chips off the bottom. */
+        grid-template-rows: ${TOPBAR_H}px minmax(0, 1fr) fit-content(40vh);
         grid-template-areas:
           "topbar topbar topbar"
           "rail   panel  main"

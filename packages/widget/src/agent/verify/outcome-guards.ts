@@ -38,8 +38,11 @@ export function guardLayerNonEmpty(featureCount: number): GuardResult {
 			ok: false,
 			severity: "fail",
 			reason: "layer has 0 features",
+			// Empty result is most often a literal/casing mismatch in a WHERE
+			// clause (NL2SQL's dominant failure). Re-probe the actual distinct
+			// values and match case-insensitively before relaxing/join-checking.
 			suggestedFix:
-				"the filter/join produced no rows — relax the criteria or check the join keys",
+				"the filter/join produced no rows — the most likely cause is a wrong filter literal or casing (e.g. WHERE category='Grocery' when the data stores 'grocery_store'). Re-check the column's actual distinct values and use case-insensitive matching (LOWER(col) LIKE '%...%' or ILIKE), then relax the criteria or verify the join keys",
 		};
 	return ok(`${featureCount} features`);
 }

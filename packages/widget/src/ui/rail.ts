@@ -60,7 +60,7 @@ export class GcbRail extends LitElement {
 
       .panel-hdr {
         padding: 10px 12px;
-        font-size: 10px; font-weight: 700;
+        font-size: 11px; font-weight: 700;
         letter-spacing: .10em; text-transform: uppercase;
         color: var(--gcb-ink-muted);
         border-bottom: 1px solid var(--gcb-line);
@@ -85,13 +85,13 @@ export class GcbRail extends LitElement {
          the .85 opacity. */
       .section-lbl {
         padding: 6px 12px 2px;
-        font-size: 10px; font-weight: 600;
+        font-size: 11px; font-weight: 600;
         letter-spacing: .07em; text-transform: uppercase;
         color: var(--gcb-ink-soft);
       }
 
       .empty {
-        font-size: 11px; color: var(--gcb-ink-soft);
+        font-size: 12px; color: var(--gcb-ink-soft);
         padding: 4px 12px 6px;
       }
 
@@ -101,7 +101,7 @@ export class GcbRail extends LitElement {
         padding: 6px 10px; margin: 1px 5px;
         border-radius: var(--gcb-radius-sm);
         cursor: pointer; position: relative;
-        font-size: 12px; color: var(--gcb-ink-soft);
+        font-size: 13px; color: var(--gcb-ink-soft);
       }
       .row:hover { background: var(--gcb-bg-3); }
       .row.is-new { background: var(--gcb-accent-soft); }
@@ -111,7 +111,7 @@ export class GcbRail extends LitElement {
       .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
       .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .count {
-        font-size: 10px; color: var(--gcb-ink-muted);
+        font-size: 11px; color: var(--gcb-ink-muted);
         font-family: var(--gcb-font-mono); flex-shrink: 0;
       }
       .eye {
@@ -150,11 +150,11 @@ export class GcbRail extends LitElement {
       }
       .saved-meta { min-width: 0; flex: 1; }
       .saved-title {
-        font-size: 12px; font-weight: 500; color: var(--gcb-ink-soft);
+        font-size: 13px; font-weight: 500; color: var(--gcb-ink-soft);
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       }
       .saved-sub {
-        font-family: var(--gcb-font-mono); font-size: 10px;
+        font-family: var(--gcb-font-mono); font-size: 11px;
         color: var(--gcb-ink-muted); margin-top: 1px;
       }
       .remove {
@@ -185,7 +185,7 @@ export class GcbRail extends LitElement {
         border: 1.5px dashed var(--gcb-accent-ring);
         background: var(--gcb-accent-soft);
         color: var(--gcb-accent-ink);
-        font: inherit; font-size: 12px; font-weight: 600;
+        font: inherit; font-size: 13px; font-weight: 600;
         cursor: pointer;
         transition: filter 150ms ease, border-style 150ms ease;
       }

@@ -43,12 +43,15 @@ export function buildCorrectionPrompt(input: CorrectionInput): {
 	system: string;
 	user: string;
 } {
-	const user =
-		`COMPUTED TABLE (ground truth):\n${renderTable(input.table)}\n\n` +
-		`DRAFT SUMMARY (contradicts the table):\n"${input.badSummary}"\n\n` +
-		`PROBLEM: ${input.reason}\n\n` +
-		"Rewrite the summary so it matches the table exactly. Use the real " +
-		"winning row and the real numbers from the table.";
+	const user = `COMPUTED TABLE (ground truth):
+${renderTable(input.table)}
+
+DRAFT SUMMARY (contradicts the table):
+"${input.badSummary}"
+
+PROBLEM: ${input.reason}
+
+Rewrite the summary so it matches the table exactly. Use the real winning row and the real numbers from the table.`;
 	return { system: SYSTEM, user };
 }
 

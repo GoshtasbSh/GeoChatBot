@@ -28,7 +28,11 @@ const MAX_WORDS =
 const MIN_WORDS =
 	/\b(lowest|least|smallest|fewest|minimum|min|worst|bottom)\b/i;
 
-const ok = (reason = "ok"): GuardResult => ({ ok: true, severity: "ok", reason });
+const ok = (reason = "ok"): GuardResult => ({
+	ok: true,
+	severity: "ok",
+	reason,
+});
 
 /** Coerce a cell to a finite number, or null if it isn't numeric. */
 function asNumber(v: unknown): number | null {
@@ -116,7 +120,9 @@ export function checkClaimGrounding(input: GroundingInput): GuardResult {
 		for (const metric of metrics) {
 			const ranked = input.rows
 				.map((r) => ({ row: r, n: asNumber(r[metric]) }))
-				.filter((x): x is { row: Record<string, unknown>; n: number } => x.n !== null);
+				.filter(
+					(x): x is { row: Record<string, unknown>; n: number } => x.n !== null,
+				);
 			if (ranked.length === 0) continue;
 
 			const winner = ranked.reduce((acc, x) =>

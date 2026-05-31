@@ -1,7 +1,11 @@
 // packages/widget/src/agent/profile/augment.ts
 import type { DatasetProfile } from "../prompts/builders.js";
+import { detectColumnFlags } from "./column-flags.js";
 import { type RegionColumn, inferRegion } from "./region.js";
 import { detectRole } from "./roles.js";
+
+/** Below this cardinality we surface the COMPLETE distinct value set. */
+const ENUM_CAP = 12;
 
 export function augmentProfile(profile: DatasetProfile): DatasetProfile {
 	const columns = profile.columns.map((c) => {
@@ -20,7 +24,29 @@ export function augmentProfile(profile: DatasetProfile): DatasetProfile {
 			nonNullCount,
 			samples: (c.samples ?? []).map((s) => String(s)),
 		});
-		return { ...c, role, needsBucketing };
+		// Quality flags: constant / categorical-code (prevents one-colour maps
+		// and averaging a code column).
+		const { constant, categoricalNumeric } = detectColumnFlags({
+			type: c.type,
+			...(c.cardinality !== undefined ? { cardinality: c.cardinality } : {}),
+			nonNullCount,
+		});
+		// Value-completeness: when a low-cardinality column's samples already
+		// cover every distinct value, mark them complete so the planner can
+		// filter with exact `=` (and the model copies the real literal/casing
+		// instead of guessing). NL2SQL's single biggest accuracy-per-line win.
+		const valuesComplete =
+			c.cardinality !== undefined &&
+			c.cardinality <= ENUM_CAP &&
+			(c.samples?.length ?? 0) >= c.cardinality;
+		return {
+			...c,
+			role,
+			needsBucketing,
+			constant,
+			categoricalNumeric,
+			...(valuesComplete ? { valuesComplete: true } : {}),
+		};
 	});
 
 	const regionCols: RegionColumn[] = columns

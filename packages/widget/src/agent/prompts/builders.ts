@@ -30,6 +30,16 @@ export interface DatasetProfile {
 		samples?: unknown[];
 		role?: import("../profile/roles.js").ColumnRole;
 		needsBucketing?: boolean;
+		/** Single distinct value → never color/group by it (one-colour map). */
+		constant?: boolean;
+		/** Numeric column that is really a categorical code → don't average/sum. */
+		categoricalNumeric?: boolean;
+		/**
+		 * True when `samples` lists the COMPLETE distinct value set (low-card
+		 * column). The planner can then filter with exact `=` on these values;
+		 * for non-complete columns the samples are only examples.
+		 */
+		valuesComplete?: boolean;
 	}>;
 	sample: unknown[];
 	inferredRegion?: import("../profile/region.js").InferredRegion;
@@ -252,7 +262,7 @@ export function renderDatasetsBlock(datasets: DatasetProfile[]): string {
 			// UNTRUSTED_DATASET_PROFILE fence in planner.ts, so the model treats
 			// these as opaque data — we still JSON.stringify and cap each value
 			// to keep prompt-injection attempts bounded and the prompt small.
-			const samples = renderColumnSamples(c.samples);
+			const samples = renderColumnSamples(c.samples, c.valuesComplete === true);
 			// R.4-f (audit 2026-05-16): hybrid semantic detection. Pure-regex
 			// pre-tag of the obvious types (lat/lon, address, ZIP, currency,
 			// phone, ISO date, WKT). Saves the planner an inspect.column_pattern
@@ -278,8 +288,16 @@ export function renderDatasetsBlock(datasets: DatasetProfile[]): string {
 			const roleStr = c.role
 				? `  [role: ${c.role}${c.needsBucketing ? "; needs bucketing before group/color" : ""}]`
 				: "";
+			// Quality warnings the planner must respect.
+			const warn: string[] = [];
+			if (c.constant) warn.push("CONSTANT — do NOT color/group by this");
+			if (c.categoricalNumeric)
+				warn.push(
+					"categorical code (numeric) — do NOT average/sum; treat as category",
+				);
+			const warnStr = warn.length ? `  [!${warn.join("; ")}]` : "";
 			lines.push(
-				`  - ${c.name}: ${c.type}${range}${nulls}${card}${samples}${hintStr}${candStr}${roleStr}`.trimEnd(),
+				`  - ${c.name}: ${c.type}${range}${nulls}${card}${samples}${hintStr}${candStr}${roleStr}${warnStr}`.trimEnd(),
 			);
 		}
 		// Inferred region from city/state/lat/lon columns — gives the planner
@@ -354,10 +372,17 @@ export function renderToolsBlock(): string {
 	return out.join("\n").trim();
 }
 
-function renderColumnSamples(samples: unknown[] | undefined): string {
+function renderColumnSamples(
+	samples: unknown[] | undefined,
+	complete = false,
+): string {
 	if (!Array.isArray(samples) || samples.length === 0) return "";
+	// When the value set is COMPLETE (low-cardinality column) show all of them
+	// (up to 12) and label as the full enum so the planner filters with exact
+	// `=` on the real literal/casing. Otherwise 3 examples convey semantics.
+	const cap = complete ? 12 : 3;
 	const out: string[] = [];
-	for (const s of samples.slice(0, 3)) {
+	for (const s of samples.slice(0, cap)) {
 		let str: string;
 		try {
 			str = typeof s === "string" ? s : JSON.stringify(s);
@@ -370,7 +395,9 @@ function renderColumnSamples(samples: unknown[] | undefined): string {
 		out.push(JSON.stringify(str));
 	}
 	if (out.length === 0) return "";
-	return ` examples: [${out.join(", ")}]`;
+	return complete
+		? ` values (all ${out.length}, filter with exact =): [${out.join(", ")}]`
+		: ` examples: [${out.join(", ")}]`;
 }
 
 /**

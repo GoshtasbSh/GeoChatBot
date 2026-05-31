@@ -74,6 +74,14 @@ export function lookupPlace(query: string): GazEntry | undefined {
 	const qualified = byQualified.get(q);
 	if (qualified) return qualified;
 
+	// 1b. Try country-code normalisation: user input "USA" should match
+	// the stored "US" key. Also handle "United States", "U.S.A.", etc.
+	const qNormCountry = normalizeCountrySuffix(q);
+	if (qNormCountry !== q) {
+		const requalified = byQualified.get(qNormCountry);
+		if (requalified) return requalified;
+	}
+
 	// 2. Alias match.
 	const aliased = byAlias.get(q);
 	if (aliased) return aliased;
@@ -82,6 +90,51 @@ export function lookupPlace(query: string): GazEntry | undefined {
 	const bucket = byName.get(q);
 	if (bucket && bucket.length === 1) return bucket[0];
 
+	// 4. Strip the trailing country segment and retry as "name, region".
+	// Handles inputs like "Cedar Key, FL, USA" → "cedar key, fl".
+	const withoutCountry = stripCountrySuffix(q);
+	if (withoutCountry && withoutCountry !== q) {
+		const partial = byQualified.get(withoutCountry);
+		if (partial) return partial;
+		const partialBucket = byName.get(withoutCountry);
+		if (partialBucket && partialBucket.length === 1) return partialBucket[0];
+	}
+
+	return undefined;
+}
+
+const COUNTRY_SYNONYMS: Record<string, string> = {
+	usa: "us",
+	"u.s.a.": "us",
+	"u.s.": "us",
+	america: "us",
+	"united states": "us",
+	"united states of america": "us",
+	uk: "gb",
+	"u.k.": "gb",
+	britain: "gb",
+	"great britain": "gb",
+	"united kingdom": "gb",
+};
+
+function normalizeCountrySuffix(q: string): string {
+	const m = q.match(/^(.+),\s*([^,]+)$/);
+	if (!m) return q;
+	const head = m[1];
+	const tail = m[2]?.trim();
+	if (!tail) return q;
+	const replacement = COUNTRY_SYNONYMS[tail];
+	if (!replacement) return q;
+	return `${head}, ${replacement}`;
+}
+
+function stripCountrySuffix(q: string): string | undefined {
+	const m = q.match(/^(.+),\s*([^,]+)$/);
+	if (!m) return undefined;
+	const head = m[1]?.trim();
+	const tail = m[2]?.trim();
+	if (!head || !tail) return undefined;
+	if (tail.length <= 3 || COUNTRY_SYNONYMS[tail]) return head;
 	return undefined;
 }
 

@@ -529,6 +529,16 @@ a command.
              WHEN rating<3 THEN '2-3' WHEN rating<4 THEN '3-4'
              ELSE '4-5' END AS bucket, COUNT(*) AS count
       FROM t GROUP BY 1 ORDER BY 1
+  - **Filtering a TEXT column: match the value the way it is STORED.**
+    If the profile lists "values (all N, filter with exact =)" for that
+    column, copy one of those literals EXACTLY (right casing) and use =.
+    Otherwise the stored casing/format is unknown — use case-insensitive
+    matching: WHERE LOWER(col) LIKE '%grocery%' (or DuckDB ILIKE:
+    col ILIKE '%grocery%'). Never guess 'Grocery' when the data might store
+    'grocery_store' or 'GROCERY' — a wrong literal returns 0 rows.
+  - **Do NOT color/group by a column flagged [!CONSTANT], and do NOT
+    average/sum a column flagged [!categorical code]** — these produce a
+    one-colour map or a meaningless aggregate.
   - LAST step must be render.* OR report.*.
   - NEVER finalize a map plan without confirmed spatial column or a
     geocode step. No spatial column AND no addresses → render.summary

@@ -1,6 +1,7 @@
 import { tableFromJSON } from "apache-arrow";
 import { LitElement, css, html } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { makeAnthropicLoopCall } from "./agent/agentic/loop-anthropic.js";
 import type {
 	CriticDecision,
 	StepErrorContext,
@@ -13,6 +14,7 @@ import {
 	type ExecutorEngine,
 	type ResultPayload,
 } from "./agent/executor/index.js";
+import { callForcedTool } from "./agent/forced-tool/index.js";
 import {
 	Critic,
 	DEFAULT_PROVIDER_ID,
@@ -25,8 +27,6 @@ import type {
 	DatasetProfile as PlannerDatasetProfile,
 	ProviderId,
 } from "./agent/index.js";
-import { makeAnthropicLoopCall } from "./agent/agentic/loop-anthropic.js";
-import { callForcedTool } from "./agent/forced-tool/index.js";
 import type { PlannerLLMInput } from "./agent/llm.js";
 import { augmentProfile } from "./agent/profile/augment.js";
 import { PlanValidationError, validatePlan } from "./agent/validate-plan.js";
@@ -84,7 +84,13 @@ function deriveColumnSamples(
 	c: import("./data/contracts.js").ColumnProfile,
 ): unknown[] {
 	if (c.kind === "string" && c.categorical?.top?.length) {
-		return c.categorical.top.slice(0, 3).map((t) => t.value);
+		// For a low-cardinality column, surface the COMPLETE distinct value set
+		// (up to 12) so the planner can filter with exact `=` and copy the real
+		// literal/casing — NL2SQL's biggest accuracy-per-line win. Otherwise
+		// 3 representative examples are enough to convey semantics.
+		const distinct = c.categorical.distinct;
+		const cap = distinct <= 12 ? 12 : 3;
+		return c.categorical.top.slice(0, cap).map((t) => t.value);
 	}
 	if ((c.kind === "integer" || c.kind === "float") && c.numeric) {
 		return [c.numeric.min, c.numeric.max];
@@ -1712,7 +1718,9 @@ export class GeoChatBotElement extends LitElement {
 				model: this._model,
 				dangerouslyAllowBrowser: this.dangerouslyAllowBrowser,
 				...(this._llmCall ? { llmCall: this._llmCall } : {}),
-				...(anthropicAgenticCall ? { agenticLlmCall: anthropicAgenticCall } : {}),
+				...(anthropicAgenticCall
+					? { agenticLlmCall: anthropicAgenticCall }
+					: {}),
 				mode: agenticActive ? "agentic" : "single-shot",
 				retrieval: this.retrievalMode,
 				memoryEnabled: this.memoryEnabled,
@@ -2078,9 +2086,11 @@ export class GeoChatBotElement extends LitElement {
 				// it. (Runtime failures the step-critic owns are left as-is.)
 				recoveryFeedback = UNSUBSTITUTED_VAR.test(execErrorMsg ?? "")
 					? `Your previous plan FAILED with: "${execErrorMsg}". A SQL step referenced a prior step's output using \${...} syntax, which is NOT substituted inside SQL text. Reference a prior step's output by its bare output_var name as a table (e.g. "FROM my_output"), or pass the layer via a 'layer' argument — never "\${my_output}" inside a query. Re-plan accordingly.`
-					: /output_var.*collides|collides with loaded dataset/i.test(execErrorMsg ?? "")
-					? `Your previous plan FAILED because an output_var name collided with an existing dataset name: "${execErrorMsg}". Choose a completely different output_var — use short generic names like "filtered", "result", "s1_out", "step_out" — never reuse the name of any dataset already loaded. Re-plan with a unique output_var.`
-					: `Your previous plan FAILED with this error: "${execErrorMsg}". That tool or dataset is unavailable. Re-plan with a DIFFERENT, simpler approach using ONLY the loaded dataset and basic tools (sql, render.map, render.table, render.chart, stats.aggregate). Do not reference the failing tool or dataset again.`;
+					: /output_var.*collides|collides with loaded dataset/i.test(
+								execErrorMsg ?? "",
+							)
+						? `Your previous plan FAILED because an output_var name collided with an existing dataset name: "${execErrorMsg}". Choose a completely different output_var — use short generic names like "filtered", "result", "s1_out", "step_out" — never reuse the name of any dataset already loaded. Re-plan with a unique output_var.`
+						: `Your previous plan FAILED with this error: "${execErrorMsg}". That tool or dataset is unavailable. Re-plan with a DIFFERENT, simpler approach using ONLY the loaded dataset and basic tools (sql, render.map, render.table, render.chart, stats.aggregate). Do not reference the failing tool or dataset again.`;
 				// honestMessage falls back to the friendlyExecError already set.
 			} else if (!sawError) {
 				const verdict = this._verifyOutcome(collectedResults);
@@ -2187,7 +2197,10 @@ export class GeoChatBotElement extends LitElement {
 		 * so the recovery path is a single CoVe correction call, NOT a re-plan.
 		 */
 		groundingFix?: {
-			table: { columns: ReadonlyArray<string>; rows: ReadonlyArray<Record<string, unknown>> };
+			table: {
+				columns: ReadonlyArray<string>;
+				rows: ReadonlyArray<Record<string, unknown>>;
+			};
 			badSummary: string;
 			reason: string;
 		};
@@ -2196,7 +2209,10 @@ export class GeoChatBotElement extends LitElement {
 		// Track the most recent table + summary so we can cross-check a
 		// summary's superlative/numeric claims against the computed data.
 		let lastTable:
-			| { columns: ReadonlyArray<string>; rows: ReadonlyArray<Record<string, unknown>> }
+			| {
+					columns: ReadonlyArray<string>;
+					rows: ReadonlyArray<Record<string, unknown>>;
+			  }
 			| undefined;
 		let lastSummary: string | undefined;
 		for (const r of results) {
@@ -2225,7 +2241,8 @@ export class GeoChatBotElement extends LitElement {
 					fails.push({
 						ok: false,
 						severity: "fail",
-						reason: "map could not render — SQL step dropped the geometry column",
+						reason:
+							"map could not render — SQL step dropped the geometry column",
 						suggestedFix:
 							"rewrite the SQL step to use SELECT * FROM [table] WHERE ... instead of listing specific columns — this preserves the geometry column that render.map needs",
 					});
@@ -2317,7 +2334,10 @@ export class GeoChatBotElement extends LitElement {
 	 */
 	private async _correctGroundedSummary(
 		fix: {
-			table: { columns: ReadonlyArray<string>; rows: ReadonlyArray<Record<string, unknown>> };
+			table: {
+				columns: ReadonlyArray<string>;
+				rows: ReadonlyArray<Record<string, unknown>>;
+			};
 			badSummary: string;
 			reason: string;
 		},

@@ -11,6 +11,7 @@ import {
 	renderToolsBlock,
 } from "./prompts/builders.js";
 import { renderExamplesBlock } from "./prompts/examples.js";
+import { classifyQuestionComplexity } from "./prompts/question-complexity.js";
 import { rememberPlan, retrieve } from "./retrieval/retriever.js";
 import { type Plan, PlanSchema } from "./types.js";
 import { PlanValidationError, validatePlan } from "./validate-plan.js";
@@ -254,8 +255,13 @@ export class Planner {
 			if (this.opts.dangerouslyAllowBrowser !== undefined) {
 				inputBase.dangerouslyAllowBrowser = this.opts.dangerouslyAllowBrowser;
 			}
-			// R.4-b: ask gpt-oss for high reasoning effort on the planner call.
-			const effort = pickReasoningEffort(this.opts.model, "single-shot");
+			// R.4-b: reasoning effort, now complexity-gated on the question so
+			// simple lookups don't overthink (faster + fewer regressions).
+			const effort = pickReasoningEffort(
+				this.opts.model,
+				"single-shot",
+				userQuestion,
+			);
 			if (effort !== undefined) inputBase.reasoningEffort = effort;
 			return inputBase;
 		};
@@ -518,14 +524,24 @@ function generateFenceToken(): string {
 export function pickReasoningEffort(
 	model: string,
 	mode: "single-shot" | "agentic",
+	question?: string,
 ): "low" | "medium" | "high" | undefined {
 	const m = model.toLowerCase();
 	// gpt-oss-20b: smaller context — medium to avoid token exhaustion
 	if (m.includes("gpt-oss-20b")) return "medium";
-	// gpt-oss-120b: full reasoning budget
-	if (m.includes("gpt-oss")) return "high";
+	// Complexity gating: pinning "high" hurts simple lookups (overthinking,
+	// output regressions) and costs latency. Reserve high for genuinely
+	// multi-step / analytical / spatial questions; use medium otherwise.
+	// (No question available → keep the prior "high" default for safety.)
+	const complex =
+		question === undefined ||
+		classifyQuestionComplexity(question) === "complex";
+	if (m.includes("gpt-oss")) return complex ? "high" : "medium";
 	// NVIDIA Nemotron models also accept reasoning_effort via LiteLLM
-	if (m.includes("nemotron")) return mode === "agentic" ? "high" : "medium";
+	if (m.includes("nemotron")) {
+		if (mode === "agentic") return complex ? "high" : "medium";
+		return complex ? "medium" : "low";
+	}
 	// All other models (Llama, Mistral, Gemma) ignore unknown fields safely
 	return undefined;
 }

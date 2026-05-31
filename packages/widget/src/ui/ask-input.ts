@@ -30,7 +30,7 @@ export class GcbAskInput extends LitElement {
       color: var(--gcb-fg, #1a1a1a);
     }
     .wrap {
-      margin: 16px 0 4px;
+      margin: 10px 0;
     }
     .row {
       display: flex;

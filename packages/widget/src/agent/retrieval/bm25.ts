@@ -39,7 +39,8 @@ export class BM25Index {
 		const tokens = tokenize(text);
 		const tf = new Map<string, number>();
 		for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1);
-		for (const term of tf.keys()) this.df.set(term, (this.df.get(term) ?? 0) + 1);
+		for (const term of tf.keys())
+			this.df.set(term, (this.df.get(term) ?? 0) + 1);
 		this.docs.push({ id, len: tokens.length, tf });
 		this.totalLen += tokens.length;
 	}
@@ -89,7 +90,5 @@ export function reciprocalRankFusion(
 			score.set(id, (score.get(id) ?? 0) + 1 / (rrfK + rank));
 		});
 	}
-	return [...score.entries()]
-		.sort((a, b) => b[1] - a[1])
-		.map(([id]) => id);
+	return [...score.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
 }

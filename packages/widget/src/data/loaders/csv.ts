@@ -33,7 +33,12 @@ export const csvLoader: DataLoader = {
 		const isTsv = /\.tsv$/i.test(name);
 		const csvOpts: Record<string, unknown> = {
 			shape: "object-row-table",
-			header: "auto",
+			// Force header detection: user-uploaded CSVs virtually always have
+			// a header row, and loaders.gl's "auto" mode misclassifies the
+			// header as data when an intermediate column has an empty name
+			// (HIGH-01). Explicit `true` is the safer default for the upload
+			// path; downstream code already tolerates unusable column names.
+			header: true,
 			dynamicTyping: true,
 		};
 		if (options.delimiter) {
