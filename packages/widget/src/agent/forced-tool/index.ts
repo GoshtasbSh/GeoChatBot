@@ -92,23 +92,28 @@ export const PROVIDER_CATALOGUE: ReadonlyArray<ProviderInfo> = [
 	},
 	{
 		id: "uf-navigator",
-		label: "UF Navigator (Llama)",
+		label: "UF Navigator",
 		signupUrl: "https://api.ai.it.ufl.edu/ui",
 		free: true,
 		models: [
-			// gpt-oss reasoning models go first: in 2026-05-15 audit they
-			// outperformed Llama at tool-arg coverage on the same prompts.
-			// vLLM emits a `reasoning_content` field alongside `tool_calls`;
-			// our adapter ignores it and only reads tool_calls, so the
-			// integration is drop-in.
+			// gpt-oss reasoning models: 2026-05-15 audit showed these
+			// outperform Llama at tool-arg coverage on the same prompts.
+			// LiteLLM also accepts reasoning_effort for these.
 			{
 				id: "gpt-oss-120b",
 				label: "gpt-oss 120B reasoning (recommended)",
+			},
+			// NVIDIA Nemotron Super 120B — MoE (12B active), strong at
+			// structured output / tool-calling. Also accepts reasoning_effort.
+			{
+				id: "nemotron-3-super-120b-a12b",
+				label: "Nemotron Super 120B (MoE)",
 			},
 			{
 				id: "gpt-oss-20b",
 				label: "gpt-oss 20B reasoning (fast)",
 			},
+			// Llama 3.3 is significantly better than 3.1 at tool-calling.
 			{
 				id: "llama-3.3-70b-instruct",
 				label: "Llama 3.3 70B",
@@ -116,6 +121,10 @@ export const PROVIDER_CATALOGUE: ReadonlyArray<ProviderInfo> = [
 			{
 				id: "llama-3.1-70b-instruct",
 				label: "Llama 3.1 70B",
+			},
+			{
+				id: "mistral-small-3.1",
+				label: "Mistral Small 3.1",
 			},
 		],
 	},

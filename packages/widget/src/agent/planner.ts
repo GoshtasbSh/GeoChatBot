@@ -520,12 +520,12 @@ export function pickReasoningEffort(
 	mode: "single-shot" | "agentic",
 ): "low" | "medium" | "high" | undefined {
 	const m = model.toLowerCase();
-	if (!m.includes("gpt-oss")) return undefined;
-	// Audit 2026-05-16: gpt-oss-20b's smaller context runs out of tokens
-	// under reasoning_effort=high (causes empty tool_calls in ~3% of calls).
-	// Use medium for 20b; high for 120b (which has the headroom).
+	// gpt-oss-20b: smaller context — medium to avoid token exhaustion
 	if (m.includes("gpt-oss-20b")) return "medium";
-	// Agentic mode benefits more from high reasoning effort than single-shot
-	// — the inspect-tool round-trips need deeper analysis between turns.
-	return mode === "agentic" ? "high" : "high";
+	// gpt-oss-120b: full reasoning budget
+	if (m.includes("gpt-oss")) return "high";
+	// NVIDIA Nemotron models also accept reasoning_effort via LiteLLM
+	if (m.includes("nemotron")) return mode === "agentic" ? "high" : "medium";
+	// All other models (Llama, Mistral, Gemma) ignore unknown fields safely
+	return undefined;
 }

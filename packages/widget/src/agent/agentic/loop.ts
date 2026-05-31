@@ -38,6 +38,59 @@ import type { Plan } from "../types.js";
 import { type InspectionRunCtx, runInspection } from "./inspect-runners.js";
 import { INSPECT_TOOLS } from "./inspect-tools.js";
 
+/**
+ * Some providers (notably UF Navigator / gpt-oss-120b) occasionally emit
+ * the finalize_plan call as a JSON block in the response `content`
+ * instead of as a proper OpenAI-style tool_calls[] entry. This helper
+ * scans the free-text response for a plausible plan object, validates
+ * it against the finalize_plan zod schema, and returns the typed Plan
+ * if it parses. Returns undefined when no parseable plan is present.
+ *
+ * Recovery strategy:
+ *   1. Find the largest balanced `{...}` block in the text.
+ *   2. JSON.parse it.
+ *   3. Run finalize_plan's args schema against it.
+ *
+ * Validation must pass cleanly — we don't accept malformed plans here.
+ * The next iteration's prod message will tell the model to try again.
+ */
+function tryExtractFinalizePlan(text: string): Plan | undefined {
+	if (!text || typeof text !== "string") return undefined;
+	// Common shapes from the model: `\`\`\`json {...}\`\`\`` or just raw `{...}`.
+	const stripped = text
+		.replace(/```(?:json)?\s*/gi, "")
+		.replace(/```\s*$/g, "");
+	const candidates: string[] = [];
+	let depth = 0;
+	let start = -1;
+	for (let i = 0; i < stripped.length; i++) {
+		const c = stripped[i];
+		if (c === "{") {
+			if (depth === 0) start = i;
+			depth++;
+		} else if (c === "}") {
+			depth--;
+			if (depth === 0 && start >= 0) {
+				candidates.push(stripped.slice(start, i + 1));
+				start = -1;
+			}
+		}
+	}
+	// Try longest-first — the outer object is most likely the plan.
+	candidates.sort((a, b) => b.length - a.length);
+	for (const raw of candidates) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			continue;
+		}
+		const result = INSPECT_TOOLS.finalize_plan.args.safeParse(parsed);
+		if (result.success) return result.data as Plan;
+	}
+	return undefined;
+}
+
 /** Public type of the function the loop calls to invoke the LLM. */
 export interface LoopLLMRequest {
 	apiKey: string;
@@ -311,14 +364,26 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 		}
 
 		if (resp.tool_calls.length === 0) {
-			// The model produced free text and no tool call. Push the message
-			// and prod it to commit to a tool — usually finalize_plan.
+			// The model produced free text and no tool call. Before prodding
+			// again, try to extract a finalize_plan JSON from the free text —
+			// some providers (notably gpt-oss-120b on UF Navigator) emit the
+			// finalize_plan call as a JSON block in `content` instead of a
+			// proper `tool_calls[]` entry. If we can find and validate one,
+			// treat it as the finalized plan and skip the prod loop.
+			const extracted = tryExtractFinalizePlan(resp.text ?? "");
+			if (extracted) {
+				onStep?.({ kind: "finalize", iteration: iter, plan: extracted });
+				return extracted as Plan;
+			}
 			messages.push({ role: "assistant", content: resp.text ?? "" });
 			messages.push({
 				role: "user",
 				content:
 					"You must call a tool — either an inspect.* tool to gather more info, " +
-					"or finalize_plan to commit a final Plan. Do not answer in free text.",
+					"or finalize_plan to commit a final Plan. Do not answer in free text. " +
+					"If you already have the answer, call finalize_plan with the steps " +
+					"array set to [{ id: \"s1\", tool: \"render.summary\", args: { text: \"...your answer...\" }, why: \"...\" }] " +
+					"as a proper tool call, not as JSON in your response text.",
 			});
 			consecutiveFreeText++;
 			// Symmetric to the unknown-tool cap: if a model keeps producing
@@ -484,11 +549,13 @@ async function defaultOpenAICompatCall(
 		// provider doesn't honor "required".
 		tool_choice: "required",
 	};
-	// R.4-b (audit 2026-05-16): for gpt-oss-* via UF Navigator's LiteLLM,
-	// request high reasoning effort on every inspection turn. Other
-	// providers ignore unknown body fields with HTTP 200.
+	// For models that accept reasoning_effort via LiteLLM (gpt-oss-* and
+	// NVIDIA Nemotron*), request high effort on every inspection turn.
+	// Other providers ignore unknown body fields with HTTP 200 — safe to skip.
 	const modelLower = req.model.toLowerCase();
-	if (modelLower.includes("gpt-oss")) {
+	if (modelLower.includes("gpt-oss-20b")) {
+		body.reasoning_effort = "medium"; // smaller context window
+	} else if (modelLower.includes("gpt-oss") || modelLower.includes("nemotron")) {
 		body.reasoning_effort = "high";
 	}
 
