@@ -2143,6 +2143,26 @@ export class GeoChatBotElement extends LitElement {
 	} {
 		const fails: GuardResult[] = [];
 		for (const r of results) {
+			// render.map falls back to a "Cannot map … but it does have
+			// address-like columns" SUMMARY when a step dropped the geometry
+			// (e.g. a bucketize SQL that read FROM the original table instead
+			// of the geocoded output). The data IS geocodable, so re-plan with
+			// the right chaining instead of shipping a non-map. (The genuinely
+			// non-spatial variant says "no address-like columns" — left alone.)
+			if (
+				r.kind === "summary" &&
+				/cannot map/i.test(r.text) &&
+				/address-like columns/i.test(r.text)
+			) {
+				fails.push({
+					ok: false,
+					severity: "fail",
+					reason: "map could not render — the geometry was lost",
+					suggestedFix:
+						"geocode the address columns FIRST, then run any SQL/bucketize step on the GEOCODED output (not the original table), and keep all columns (SELECT *) so the geometry survives to render.map",
+				});
+				continue;
+			}
 			if (r.kind !== "layer") continue;
 			const features = (r.geojson?.features ?? []) as GeoJSON.Feature[];
 			const nonEmpty = guardLayerNonEmpty(features.length);
