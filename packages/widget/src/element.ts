@@ -30,7 +30,6 @@ import { augmentProfile } from "./agent/profile/augment.js";
 import { PlanValidationError, validatePlan } from "./agent/validate-plan.js";
 import { validateSql } from "./agent/validate-sql.js";
 import { friendlyExecError } from "./agent/verify/error-message.js";
-import { classifyFailure } from "./agent/verify/failure-classifier.js";
 import {
 	type GuardResult,
 	guardColorBy,
@@ -300,6 +299,16 @@ export type GeoChatBotEvents = {
  * predictable on the UF Navigator provider.
  */
 const RELIABLE_MAX_ATTEMPTS = 2;
+
+/**
+ * Execution errors that a DIFFERENT plan can fix (the plan referenced a tool,
+ * dataset, or runner that doesn't exist / isn't implemented). These trigger a
+ * strategy re-plan. Generic runtime failures (SQL errors, engine offline, CRS
+ * issues) are deliberately excluded — those are the step-critic's job, and
+ * re-planning the same approach won't help.
+ */
+const REPLANNABLE_ERROR =
+	/unknown dataset|not implemented|no runner registered|not in the available tool|missing_runner|unknown tool/i;
 
 const EVENT_NAME: Record<keyof GeoChatBotEvents, string> = {
 	"dataset-loaded": "geochatbot:dataset-loaded",
@@ -2046,22 +2055,18 @@ export class GeoChatBotElement extends LitElement {
 			let honestMessage: string | undefined;
 			if (abort.signal.aborted) {
 				// interrupted — leave as-is
-			} else if (sawError) {
-				const cls = classifyFailure({
-					kind: "error",
-					message: execErrorMsg ?? "execution error",
-				});
-				if (cls.cls === "logic") {
-					recoveryFeedback =
-						`Your previous plan FAILED with this error: "${execErrorMsg}".\n` +
-						"That tool, dataset, or column is unavailable or invalid. Re-plan " +
-						"with a DIFFERENT, simpler approach using ONLY the loaded dataset " +
-						"and basic tools (sql, render.map, render.table, render.chart, " +
-						"stats.aggregate). Do not reference the failing tool, dataset, or " +
-						"column again.";
-					// honestMessage falls back to the friendlyExecError already set.
-				}
-			} else {
+			} else if (sawError && REPLANNABLE_ERROR.test(execErrorMsg ?? "")) {
+				// The plan named a tool/dataset/runner that doesn't exist or
+				// isn't implemented — a different plan can fix it. (Runtime
+				// failures the step-critic already handled are left as-is.)
+				recoveryFeedback =
+					`Your previous plan FAILED with this error: "${execErrorMsg}".\n` +
+					"That tool or dataset is unavailable. Re-plan with a DIFFERENT, " +
+					"simpler approach using ONLY the loaded dataset and basic tools " +
+					"(sql, render.map, render.table, render.chart, stats.aggregate). " +
+					"Do not reference the failing tool or dataset again.";
+				// honestMessage falls back to the friendlyExecError already set.
+			} else if (!sawError) {
 				const verdict = this._verifyOutcome(collectedResults);
 				if (!verdict.ok) {
 					recoveryFeedback = verdict.feedback;
