@@ -2171,6 +2171,19 @@ export class GeoChatBotElement extends LitElement {
 				});
 				continue;
 			}
+			// A summary still containing ${...} means the model wrote a template
+			// it expected the system to fill — render.summary shows text
+			// literally, so the user would see raw "${x}" placeholders.
+			if (r.kind === "summary" && /\$\{/.test(r.text)) {
+				fails.push({
+					ok: false,
+					severity: "fail",
+					reason: "the summary contains unfilled ${...} placeholders",
+					suggestedFix:
+						"render.summary text is literal — compute the values with sql/stats first and write the actual numbers into the text (or use render.table), never ${...} placeholders",
+				});
+				continue;
+			}
 			if (r.kind !== "layer") continue;
 			const features = (r.geojson?.features ?? []) as GeoJSON.Feature[];
 			const nonEmpty = guardLayerNonEmpty(features.length);

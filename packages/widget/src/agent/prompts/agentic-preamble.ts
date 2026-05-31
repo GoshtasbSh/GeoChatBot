@@ -92,7 +92,6 @@ affected.
   - geometry.union(layer)           → ST_Union (dissolve all geometries)
   - geometry.difference(a, b)       → ST_Difference (a minus b)
   - geometry.dissolve(layer, by)    → ST_Union grouped by an attribute
-  - geometry.voronoi(layer)         → Voronoi polygons of input points
   - geometry.reproject(layer, target_crs)
 
   NOT directly registered (use sql with ST_*):
@@ -116,14 +115,13 @@ affected.
     value_col REQUIRED even for "count" — pass any non-null column.
   - stats.summary_stats(layer, columns[])
   - stats.distance_matrix(layer)
-  - stats.hex_bin(layer, cell_size_m?)         ← hexagonal binning
-  - stats.density_grid(layer, cell_size_m)     ← square-cell density
-  - stats.morans_i(layer, value_col)           ← global spatial autocorr
-  - stats.getis_ord_gi(layer, value_col)       ← local hot/cold spots
 
-  NOT directly registered (use sql):
+  NOT available — do NOT use these; answer with sql + render.map/table instead:
+    hex_bin / density_grid / morans_i / getis_ord_gi / voronoi (not implemented).
+    For "where is X worst / clustered / hot": color/size points by the metric
+    (render.map style.colorBy/radiusBy) or aggregate by an existing category
+    with stats.aggregate — do NOT invent a spatial-statistics tool.
     percentile → sql("SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY x) AS p95 FROM L")
-    idw        → sql implementing inverse-distance weighting (see pattern 50+)
 
 ## render.*  — surface output (always last step)
   - render.map(layer, style?)       — GeoJSON on a map
@@ -134,6 +132,9 @@ affected.
     kind ∈ {"bar","line","scatter","pie","grouped_bar"}
   - render.table(table)
   - render.summary(text)
+    text is shown LITERALLY — it is NOT a template. Do NOT put \${...}
+    placeholders or format specs in it; compute values via sql/stats first
+    and write the final numbers into the text, or just use render.table.
 
 ## sql  — the escape hatch (use for everything not above)
   - sql(query)
@@ -273,6 +274,37 @@ and asks the user to clarify. DON'T fabricate.
 
   14. "color points by <category>" (categorical legend)
       → render.map(layer, style:{colorBy:"<cat_col>"})
+
+  14a. "color code the points" / "color them" — NO COLUMN SPECIFIED.
+      The user wants a meaningful breakdown but hasn't named one. NEVER
+      pick a column blindly. The dataset block above lists "best
+      color-by candidates" with scores (3/3 = strong, 2/3 = ok, 1/3 =
+      needs bucketing, 0/3 = never). Use them in this order:
+        a) If any column scores 3/3 (status-named OR continuous
+           numeric), use it. For categorical 3/3:
+              render.map(layer, style:{colorBy:"<best_col>"}).
+           For numeric 3/3:
+              render.map(layer, style:{colorBy:"<col>", classification:"quantile"}).
+        b) Otherwise — if the BEST score is 2/3 — look at the 1/3
+           columns BEFORE accepting the 2/3 pick. A 1/3 column marked
+           "bucket via SQL" with sample values that look like
+           outcome/status phrases (e.g. "completed survey", "no one
+           home", "gated", "vacant", "not interested", "declined") is
+           ALMOST ALWAYS the better choice than a sparse date or
+           binary 2/3 column. Run inspect.distinct_values on it to
+           confirm the patterns, then bucket via sql with
+           CASE WHEN LOWER(col) LIKE '%phrase%' THEN '<bucket>' END
+           covering 5-8 meaningful buckets + an 'other' fallback, and
+           render.map on the bucketed view. A 6-bucket derived column
+           beats a 3-distinct-value raw column every time.
+        c) If no 1/3 looks bucketable, fall back to the best 2/3
+           column directly: render.map(layer, style:{colorBy:"<col>"}).
+        d) If ALL columns score 0/3 (the "best color-by candidates"
+           line says NONE), render.summary listing the columns and
+           ask the user which to color by — do NOT silently pick a
+           column that will produce a useless output.
+        e) NEVER use a column tagged hint:latitude / hint:longitude /
+           hint:street-address / hint:wkt-geometry as colorBy.
 
   15. "choropleth of <numeric>" / "color polygons by population"
       → render.map(layer, style:{colorBy:"<num_col>",
