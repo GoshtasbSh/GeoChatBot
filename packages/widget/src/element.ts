@@ -29,6 +29,7 @@ import type { PlannerLLMInput } from "./agent/llm.js";
 import { augmentProfile } from "./agent/profile/augment.js";
 import { PlanValidationError, validatePlan } from "./agent/validate-plan.js";
 import { validateSql } from "./agent/validate-sql.js";
+import { friendlyExecError } from "./agent/verify/error-message.js";
 import type {
 	BinaryInput,
 	DatasetProfile,
@@ -1919,7 +1920,13 @@ export class GeoChatBotElement extends LitElement {
 		//   The worker module + test/agent/executor/worker-abort.test.ts
 		//   remain as an opt-in surface for future use cases that DO need
 		//   long-running CPU-bound work isolated from the main thread.
-		const exec = new Executor({ engine, datasets: this._execDatasets });
+		const exec = new Executor({
+			engine,
+			datasets: this._execDatasets,
+			...(this._datasets.length === 1
+				? { activeProfile: this._datasets[0] }
+				: {}),
+		});
 		const critic = this._buildCritic();
 		// Fresh controller per execution. clear() / a new ask() before this
 		// run completes will fire abort(); the signal is forwarded to every
@@ -1969,7 +1976,7 @@ export class GeoChatBotElement extends LitElement {
 					},
 					onError: (e) => {
 						this.dispatch("error", e);
-						this.error = e.message;
+						this.error = friendlyExecError(e.message);
 					},
 					...(critic
 						? {

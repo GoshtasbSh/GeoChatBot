@@ -10,6 +10,7 @@
  * tests instantiate it on the main thread directly.
  */
 
+import type { DatasetProfile } from "../prompts/builders.js";
 import { substitute } from "../substitute.js";
 import { getTool } from "../tools/registry.js";
 import { StepSchema } from "../types.js";
@@ -33,6 +34,13 @@ export interface ExecutorOptions {
 	 * `0` disables Phase 6 critic re-entry entirely.
 	 */
 	maxRetries?: number;
+	/**
+	 * The active dataset's planner profile (with column roles + inferred
+	 * region), when available. Threaded into {@link ExecCtx.activeProfile}
+	 * so self-grounding runners (e.g. the geocoder) can auto-fill arguments
+	 * the planner did not specify.
+	 */
+	activeProfile?: DatasetProfile;
 }
 
 /** Thrown by the executor when a step has no registered runner. */
@@ -54,12 +62,15 @@ export class Executor {
 	private readonly engine: ExecutorEngine;
 	private readonly datasets: Map<string, DatasetEntry>;
 	private readonly maxRetries: number;
+	private readonly activeProfile?: DatasetProfile;
 	private viewCounter = 0;
 
 	constructor(opts: ExecutorOptions) {
 		this.engine = opts.engine;
 		this.datasets = new Map(opts.datasets.map((d) => [d.name, d]));
 		this.maxRetries = Math.max(0, opts.maxRetries ?? 2);
+		if (opts.activeProfile !== undefined)
+			this.activeProfile = opts.activeProfile;
 	}
 
 	/**
@@ -125,6 +136,7 @@ export class Executor {
 				...(callbacks.onSubProgress
 					? { onSubProgress: callbacks.onSubProgress }
 					: {}),
+				...(this.activeProfile ? { activeProfile: this.activeProfile } : {}),
 			};
 
 			try {
@@ -168,6 +180,16 @@ export class Executor {
 							// steps using ${var} substitution will still work; only
 							// the bare-name access path is unavailable.
 						}
+						// Fire intermediate-output callback so the host can profile
+						// the new layer/table and add it to the planner's
+						// dataset_refs for the next turn (HIGH-04).
+						callbacks.onIntermediate?.({
+							planId,
+							stepId: step.id,
+							outputVar: step.output_var,
+							outputKind: result.output.kind,
+							ref: result.output.ref,
+						});
 					}
 				}
 				if (result.payload) {
