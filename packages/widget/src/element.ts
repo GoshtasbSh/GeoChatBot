@@ -2288,7 +2288,16 @@ export class GeoChatBotElement extends LitElement {
 			// /^[a-z_][a-z0-9_]*$/ so this is paranoid-safe.
 			const quoted = `"${ref.replace(/"/g, '""')}"`;
 			const sample = await engine.query(`SELECT * FROM ${quoted} LIMIT 5`);
-			const rowsArr = sample.toArray() as Array<Record<string, unknown>>;
+			// Coerce BigInt → Number so JSON.stringify(sample) never throws
+			// when builders.ts serializes the sample into the planner prompt.
+			const rowsArr = (sample.toArray() as Array<Record<string, unknown>>).map(
+				(r) => {
+					const o: Record<string, unknown> = {};
+					for (const [k, v] of Object.entries(r))
+						o[k] = typeof v === "bigint" ? Number(v) : v;
+					return o;
+				},
+			);
 			const cols = rowsArr[0]
 				? Object.keys(rowsArr[0]).map((c) => ({
 						name: c,
