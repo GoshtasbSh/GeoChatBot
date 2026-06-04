@@ -19,7 +19,7 @@
 import { LitElement, type TemplateResult, css, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import type { ResultPayload } from "../agent/executor/types.js";
-import { computeLegend, type GeoJsonInputLayer } from "./MapView.js";
+import { type GeoJsonInputLayer, computeLegend } from "./MapView.js";
 import { tokensCSS } from "./tokens.js";
 
 /**
@@ -526,10 +526,7 @@ export class ResultCanvas extends LitElement {
 		const results = last.results.map((r, i) =>
 			i === sIdx && r.kind === "summary" ? { ...r, text } : r,
 		);
-		this._turns = [
-			...this._turns.slice(0, lastIdx),
-			{ ...last, results },
-		];
+		this._turns = [...this._turns.slice(0, lastIdx), { ...last, results }];
 	}
 
 	/** Reset all turns. Called between executions. */
@@ -734,14 +731,27 @@ export class ResultCanvas extends LitElement {
 			const yVals = data.map((d) => Number(d.y) || 0);
 			const yMin = Math.min(...yVals);
 			const yMax = Math.max(...yVals, yMin + 1);
-			const xScale = (i: number) => PAD.left + (i / (data.length - 1 || 1)) * innerW;
+			const xScale = (i: number) =>
+				PAD.left + (i / (data.length - 1 || 1)) * innerW;
 			const yScale = (v: number) =>
 				PAD.top + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
-			const pts = data.map((d, i) => `${xScale(i).toFixed(1)},${yScale(Number(d.y) || 0).toFixed(1)}`).join(" ");
+			const pts = data
+				.map(
+					(d, i) =>
+						`${xScale(i).toFixed(1)},${yScale(Number(d.y) || 0).toFixed(1)}`,
+				)
+				.join(" ");
 			// X-axis tick labels: show up to 6 evenly spaced
-			const tickIdxs = data.length <= 6
-				? data.map((_, i) => i)
-				: [0, Math.floor(data.length / 4), Math.floor(data.length / 2), Math.floor(3 * data.length / 4), data.length - 1];
+			const tickIdxs =
+				data.length <= 6
+					? data.map((_, i) => i)
+					: [
+							0,
+							Math.floor(data.length / 4),
+							Math.floor(data.length / 2),
+							Math.floor((3 * data.length) / 4),
+							data.length - 1,
+						];
 			const yTicks = [yMin, (yMin + yMax) / 2, yMax];
 			return html`
         <div class="card">
@@ -755,28 +765,34 @@ export class ResultCanvas extends LitElement {
           <div class="chart-bd" style="overflow-x:auto">
             <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%;display:block">
               <!-- y-axis ticks -->
-              ${yTicks.map((v) => html`
+              ${yTicks.map(
+								(v) => html`
                 <line x1="${PAD.left}" y1="${yScale(v).toFixed(1)}" x2="${PAD.left + innerW}" y2="${yScale(v).toFixed(1)}"
                   stroke="var(--gcb-border,#ddd)" stroke-width="0.5"/>
                 <text x="${PAD.left - 4}" y="${yScale(v).toFixed(1)}" text-anchor="end" dominant-baseline="middle"
                   fill="var(--gcb-text-muted,#888)" font-size="9">${fmtNum(v)}</text>
-              `)}
+              `,
+							)}
               <!-- polyline -->
               <polyline points="${pts}" fill="none" stroke="var(--gcb-accent,#10b981)" stroke-width="2" stroke-linejoin="round"/>
               <!-- dots -->
-              ${data.map((d, i) => html`
+              ${data.map(
+								(d, i) => html`
                 <circle cx="${xScale(i).toFixed(1)}" cy="${yScale(Number(d.y) || 0).toFixed(1)}" r="3"
                   fill="var(--gcb-accent,#10b981)">
                   <title>${String(d.x ?? "")}: ${fmtNum(Number(d.y) || 0)}</title>
                 </circle>
-              `)}
+              `,
+							)}
               <!-- x-axis labels -->
-              ${tickIdxs.map((i) => html`
+              ${tickIdxs.map(
+								(i) => html`
                 <text x="${xScale(i).toFixed(1)}" y="${H - 6}" text-anchor="middle"
                   fill="var(--gcb-text-muted,#888)" font-size="9">
                   ${String(data[i]?.x ?? "").slice(0, 10)}
                 </text>
-              `)}
+              `,
+							)}
             </svg>
           </div>
         </div>
@@ -938,7 +954,9 @@ export class ResultCanvas extends LitElement {
     `;
 	}
 
-	private _renderLegend(input: GeoJsonInputLayer): TemplateResult | typeof nothing {
+	private _renderLegend(
+		input: GeoJsonInputLayer,
+	): TemplateResult | typeof nothing {
 		if (!input.style?.colorBy) return nothing;
 		const features = (input.geojson?.features as GeoJSON.Feature[]) ?? [];
 		if (features.length === 0) return nothing;

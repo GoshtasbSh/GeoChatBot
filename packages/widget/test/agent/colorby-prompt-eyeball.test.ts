@@ -101,11 +101,10 @@ const cases: Array<{ label: string; profile: DatasetProfile }> = [
 describe("colorBy hint — what the LLM ACTUALLY sees (eyeball test)", () => {
 	for (const { label, profile } of cases) {
 		it(label, () => {
-			// biome-ignore lint/suspicious/noConsole: this test exists to print output
 			console.log(
-				`\n${"=".repeat(70)}\n${label}\n${"=".repeat(70)}\n${renderDatasetsBlock([
-					profile,
-				])}\n\nRanker top 5:\n${JSON.stringify(rankColorByCandidates(profile).slice(0, 5), null, 2)}\n`,
+				`\n${"=".repeat(70)}\n${label}\n${"=".repeat(70)}\n${renderDatasetsBlock(
+					[profile],
+				)}\n\nRanker top 5:\n${JSON.stringify(rankColorByCandidates(profile).slice(0, 5), null, 2)}\n`,
 			);
 		});
 	}

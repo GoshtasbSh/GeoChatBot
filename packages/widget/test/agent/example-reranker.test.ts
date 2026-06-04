@@ -9,12 +9,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { Plan } from "../../src/agent/types.js";
 import {
 	inferPlanTaskType,
 	inferQuestionTaskType,
 	taskMatchBoost,
 } from "../../src/agent/retrieval/example-reranker.js";
+import type { Plan } from "../../src/agent/types.js";
 
 function planEndingIn(tool: string): Plan {
 	return {
@@ -41,19 +41,31 @@ describe("inferPlanTaskType", () => {
 describe("inferQuestionTaskType", () => {
 	it("detects map intent", () => {
 		expect(inferQuestionTaskType("map the grocery stores")).toBe("map");
-		expect(inferQuestionTaskType("where are my most profitable stores?")).toBe("map");
+		expect(inferQuestionTaskType("where are my most profitable stores?")).toBe(
+			"map",
+		);
 	});
 	it("detects chart intent", () => {
-		expect(inferQuestionTaskType("show the revenue distribution as a chart")).toBe("chart");
-		expect(inferQuestionTaskType("did incidents change over time?")).toBe("chart");
+		expect(
+			inferQuestionTaskType("show the revenue distribution as a chart"),
+		).toBe("chart");
+		expect(inferQuestionTaskType("did incidents change over time?")).toBe(
+			"chart",
+		);
 	});
 	it("detects table intent", () => {
-		expect(inferQuestionTaskType("which clinics have the longest wait?")).toBe("table");
+		expect(inferQuestionTaskType("which clinics have the longest wait?")).toBe(
+			"table",
+		);
 		expect(inferQuestionTaskType("list the top 10 cities")).toBe("table");
 	});
 	it("detects summary intent", () => {
-		expect(inferQuestionTaskType("summarize how the survey went")).toBe("summary");
-		expect(inferQuestionTaskType("what can I learn from this data?")).toBe("summary");
+		expect(inferQuestionTaskType("summarize how the survey went")).toBe(
+			"summary",
+		);
+		expect(inferQuestionTaskType("what can I learn from this data?")).toBe(
+			"summary",
+		);
 	});
 	it("returns null on an ambiguous question", () => {
 		expect(inferQuestionTaskType("hmm")).toBeNull();

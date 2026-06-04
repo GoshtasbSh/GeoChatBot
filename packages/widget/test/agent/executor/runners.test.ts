@@ -114,7 +114,9 @@ describe("runner: sql", () => {
 		// The step-2 view body must reference the quoted bare-name view "a"
 		// and must NOT contain the un-expanded `${a}` token.
 		const s2Body = engine.sqls.find(
-			(s) => /CREATE OR REPLACE TEMPORARY VIEW/.test(s) && /COUNT\(\*\) AS n/.test(s),
+			(s) =>
+				/CREATE OR REPLACE TEMPORARY VIEW/.test(s) &&
+				/COUNT\(\*\) AS n/.test(s),
 		);
 		expect(s2Body).toBeDefined();
 		expect(s2Body).toMatch(/FROM "a"/);
@@ -572,7 +574,10 @@ describe("runner: render.summary", () => {
 				},
 			},
 		);
-		expect(payload).toMatchObject({ kind: "summary", text: "Total beds: 1712." });
+		expect(payload).toMatchObject({
+			kind: "summary",
+			text: "Total beds: 1712.",
+		});
 	});
 });
 

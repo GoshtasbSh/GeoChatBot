@@ -36,11 +36,7 @@ const survey: DatasetProfile = {
 			name: "Address",
 			type: "Utf8",
 			cardinality: 248,
-			samples: [
-				"6116 Harvard Avenue",
-				"6169 Cascade",
-				"6173 Harvard Avenue",
-			],
+			samples: ["6116 Harvard Avenue", "6169 Cascade", "6173 Harvard Avenue"],
 		},
 		{
 			name: "First attempt",
@@ -148,9 +144,7 @@ describe("renderDatasetsBlock — colorBy hint visibility (2026-05-21)", () => {
 
 	it("trivial dataset with no good column: prompt block says NONE so planner asks user", () => {
 		const block = renderDatasetsBlock([trivial]);
-		expect(block).toContain(
-			"best color-by candidates: NONE",
-		);
+		expect(block).toContain("best color-by candidates: NONE");
 		expect(block).toContain("ask the user");
 	});
 });

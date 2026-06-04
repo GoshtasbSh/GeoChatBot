@@ -17,8 +17,8 @@
 import type { Plan } from "../types.js";
 import { BM25Index, reciprocalRankFusion } from "./bm25.js";
 import { SPATIAL_DOCS } from "./corpus.js";
-import { taskMatchBoost } from "./example-reranker.js";
 import { embedManyWithOverride, embedWithOverride } from "./embedder.js";
+import { taskMatchBoost } from "./example-reranker.js";
 import { VectorStore } from "./store.js";
 
 export interface RetrievedExample {

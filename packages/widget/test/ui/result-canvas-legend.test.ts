@@ -69,8 +69,12 @@ describe("result-canvas legend rendering (2026-05-21)", () => {
 	it("renders the deterministic warning when the colorBy column collapses to 2 categories on a 30+ feature dataset", async () => {
 		const el = mount();
 		const features = [
-			...Array(20).fill(0).map(() => pt([0, 0], { status: "completed" })),
-			...Array(15).fill(0).map(() => pt([0, 0], { status: "not_completed" })),
+			...Array(20)
+				.fill(0)
+				.map(() => pt([0, 0], { status: "completed" })),
+			...Array(15)
+				.fill(0)
+				.map(() => pt([0, 0], { status: "not_completed" })),
 		];
 		el.setResult({
 			kind: "layer",
@@ -102,9 +106,7 @@ describe("result-canvas legend rendering (2026-05-21)", () => {
 		expect(bar).toBeTruthy();
 		const bg = (bar as HTMLElement | null)?.style.background ?? "";
 		expect(bg).toMatch(/linear-gradient/);
-		const ticks = el.shadowRoot?.querySelectorAll(
-			".map-legend-gradient-tick",
-		);
+		const ticks = el.shadowRoot?.querySelectorAll(".map-legend-gradient-tick");
 		expect(ticks?.length).toBe(2);
 		// First tick = min (0), last tick = max (4900 → may render as "4.9K").
 		expect(ticks?.[0]?.textContent?.trim()).toMatch(/^0/);

@@ -31,16 +31,22 @@ describe("buildCorrectionPrompt", () => {
 		expect(p.user).toMatch(/Middle/);
 		expect(p.user).toMatch(/7\.4/);
 		expect(p.user).toMatch(/Elementary has the highest rating/);
-		expect(p.user.toLowerCase()).toMatch(/contradict|does not match|match the table/);
+		expect(p.user.toLowerCase()).toMatch(
+			/contradict|does not match|match the table/,
+		);
 		// must instruct grounding, not free generation
-		expect(p.system.toLowerCase()).toMatch(/only.*table|exactly|from the table/);
+		expect(p.system.toLowerCase()).toMatch(
+			/only.*table|exactly|from the table/,
+		);
 	});
 });
 
 describe("parseCorrectedSummary", () => {
 	it("extracts corrected_summary from a forced-tool result", () => {
 		expect(
-			parseCorrectedSummary({ corrected_summary: "Middle has the highest rating at 7.4." }),
+			parseCorrectedSummary({
+				corrected_summary: "Middle has the highest rating at 7.4.",
+			}),
 		).toBe("Middle has the highest rating at 7.4.");
 	});
 	it("returns null on a malformed result", () => {
@@ -52,9 +58,9 @@ describe("parseCorrectedSummary", () => {
 
 describe("correctSummary", () => {
 	it("calls the injected LLM fn and returns the corrected text", async () => {
-		const call = vi
-			.fn()
-			.mockResolvedValue({ corrected_summary: "Middle has the highest rating (7.4)." });
+		const call = vi.fn().mockResolvedValue({
+			corrected_summary: "Middle has the highest rating (7.4).",
+		});
 		const out = await correctSummary(
 			{ call },
 			{

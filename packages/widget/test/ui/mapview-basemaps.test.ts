@@ -9,8 +9,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	BASEMAPS,
-	DEFAULT_BASEMAP_ID,
 	type BasemapId,
+	DEFAULT_BASEMAP_ID,
 } from "../../src/ui/MapView.js";
 
 describe("MapView basemap registry", () => {

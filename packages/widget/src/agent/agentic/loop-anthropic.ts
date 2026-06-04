@@ -14,10 +14,10 @@
  */
 
 import type {
+	LoopChatMessage,
 	LoopLLMCall,
 	LoopLLMRequest,
 	LoopLLMResponse,
-	LoopChatMessage,
 	LoopToolDef,
 } from "./loop.js";
 
@@ -28,7 +28,12 @@ const ANTHROPIC_VERSION = "2023-06-01";
 
 type AnthropicContent =
 	| { type: "text"; text: string }
-	| { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+	| {
+			type: "tool_use";
+			id: string;
+			name: string;
+			input: Record<string, unknown>;
+	  }
 	| { type: "tool_result"; tool_use_id: string; content: string };
 
 interface AnthropicMessage {
@@ -93,10 +98,13 @@ function toAnthropicMessages(messages: ReadonlyArray<LoopChatMessage>): {
 				});
 			}
 			const first = content[0];
-			out.push({ role: "assistant", content: content.length === 1 && first?.type === "text"
-				? (first as { type: "text"; text: string }).text
-				: content });
-			continue;
+			out.push({
+				role: "assistant",
+				content:
+					content.length === 1 && first?.type === "text"
+						? (first as { type: "text"; text: string }).text
+						: content,
+			});
 		}
 	}
 
@@ -104,9 +112,11 @@ function toAnthropicMessages(messages: ReadonlyArray<LoopChatMessage>): {
 }
 
 /** Convert OpenAI-compat tool defs → Anthropic tools array. */
-function toAnthropicTools(
-	tools: ReadonlyArray<LoopToolDef>,
-): Array<{ name: string; description: string; input_schema: Record<string, unknown> }> {
+function toAnthropicTools(tools: ReadonlyArray<LoopToolDef>): Array<{
+	name: string;
+	description: string;
+	input_schema: Record<string, unknown>;
+}> {
 	return tools.map((t) => ({
 		name: t.function.name,
 		description: t.function.description,
@@ -115,9 +125,7 @@ function toAnthropicTools(
 }
 
 /** Convert Anthropic response content → LoopLLMResponse. */
-function fromAnthropicResponse(
-	content: AnthropicContent[],
-): LoopLLMResponse {
+function fromAnthropicResponse(content: AnthropicContent[]): LoopLLMResponse {
 	const tool_calls: LoopLLMResponse["tool_calls"] = [];
 	let text: string | null = null;
 
@@ -178,7 +186,9 @@ export function makeAnthropicLoopCall(): LoopLLMCall {
 
 		if (!res.ok) {
 			const txt = await res.text().catch(() => "");
-			throw new Error(`Anthropic loop call HTTP ${res.status}: ${txt.slice(0, 300)}`);
+			throw new Error(
+				`Anthropic loop call HTTP ${res.status}: ${txt.slice(0, 300)}`,
+			);
 		}
 
 		const json = (await res.json()) as {

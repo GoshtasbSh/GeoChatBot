@@ -2327,15 +2327,9 @@ export class GeoChatBotElement extends LitElement {
 		const lines = fails.map(
 			(f) => `- ${f.reason}${f.suggestedFix ? ` → ${f.suggestedFix}` : ""}`,
 		);
-		const feedback =
-			`Your previous plan produced a poor result:\n${lines.join("\n")}\n` +
-			"Try a DIFFERENT strategy: if grouping or coloring by a free-text " +
-			"column, insert a transform.bucketize step to derive clean categories " +
-			"first; otherwise pick a cleaner column, relax the filter, or add a region.";
+		const feedback = `Your previous plan produced a poor result:\n${lines.join("\n")}\nTry a DIFFERENT strategy: if grouping or coloring by a free-text column, insert a transform.bucketize step to derive clean categories first; otherwise pick a cleaner column, relax the filter, or add a region.`;
 		const fix = fails.find((f) => f.suggestedFix)?.suggestedFix;
-		const message =
-			`The result still looks off: ${fails.map((f) => f.reason).join("; ")}.` +
-			(fix ? ` Suggestion: ${fix}` : "");
+		const message = `The result still looks off: ${fails.map((f) => f.reason).join("; ")}.${fix ? ` Suggestion: ${fix}` : ""}`;
 		return { ok: false, feedback, message };
 	}
 

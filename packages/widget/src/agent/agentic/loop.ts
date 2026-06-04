@@ -382,7 +382,7 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<Plan> {
 					"You must call a tool — either an inspect.* tool to gather more info, " +
 					"or finalize_plan to commit a final Plan. Do not answer in free text. " +
 					"If you already have the answer, call finalize_plan with the steps " +
-					"array set to [{ id: \"s1\", tool: \"render.summary\", args: { text: \"...your answer...\" }, why: \"...\" }] " +
+					'array set to [{ id: "s1", tool: "render.summary", args: { text: "...your answer..." }, why: "..." }] ' +
 					"as a proper tool call, not as JSON in your response text.",
 			});
 			consecutiveFreeText++;
@@ -555,7 +555,10 @@ async function defaultOpenAICompatCall(
 	const modelLower = req.model.toLowerCase();
 	if (modelLower.includes("gpt-oss-20b")) {
 		body.reasoning_effort = "medium"; // smaller context window
-	} else if (modelLower.includes("gpt-oss") || modelLower.includes("nemotron")) {
+	} else if (
+		modelLower.includes("gpt-oss") ||
+		modelLower.includes("nemotron")
+	) {
 		body.reasoning_effort = "high";
 	}
 

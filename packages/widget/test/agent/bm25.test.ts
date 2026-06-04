@@ -8,7 +8,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { BM25Index, reciprocalRankFusion } from "../../src/agent/retrieval/bm25.js";
+import {
+	BM25Index,
+	reciprocalRankFusion,
+} from "../../src/agent/retrieval/bm25.js";
 
 describe("BM25Index", () => {
 	const idx = new BM25Index();
