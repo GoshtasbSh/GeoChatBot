@@ -41,8 +41,12 @@ const SummaryArgs = z.object({
 // snake_case by OutputVarRegex elsewhere, and DuckDB column lookups are
 // case-sensitive for the field accessor. The `i` flag would let `${Stats}`
 // or `${stats[0].MEAN}` look up something the runtime can never resolve.
+// Two placeholder dialects seen from models: JS `${var[0].field}` and
+// Mustache `{{ var.field }}` (2026-06-03 audit: gpt-oss-120b emitted
+// `{{sum.value}}`). Both expand the same way; the optional surrounding spaces
+// in the Mustache form are tolerated. Same case-sensitivity rationale applies.
 const PARTIAL_VAR =
-	/\$\{([a-z_][a-z0-9_]*)((?:\[\d+\])?(?:\.[a-z_][a-z0-9_]*)?)\}/g;
+	/\$\{([a-z_][a-z0-9_]*)((?:\[\d+\])?(?:\.[a-z_][a-z0-9_]*)?)\}|\{\{\s*([a-z_][a-z0-9_]*)((?:\[\d+\])?(?:\.[a-z_][a-z0-9_]*)?)\s*\}\}/g;
 
 export async function runRenderSummary(
 	args: Record<string, unknown>,
@@ -57,7 +61,10 @@ export async function runRenderSummary(
 	// named field (or the first field if no accessor is given).
 	let text = rawText;
 	for (const m of [...rawText.matchAll(PARTIAL_VAR)]) {
-		const [placeholder, varName, accessor] = m;
+		// Groups 1/2 = `${var}{accessor}` form; groups 3/4 = `{{var}}` form.
+		const placeholder = m[0];
+		const varName = m[1] ?? m[3];
+		const accessor = m[2] ?? m[4];
 		if (!varName || !placeholder) continue;
 		const ref = ctx.outputs.get(varName);
 		if (!ref || (ref.kind !== "table" && ref.kind !== "layer")) continue;

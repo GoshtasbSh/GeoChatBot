@@ -643,6 +643,15 @@ export class GeoChatBotElement extends LitElement {
 		| undefined;
 	private _pendingPlan: { id: string; plan: Plan } | undefined;
 	private _datasets: PlannerDatasetProfile[] = [];
+	/**
+	 * Names of intermediate layers added to `_datasets` by
+	 * `_registerIntermediateLayer` during prior turns. Tracked so a NEW
+	 * top-level question can drop them — otherwise prior-question output vars
+	 * (e.g. "alachua_markets") linger as phantom datasets and the planner
+	 * references them, causing Binder errors / wrong cross-dataset counts
+	 * (2026-06-03 audit: cross-question state leak across ds04/ds05/ds10).
+	 */
+	private _intermediateLayerNames = new Set<string>();
 	private _apiKey: string | undefined;
 	/**
 	 * Active LLM provider id. Defaults to Groq (free tier). Restored from
@@ -1634,6 +1643,11 @@ export class GeoChatBotElement extends LitElement {
 	 */
 	async ask(question: string): Promise<void> {
 		this._lastQuestion = question.trim();
+		// Drop intermediate layers from prior turns so a new top-level question
+		// plans only over the user's uploaded datasets (prevents the
+		// cross-question phantom-dataset leak). Fire-and-forget is unsafe here —
+		// await so the planner prompt is built from the cleaned dataset list.
+		await this._resetIntermediateLayers();
 		// Begin a new chat turn so the user's question shows immediately as a
 		// bubble, even before the planner returns.
 		if (this.mode !== "headless" && this._lastQuestion) {
@@ -2485,8 +2499,39 @@ export class GeoChatBotElement extends LitElement {
 				...this._datasets.filter((d) => d.name !== outputVar),
 				profile,
 			];
+			this._intermediateLayerNames.add(outputVar);
 		} catch {
 			// best-effort; failure must not abort the executor's plan
+		}
+	}
+
+	/**
+	 * Drop intermediate layers registered during PRIOR turns at the start of a
+	 * new top-level question. Without this, output vars from earlier answers
+	 * (e.g. "alachua_markets") persist in `_datasets` and as DuckDB views, and
+	 * the planner treats them as real uploaded datasets — producing
+	 * `FROM alachua_markets` / cross-dataset UNIONs that throw Binder errors or
+	 * silently double-count (2026-06-03 audit). User-uploaded datasets are never
+	 * in `_intermediateLayerNames`, so they are preserved. Best-effort.
+	 */
+	private async _resetIntermediateLayers(): Promise<void> {
+		if (this._intermediateLayerNames.size === 0) return;
+		const names = [...this._intermediateLayerNames];
+		this._intermediateLayerNames.clear();
+		this._datasets = this._datasets.filter((d) => !names.includes(d.name));
+		try {
+			const engine = this._resolveExecutorEngine();
+			if (!engine) return;
+			for (const n of names) {
+				const quoted = `"${n.replace(/"/g, '""')}"`;
+				try {
+					await engine.query(`DROP VIEW IF EXISTS ${quoted}`);
+				} catch {
+					// view may not exist / not be a view; ignore
+				}
+			}
+		} catch {
+			// best-effort; never block a new question
 		}
 	}
 

@@ -98,7 +98,7 @@ affected.
     bbox     → sql("SELECT ST_AsGeoJSON(ST_Envelope(ST_Union_Agg(geom))) AS geom FROM L")
     area     → sql("SELECT *, ST_Area(geom) AS area_m2 FROM L")
     length   → sql("SELECT *, ST_Length(geom) AS length_m FROM L")
-    distance → sql("SELECT *, ST_Distance(geom, ST_Point(<lon>,<lat>)) AS dist_m FROM L")
+    distance → sql("SELECT *, gcb_distance_km(latitude, longitude, <lat>, <lon>) AS dist_km FROM L")  (km; see DISTANCE UNITS)
 
 ## joins.*  — combine two layers
   - joins.spatial_join(a, b, predicate)
@@ -139,10 +139,48 @@ affected.
 ## sql  — the escape hatch (use for everything not above)
   - sql(query)
     SELECT / WITH only. DuckDB spatial extension is loaded:
-    ST_X / ST_Y / ST_Distance / ST_DWithin / ST_Intersects /
-    ST_Within / ST_Contains / ST_Buffer / ST_Centroid /
+    ST_X / ST_Y / ST_Distance / ST_Distance_Sphere / ST_DWithin /
+    ST_Intersects / ST_Within / ST_Contains / ST_Buffer / ST_Centroid /
     ST_Area / ST_Length / ST_IsValid / ST_MakeValid /
     GeometryType / ST_AsGeoJSON / ST_AsHEXWKB / ST_Point.
+
+  ⚠️ DISTANCE UNITS — read before any distance/radius/nearest query:
+    Uploaded point data (CSV lat/long, GeoJSON) is almost always EPSG:4326,
+    where coordinates are DEGREES. On 4326 geometry, ST_Distance() and
+    ST_DWithin() compute in DEGREES, NOT meters — passing a meter threshold
+    (e.g. ST_DWithin(geom, p, 25000)) is a SILENT BUG that matches the entire
+    dataset. ST_Distance_Sphere is also inaccurate in this build — do NOT use it.
+    For ANY geographic distance / "within X km" / nearest, use the built-in
+    EXACT great-circle macros (arguments are latitude, longitude in that order):
+      • gcb_distance_km(lat1, lon1, lat2, lon2)  → kilometers
+      • gcb_distance_m(lat1, lon1, lat2, lon2)   → meters
+    Pass the row's coords as the first pair and the reference point as the second.
+    Use the raw latitude/longitude columns when present, else ST_Y(geom) for
+    latitude and ST_X(geom) for longitude. Examples (ref point lon=<lon> lat=<lat>):
+      • distance col:  gcb_distance_km(latitude, longitude, <lat>, <lon>) AS dist_km
+      • within X km :  WHERE gcb_distance_km(latitude, longitude, <lat>, <lon>) <= X
+      • nearest     :  ORDER BY gcb_distance_km(latitude, longitude, <lat>, <lon>) LIMIT k
+      • geom layer  :  gcb_distance_km(ST_Y(geom), ST_X(geom), <lat>, <lon>)
+    Only use ST_Distance with a meter threshold when the layer is a METRIC
+    projected CRS (e.g. a reprojected shapefile in feet/meters). DuckDB has NO
+    GEOGRAPHY type — never cast ::GEOGRAPHY (errors "Type GEOGRAPHY does not exist").
+
+  ⚠️ DATASET SCOPE: write every query against ONLY the dataset(s) named in this
+    question's dataset_refs. Do NOT FROM/JOIN/UNION intermediate views created
+    for EARLIER questions (e.g. a previous answer's filtered/nearby view) — they
+    cause name collisions and "infinite recursion … recursively bind view"
+    errors. If you need a prior result, recompute it from the source dataset.
+
+  ⚠️ GEOMETRY COLUMN: spatial datasets expose a column named geom of type GEOMETRY —
+    ALWAYS use geom for spatial functions: ST_X(geom), ST_Y(geom), ST_Area(geom),
+    ST_AsGeoJSON(geom), gcb_distance_km(ST_Y(geom), ST_X(geom), <lat>, <lon>),
+    and as the render.map layer. If inspect also shows a column named geometry of type
+    VARCHAR/text, that is the RAW GeoJSON STRING — NEVER pass it to ST_* (it throws
+    "No function matches ST_Y(VARCHAR)" / "Expected geometry … near brace"). Use geom.
+    A point layer's latitude is ST_Y(geom) and longitude is ST_X(geom). NOTE: this
+    DuckDB build lacks ST_SetSRID and ST_Distance_Sphere — do not use them; for any
+    point-density/heatmap just render.map the points (optionally radiusBy/colorBy a
+    metric) — there is no hex/grid binning tool.
 
 # Tools — inspection (call freely BEFORE finalize_plan)
 
@@ -382,20 +420,23 @@ and asks the user to clarify. DON'T fabricate.
 
 ## Distance / nearest / k-NN
 
-  34. "distance from <ref point> to each row"
-      → sql("SELECT *, ST_Distance(geom, ST_Point(<lon>,<lat>)) AS
-        dist_m FROM L") → render.map(style.colorBy:"dist_m")
+  34. "distance from <ref point> to each row"  (lon/lat data → km)
+      → sql("SELECT *, gcb_distance_km(latitude, longitude, <lat>, <lon>) AS
+        dist_km FROM L") → render.map(style.colorBy:"dist_km")
 
   35. "nearest X to each Y" (k=1)
       → sql with CROSS JOIN + ROW_NUMBER OVER (PARTITION BY y.id
-        ORDER BY ST_Distance) where rn=1 → render.table
+        ORDER BY gcb_distance_km(x.latitude, x.longitude, y.latitude, y.longitude))
+        where rn=1 → render.table
 
   36. "5 nearest X to each Y" (k>1)
-      → sql with CROSS JOIN + ROW_NUMBER ... where rn<=5 → render.table
+      → sql with CROSS JOIN + ROW_NUMBER ... ORDER BY gcb_distance_km(...)
+        where rn<=5 → render.table
 
-  37. "within N meters of point P"
-      → sql("SELECT * FROM L WHERE ST_DWithin(geom,
-        ST_Point(<lon>,<lat>), <N>)") → render.map
+  37. "within N km/meters of point P"  (lon/lat data → use the macro)
+      → sql("SELECT * FROM L WHERE gcb_distance_km(latitude, longitude,
+        <lat>, <lon>) <= <N_km>") → render.map
+        (do NOT use ST_DWithin / ST_Distance_Sphere on 4326 data — see DISTANCE UNITS)
 
   38. "Voronoi / catchment polygons"
       → sql("SELECT id, ST_VoronoiPolygons(...) FROM L") → render.map

@@ -97,6 +97,28 @@ export class DuckDBEngine {
 			console.warn("[geochatbot] spatial extension unavailable:", err);
 		}
 
+		// Great-circle distance macros. DuckDB's ST_Distance/ST_DWithin treat
+		// EPSG:4326 coordinates as PLANAR DEGREES (a meter threshold matches the
+		// whole dataset), and ST_Distance_Sphere is inaccurate for general
+		// lon/lat pairs in this build (reports ~23 km for a true ~55 km
+		// separation; NYC→LA off by +25%). So we register an EXACT haversine the
+		// planner can call on raw latitude/longitude (or ST_Y(geom)/ST_X(geom)).
+		// Pure arithmetic — no spatial extension needed, so register regardless.
+		try {
+			await conn.query(
+				"CREATE OR REPLACE MACRO gcb_distance_m(lat1, lon1, lat2, lon2) AS " +
+					"2*6371000*asin(sqrt(pow(sin(radians(lat2-lat1)/2),2)+" +
+					"cos(radians(lat1))*cos(radians(lat2))*pow(sin(radians(lon2-lon1)/2),2)))",
+			);
+			await conn.query(
+				"CREATE OR REPLACE MACRO gcb_distance_km(lat1, lon1, lat2, lon2) AS " +
+					"gcb_distance_m(lat1, lon1, lat2, lon2)/1000.0",
+			);
+		} catch (err) {
+			// eslint-disable-next-line no-console
+			console.warn("[geochatbot] distance macro registration failed:", err);
+		}
+
 		this.db = db;
 		this.conn = conn;
 		this.worker = worker;

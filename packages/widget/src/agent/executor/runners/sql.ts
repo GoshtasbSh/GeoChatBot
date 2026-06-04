@@ -21,11 +21,41 @@ import type { ExecCtx, RunnerResult } from "../types.js";
 
 const SqlArgs = z.object({ query: z.string().min(1) });
 
+/**
+ * Matches a `${var}` reference where `var` is a plan output_var
+ * (zod-validated to `^[a-z_][a-z0-9_]*$`, optionally upper-case as the LLM
+ * emitted it). Used to rewrite inter-step references inside a SQL body.
+ */
+const SQL_VAR_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/**
+ * Rewrite `${var}` tokens inside a SQL body to the bare-name temp view the
+ * executor registers for each step's `output_var` (see executor.ts — it
+ * does `CREATE … VIEW "<output_var>" AS SELECT * FROM <result.ref>`).
+ *
+ * Whole-string `${var}` substitution is deliberately disabled for SQL
+ * bodies (substitute.ts WHOLE_STRING_VAR) as an injection guard, so the
+ * documented convention is that a SQL step references a prior output by its
+ * BARE name (`FROM filtered`). In practice planners — especially weaker
+ * models — emit the wrapped `FROM ${filtered}` form, which DuckDB rejects
+ * with "syntax error at or near $". Rewriting `${name}` → quoteIdent(name)
+ * maps it onto exactly that bare-name view. This is injection-safe:
+ * quoteIdent only ever emits a double-quoted identifier (length-capped,
+ * NUL/control-rejected) and the captured name is restricted to the
+ * identifier charset, so it cannot break out of the surrounding SQL. If the
+ * referenced view doesn't exist, DuckDB throws a clean "table not found"
+ * that the Phase 6 critic can diagnose — far better than a `$` parse error.
+ */
+function expandSqlVarRefs(query: string): string {
+	return query.replace(SQL_VAR_REF, (_m, name: string) => quoteIdent(name));
+}
+
 export async function runSql(
 	args: Record<string, unknown>,
 	ctx: ExecCtx,
 ): Promise<RunnerResult> {
-	const { query } = SqlArgs.parse(args);
+	const { query: rawQuery } = SqlArgs.parse(args);
+	const query = expandSqlVarRefs(rawQuery);
 	validateSql(query);
 	const view = await materializeView(ctx, "sql", query);
 	// Detect whether the resulting view exposes a `geom` column. SQL

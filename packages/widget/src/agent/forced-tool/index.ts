@@ -109,6 +109,13 @@ export const PROVIDER_CATALOGUE: ReadonlyArray<ProviderInfo> = [
 				id: "nemotron-3-super-120b-a12b",
 				label: "Nemotron Super 120B (MoE)",
 			},
+			// NVIDIA Nemotron Nano — ~31B (3.5B active) MoE; NVIDIA's own evals
+			// put it ahead of gpt-oss-20b on BFCL v4 tool-calling. Added 2026-06-03
+			// for the model-comparison audit.
+			{
+				id: "nemotron-3-nano-30b-a3b",
+				label: "Nemotron Nano 30B (MoE)",
+			},
 			{
 				id: "gpt-oss-20b",
 				label: "gpt-oss 20B reasoning (fast)",

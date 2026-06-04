@@ -80,6 +80,47 @@ describe("runner: sql", () => {
 		).toBe(true);
 	});
 
+	it("expands ${var} references in a SQL body to the prior step's view", async () => {
+		// Regression (2026-06-03 real-data audit): planners (esp. weaker
+		// models) emit `FROM ${a}` inside a SQL body. `${var}` whole-string
+		// substitution is disabled for SQL bodies (injection guard), and the
+		// executor only registers a bare-name view `a`. Without runner-side
+		// expansion the query reaches DuckDB as literal `${a}` → "syntax error
+		// at or near $". The runner must rewrite `${a}` → quoted ident "a".
+		const plan: Plan = {
+			goal: "g",
+			assumptions: [],
+			dataset_refs: ["sales"],
+			steps: [
+				{
+					id: "s1",
+					tool: "sql",
+					args: { query: "SELECT * FROM sales WHERE price > 100" },
+					output_var: "a",
+					why: "filter",
+				},
+				{
+					id: "s2",
+					tool: "sql",
+					args: { query: "SELECT COUNT(*) AS n FROM ${a}" },
+					output_var: "b",
+					why: "count",
+				},
+				{ id: "s3", tool: "render.summary", args: { text: "x" }, why: "final" },
+			],
+		};
+		const exec = new Executor({ engine, datasets: [sales, hoods] });
+		await exec.execute(plan, "pid");
+		// The step-2 view body must reference the quoted bare-name view "a"
+		// and must NOT contain the un-expanded `${a}` token.
+		const s2Body = engine.sqls.find(
+			(s) => /CREATE OR REPLACE TEMPORARY VIEW/.test(s) && /COUNT\(\*\) AS n/.test(s),
+		);
+		expect(s2Body).toBeDefined();
+		expect(s2Body).toMatch(/FROM "a"/);
+		expect(engine.sqls.every((s) => !s.includes("${a}"))).toBe(true);
+	});
+
 	it("rejects forbidden SQL and reports an error", async () => {
 		const plan: Plan = {
 			goal: "g",
@@ -494,6 +535,44 @@ describe("runner: render.summary", () => {
 			},
 		);
 		expect(payload).toMatchObject({ kind: "summary", text: "Hello." });
+	});
+
+	it("interpolates Mustache {{var.field}} placeholders from a prior step", async () => {
+		// Regression (2026-06-03 real-data audit): some models write summaries
+		// with Mustache `{{sum.value}}` instead of `${sum.value}`; the runner
+		// must resolve both forms or a literal placeholder leaks to the user.
+		engine.mockResponse = tableFromJSON([{ sum_beds: 1712 }]);
+		const exec = new Executor({ engine, datasets: [sales] });
+		let payload: ResultPayload | undefined;
+		await exec.execute(
+			{
+				goal: "g",
+				assumptions: [],
+				dataset_refs: ["sales"],
+				steps: [
+					{
+						id: "s1",
+						tool: "sql",
+						args: { query: "SELECT SUM(beds) AS sum_beds FROM sales" },
+						output_var: "total",
+						why: "sum",
+					},
+					{
+						id: "s2",
+						tool: "render.summary",
+						args: { text: "Total beds: {{total.sum_beds}}." },
+						why: "final",
+					},
+				],
+			},
+			"pid",
+			{
+				onResult: (e) => {
+					payload = e;
+				},
+			},
+		);
+		expect(payload).toMatchObject({ kind: "summary", text: "Total beds: 1712." });
 	});
 });
 
