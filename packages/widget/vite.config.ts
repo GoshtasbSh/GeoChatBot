@@ -64,5 +64,17 @@ export default defineConfig({
 			"Cross-Origin-Opener-Policy": "same-origin",
 			"Cross-Origin-Embedder-Policy": "require-corp",
 		},
+		// Census Bureau geocoder doesn't emit Access-Control-Allow-Origin,
+		// so browsers block direct fetches. Proxy through Vite in dev. For
+		// production, the host must configure an equivalent proxy on
+		// /api/census-geocode/* → https://geocoding.geo.census.gov/geocoder/*.
+		proxy: {
+			"/api/census-geocode": {
+				target: "https://geocoding.geo.census.gov",
+				changeOrigin: true,
+				rewrite: (path) => path.replace(/^\/api\/census-geocode/, "/geocoder"),
+				secure: true,
+			},
+		},
 	},
 });
