@@ -94,7 +94,7 @@ export default function HomePage() {
 						</Button>
 						<Button asChild variant="outline" size="lg">
 							<a
-								href="https://github.com/example/geochatbot"
+								href="https://github.com/GoshtasbSh/GeoChatBot"
 								target="_blank"
 								rel="noopener noreferrer"
 							>
@@ -217,7 +217,7 @@ export default function HomePage() {
 				<div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8 text-sm text-zinc-500">
 					<span>MIT license &mdash; GeoChatBot {new Date().getFullYear()}</span>
 					<a
-						href="https://github.com/example/geochatbot"
+						href="https://github.com/GoshtasbSh/GeoChatBot"
 						target="_blank"
 						rel="noopener noreferrer"
 						className="hover:text-zinc-900 dark:hover:text-zinc-50"
