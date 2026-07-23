@@ -12,8 +12,8 @@
 		"build:widget": "pnpm --filter @geochatbot/widget build",
 		"typecheck": "pnpm -r --if-present run typecheck",
 		"test": "pnpm -r --if-present run test",
-		"lint": "biome ci package.json packages/widget/src packages/widget/test packages/widget/vite.config.ts packages/widget/vitest.config.ts packages/demo/vite.config.ts examples/react/src examples/react/vite.config.ts e2e/tests e2e/playwright.config.ts mockups packages/site/app packages/site/components packages/site/lib packages/site/next.config.ts",
-		"format": "biome format --write package.json packages/widget/src packages/widget/test packages/widget/vite.config.ts packages/widget/vitest.config.ts packages/demo/vite.config.ts examples/react/src examples/react/vite.config.ts e2e/tests e2e/playwright.config.ts mockups packages/site/app packages/site/components packages/site/lib packages/site/next.config.ts",
+		"lint": "biome ci package.json packages/widget/src packages/widget/test packages/widget/vite.config.ts packages/widget/vitest.config.ts packages/demo/vite.config.ts examples/react/src examples/react/vite.config.ts e2e/tests e2e/playwright.config.ts packages/site/app packages/site/components packages/site/lib packages/site/next.config.ts",
+		"format": "biome format --write package.json packages/widget/src packages/widget/test packages/widget/vite.config.ts packages/widget/vitest.config.ts packages/demo/vite.config.ts examples/react/src examples/react/vite.config.ts e2e/tests e2e/playwright.config.ts packages/site/app packages/site/components packages/site/lib packages/site/next.config.ts",
 		"e2e": "pnpm --filter @geochatbot/e2e test:e2e",
 		"e2e:install": "pnpm --filter @geochatbot/e2e test:install",
 		"hello": "echo \"GeoChatBot widget v0.0.0\""
