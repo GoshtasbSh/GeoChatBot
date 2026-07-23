@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 export default function AppPage() {
 	return (
 		<div className="flex h-screen w-full flex-col overflow-hidden bg-white dark:bg-zinc-950">
-			<GeoChatBotEmbed full />
+			<GeoChatBotEmbed full preloadSample="/samples/nyc311.csv" />
 		</div>
 	);
 }

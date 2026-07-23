@@ -1,0 +1,11 @@
+# Keep the Vercel upload lean: exclude local screenshots, review dirs, and
+# heavy assets that the site build does not need. node_modules, .git, and
+# .gitignore'd paths are already excluded by Vercel.
+/*.png
+final_review/
+final_deep_review/
+last_real_data_review/
+docs/media/*.gif
+docs/media/*.mp4
+e2e/test-results/
+.env.local

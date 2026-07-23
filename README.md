@@ -95,5 +95,4 @@ Issues and PRs are welcome. `pnpm install && pnpm test && pnpm build` should be 
 
 **Goshtasb Shahriari-Mehr**
 · GitHub [@GoshtasbSh](https://github.com/GoshtasbSh)
-· LinkedIn _(add your profile URL)_
 · ✉️ goshtasbshahriari@gmail.com
