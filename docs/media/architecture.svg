@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 780" width="1280" height="780" font-family="ui-sans-serif, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="GeoChatBot architecture: user files are parsed by loaders.gl into Apache Arrow, queried by DuckDB-WASM with spatial SQL, driven by a plan-then-execute agent with a human approval gate over typed tools, augmented by hybrid RAG, and rendered with MapLibre GL and deck.gl — all inside the browser. LLM providers sit outside the browser boundary and receive only the question and column schema, never the data rows.">
+  <style>
+    :root{
+      --page:#f7faf8; --ink:#0f1e17; --muted:#5c6b63; --card:#ffffff; --stroke:#d6e0da;
+      --accent:#0f9d6b; --accentSoft:#e9f7f0; --accentStroke:#8fd4b6;
+      --gate:#b45309; --gateSoft:#fbefe0; --gateStroke:#e6b980;
+      --flow:#8aa89b; --panel:#eef4f1;
+    }
+    @media (prefers-color-scheme: dark){
+      :root{
+        --page:#0d1117; --ink:#e6edf3; --muted:#9fb0a6; --card:#161b22; --stroke:#30363d;
+        --accent:#7bd88f; --accentSoft:#132018; --accentStroke:#2f5d43;
+        --gate:#f2b45c; --gateSoft:#241a0f; --gateStroke:#5c4526;
+        --flow:#5f7469; --panel:#11161d;
+      }
+    }
+    .pg{fill:var(--page)}
+    .card{fill:var(--card);stroke:var(--stroke);stroke-width:1.5}
+    .panel{fill:var(--panel);stroke:var(--stroke);stroke-width:1.5}
+    .acc{fill:var(--accentSoft);stroke:var(--accentStroke);stroke-width:1.5}
+    .gate{fill:var(--gateSoft);stroke:var(--gateStroke);stroke-width:2}
+    .ink{fill:var(--ink)}
+    .mut{fill:var(--muted)}
+    .acct{fill:var(--accent)}
+    .gatet{fill:var(--gate)}
+    .b{font-weight:700}
+    .flow{stroke:var(--flow);stroke-width:2.2;fill:none}
+    .flowd{stroke:var(--flow);stroke-width:2.2;fill:none;stroke-dasharray:6 5}
+    .bound{fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:3 6;opacity:.85}
+    text{fill:var(--ink)}
+  </style>
+
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.2" orient="auto">
+      <path d="M0.5,0.8 L8,4.2 L0.5,7.6" fill="none" stroke="var(--flow)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect class="pg" x="0" y="0" width="1280" height="780" rx="20"/>
+
+  <!-- Title -->
+  <text x="40" y="52" font-size="27" class="ink b">GeoChatBot — architecture</text>
+  <text x="41" y="78" font-size="15" class="mut">Browser-native spatial-analysis agent · zero backend · plan-then-execute with a human approval gate</text>
+
+  <!-- LLM providers: OUTSIDE the browser boundary -->
+  <rect class="card" x="892" y="20" width="356" height="70" rx="12"/>
+  <text x="912" y="45" font-size="14" class="ink b">LLM providers · bring-your-own-key</text>
+  <text x="912" y="68" font-size="12.5" class="mut">Groq · Gemini · Anthropic · OpenAI · OpenAI-compatible</text>
+
+  <!-- Browser boundary -->
+  <rect class="bound" x="32" y="104" width="1216" height="648" rx="18"/>
+  <text x="52" y="132" font-size="13.5" class="acct b">🔒 Browser sandbox — no server, no upload; your data rows never leave the tab</text>
+
+  <!-- privacy arrow: providers -> agent, crossing the boundary -->
+  <path class="flowd" d="M1000,90 L1000,342" marker-end="url(#ah)"/>
+  <rect class="acc" x="1030" y="146" width="210" height="96" rx="9"/>
+  <text x="1046" y="172" font-size="11.5" class="acct b">crosses the boundary:</text>
+  <text x="1046" y="193" font-size="11.5" class="ink">your question +</text>
+  <text x="1046" y="211" font-size="11.5" class="ink">the column schema</text>
+  <text x="1046" y="231" font-size="11.5" class="mut b">— never the data rows</text>
+
+  <!-- ===== INGEST ROW ===== -->
+  <!-- Your files -->
+  <rect class="card" x="56" y="150" width="200" height="176" rx="12"/>
+  <text x="72" y="176" font-size="14.5" class="ink b">Your data files</text>
+  <text x="72" y="202" font-size="12.5" class="mut">drag &amp; drop, in-browser</text>
+  <text x="72" y="230" font-size="12.5" class="ink">• CSV</text>
+  <text x="72" y="250" font-size="12.5" class="ink">• GeoJSON</text>
+  <text x="72" y="270" font-size="12.5" class="ink">• Shapefile ZIP</text>
+  <text x="72" y="290" font-size="12.5" class="ink">• Parquet</text>
+  <text x="72" y="310" font-size="12.5" class="ink">• Excel (xlsx)</text>
+
+  <path class="flow" d="M256,238 L292,238" marker-end="url(#ah)"/>
+
+  <!-- loaders.gl -->
+  <rect class="card" x="292" y="196" width="126" height="84" rx="11"/>
+  <text x="355" y="234" font-size="13.5" class="ink b" text-anchor="middle">loaders.gl</text>
+  <text x="355" y="254" font-size="11.5" class="mut" text-anchor="middle">parse &amp; normalize</text>
+
+  <path class="flow" d="M418,238 L452,238" marker-end="url(#ah)"/>
+
+  <!-- Apache Arrow -->
+  <rect class="card" x="452" y="196" width="146" height="84" rx="11"/>
+  <text x="525" y="230" font-size="13.5" class="ink b" text-anchor="middle">Apache Arrow</text>
+  <text x="525" y="250" font-size="11.5" class="mut" text-anchor="middle">columnar · zero-copy</text>
+
+  <path class="flow" d="M598,238 L632,238" marker-end="url(#ah)"/>
+
+  <!-- DuckDB-WASM -->
+  <rect class="acc" x="632" y="196" width="170" height="84" rx="11"/>
+  <text x="717" y="230" font-size="13.5" class="acct b" text-anchor="middle">DuckDB-WASM</text>
+  <text x="717" y="250" font-size="11.5" class="ink" text-anchor="middle">spatial SQL engine</text>
+
+  <!-- DuckDB feeds the tools (down into agent) -->
+  <path class="flow" d="M717,280 L717,476" marker-end="url(#ah)"/>
+  <text x="726" y="360" font-size="11" class="mut">tools run</text>
+  <text x="726" y="375" font-size="11" class="mut">SQL here</text>
+
+  <!-- ===== AGENT CORE ===== -->
+  <rect class="panel" x="292" y="342" width="510" height="238" rx="14"/>
+  <text x="312" y="372" font-size="15" class="ink b">Plan-then-execute agent</text>
+
+  <!-- planner -->
+  <rect class="card" x="312" y="392" width="140" height="66" rx="10"/>
+  <text x="382" y="420" font-size="13" class="ink b" text-anchor="middle">① Planner</text>
+  <text x="382" y="440" font-size="11" class="mut" text-anchor="middle">LLM drafts numbered plan</text>
+
+  <path class="flow" d="M452,425 L476,425" marker-end="url(#ah)"/>
+
+  <!-- approval gate -->
+  <rect class="gate" x="476" y="392" width="146" height="66" rx="10"/>
+  <text x="549" y="416" font-size="13" class="gatet b" text-anchor="middle">② 🔐 Approval gate</text>
+  <text x="549" y="436" font-size="11" class="ink" text-anchor="middle">you approve every plan</text>
+  <text x="549" y="450" font-size="10.5" class="mut" text-anchor="middle">no free code-gen</text>
+
+  <path class="flow" d="M622,425 L648,425" marker-end="url(#ah)"/>
+
+  <!-- executor -->
+  <rect class="card" x="648" y="392" width="134" height="66" rx="10"/>
+  <text x="715" y="420" font-size="13" class="ink b" text-anchor="middle">③ Executor</text>
+  <text x="715" y="440" font-size="11" class="mut" text-anchor="middle">runs tools step-by-step</text>
+
+  <!-- self-heal loop executor -> planner -->
+  <path class="flowd" d="M690,458 C640,500 470,500 400,478 L390,464" marker-end="url(#ah)"/>
+  <text x="547" y="504" font-size="11" class="mut" text-anchor="middle">self-heal ↺ Critic retries a failed step ≤ 2×</text>
+
+  <!-- typed tool registry -->
+  <rect class="acc" x="312" y="518" width="470" height="46" rx="10"/>
+  <text x="547" y="540" font-size="12.5" class="acct b" text-anchor="middle">Typed tool registry — validated I/O, no arbitrary code</text>
+  <text x="547" y="557" font-size="11" class="ink" text-anchor="middle">SQL · geometry · joins · stats · transforms · render · geocode · report</text>
+
+  <!-- ===== HYBRID RAG ===== -->
+  <rect class="card" x="56" y="372" width="200" height="164" rx="12"/>
+  <text x="72" y="398" font-size="14.5" class="ink b">Hybrid RAG</text>
+  <text x="72" y="420" font-size="12" class="mut">retrieves few-shot exemplars</text>
+  <text x="72" y="448" font-size="12.5" class="ink">• MiniLM-L6-v2 embeddings</text>
+  <text x="72" y="470" font-size="12.5" class="ink">• BM25 lexical search</text>
+  <text x="72" y="492" font-size="12.5" class="ink">• Reciprocal Rank Fusion</text>
+  <text x="72" y="520" font-size="11" class="mut">all in-browser (transformers.js)</text>
+
+  <path class="flow" d="M256,430 L312,425" marker-end="url(#ah)"/>
+
+  <!-- ===== RENDER / OUTPUT ===== -->
+  <path class="flow" d="M782,425 L830,425" marker-end="url(#ah)"/>
+
+  <rect class="card" x="830" y="372" width="386" height="80" rx="12"/>
+  <text x="1023" y="404" font-size="14" class="ink b" text-anchor="middle">Renderer — MapLibre GL + deck.gl</text>
+  <text x="1023" y="428" font-size="11.5" class="mut" text-anchor="middle">GPU-accelerated map &amp; data overlays</text>
+
+  <path class="flow" d="M1023,452 L1023,486" marker-end="url(#ah)"/>
+
+  <rect class="acc" x="830" y="486" width="386" height="78" rx="12"/>
+  <text x="1023" y="512" font-size="13" class="acct b" text-anchor="middle">Outputs</text>
+  <text x="1023" y="540" font-size="13" class="ink" text-anchor="middle">🗺 Map   📊 Chart   ▦ Table   ¶ Text</text>
+
+  <!-- bottom boundary caption -->
+  <text x="640" y="726" font-size="12.5" class="mut" text-anchor="middle">Everything above the dashed line runs client-side in the browser tab. The only network egress is the LLM API call — carrying your question and the data’s column schema, not its rows.</text>
+</svg>
