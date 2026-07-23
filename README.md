@@ -1,62 +1,99 @@
 # GeoChatBot
 
-**Ask plain-English questions about your spatial data — in your browser.**
+**A browser-native AI agent for spatial data analysis — zero backend, your files never leave the browser.**
 
-> No backend. Files never leave your device. Drop-in or headless.
+[![CI](https://github.com/GoshtasbSh/GeoChatBot/actions/workflows/ci.yml/badge.svg)](https://github.com/GoshtasbSh/GeoChatBot/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3fb950.svg)](LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-3fb950.svg)](#contributing)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
 
-[GIF placeholder: 90-second screencast — to be recorded after Phase 8 deploys to Vercel]
+![GeoChatBot demo](docs/media/demo.gif)
 
-## Embed in 30 seconds
+<p align="center"><em>Ask questions about your own spatial data in plain English — everything runs in your browser.</em> &nbsp;·&nbsp; <a href="docs/media/demo.mp4">▶ watch the MP4</a></p>
+
+---
+
+## Why it's interesting
+
+- **Zero backend — privacy by architecture.** You drop a file into the browser tab; it's parsed to Apache Arrow and queried by DuckDB-WASM *locally*. The only network egress is the LLM API call, and it carries **your question and the column schema — never your data rows**.
+- **Plan-then-execute agent with a human approval gate.** Every run emits a numbered plan over **28 typed, schema-validated tools** (SQL, geometry, spatial joins, stats, geocoding, rendering). You **approve or reject the plan before anything executes** — no free-form code generation ([ADR&nbsp;0003](docs/adr/0003-tool-calling-over-codegen.md)).
+- **In-browser hybrid RAG.** Few-shot exemplars are retrieved with **MiniLM-L6-v2 embeddings** (transformers.js) + **BM25** lexical search, fused with **Reciprocal Rank Fusion** — all client-side, no embedding server.
+- **DuckDB-WASM spatial SQL over Apache Arrow.** Real `ST_*` spatial SQL on columnar, zero-copy data, entirely in WebAssembly.
+- **Bring-your-own-LLM — 5 providers.** Groq, Google Gemini, OpenAI, Anthropic, and any OpenAI-compatible endpoint. Your key stays in `localStorage` and is sent only to the provider you pick.
+
+## Live demo & quickstart
+
+> **Live demo:** _deploying — URL will be added here._ Bring your own free [Groq](https://console.groq.com/keys) or [Gemini](https://aistudio.google.com/app/apikey) key; a sample NYC-311 dataset is preloaded so you can see the UI immediately.
+
+**Run it locally in three commands:**
+
+```bash
+pnpm install          # Node ≥ 20, pnpm 9
+pnpm demo             # standalone demo app  → http://localhost:5174
+# open the ⚙ settings drawer, paste a Groq/Gemini/OpenAI/Anthropic key, ask away
+```
+
+**Embed the widget** (one script tag, full UI):
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@geochatbot/widget/dist/geochatbot.js"></script>
+<script type="module" src="/geochatbot.js"></script>
 <geo-chatbot dangerously-allow-browser></geo-chatbot>
 ```
 
-That's it. Drop a CSV or GeoJSON, paste a free Groq or Gemini API key (or a paid Anthropic / OpenAI key), ask a question.
+Build the embeddable bundle with `pnpm build:widget` (emits `packages/widget/dist/geochatbot.js`). Attributes: `mode="full|headless"`, `agentic-mode="agentic"`, `theme="auto|light|dark"`, `persist-api-key`. In `headless` mode the widget renders no UI and emits typed `CustomEvent`s (`plan`, `progress`, `result`) so you can drive your own dashboard.
 
-## Bring-your-own LLM — including free options
+## Architecture
 
-| Provider | Free tier | Models | Where to get a key |
-|---|---|---|---|
-| **Groq** *(default)* | ✅ free | Llama 3.3 70B, Mixtral 8x7B, Llama 3.1 8B | [console.groq.com/keys](https://console.groq.com/keys) |
-| **Google Gemini** | ✅ free | Gemini 2.0 Flash, 1.5 Pro, 1.5 Flash | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
-| Anthropic | paid | Claude Sonnet 4.6, Haiku 4.5, Opus 4.7 | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-| OpenAI | $5 sign-up credit | GPT-4o mini, GPT-4o, GPT-4 Turbo | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+![GeoChatBot architecture](docs/media/architecture.svg)
 
-Pick a provider in the in-widget settings drawer (⚙ icon) — your key stays in `localStorage` and is sent only to the provider you choose. Free-tier reality: Groq and Gemini have no per-token charge but you still register for an API key.
+A file dropped in the browser is parsed by **loaders.gl** into **Apache Arrow**, then queried by **DuckDB-WASM** with the spatial extension. The **plan-then-execute agent** drafts a numbered plan; you approve it at the **gate**; the **executor** runs each step against the typed tool registry, with a **Critic** that self-heals a failed step up to 2×. Results render through **MapLibre GL + deck.gl**. The LLM providers sit *outside* the browser boundary and receive only your question and the data's column schema — never its rows. See [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) and the [ADRs](docs/adr/).
 
-## Why this is different
+<table>
+<tr>
+<td width="50%"><img src="docs/media/approval-gate.png" alt="The approval gate: a typed, numbered plan you approve before execution"><br><sub><b>The approval gate</b> — a typed plan (spatial SQL → render) you approve before anything runs.</sub></td>
+<td width="50%"><img src="docs/media/map-result.png" alt="A map of NYC 311 complaints colored by borough"><br><sub><b>Rendered locally</b> — MapLibre GL + deck.gl, colored by category with a legend.</sub></td>
+</tr>
+</table>
 
-1. **Browser-only** — files never leave the user's device; DuckDB-WASM does the analysis locally.
-2. **Plan before action** — every agent run emits a numbered plan that the user approves; no surprise queries.
-3. **Self-healing** — when a step fails, a Critic loop diagnoses + patches up to 2× before giving up.
-4. **Drop-in or headless** — one `<script>` tag for full UI; `mode="headless"` emits events into your existing dashboard.
+## Features
 
-## Eval leaderboard
-
-| Model | Pass rate | Mean latency |
-|---|---|---|
-| _placeholder until Phase 7 runs_ | — | — |
-
-Full leaderboard at [`/evals`](https://geochatbot.example.com/evals) once deployed; methodology in [`packages/eval/README.md`](packages/eval/README.md).
-
-## Demo & docs
-
-- **Live demo:** [geochatbot.example.com](https://geochatbot.example.com) (post-deploy)
-- **Standalone app:** [/app](https://geochatbot.example.com/app)
-- **Headless dashboard demo:** [/dashboard](https://geochatbot.example.com/dashboard)
-- **Embed guide + dev API:** [/docs](https://geochatbot.example.com/docs)
-- **Eval leaderboard:** [/evals](https://geochatbot.example.com/evals)
-
-## Project layout
-
-| Package | Description |
+| | Supported |
 |---|---|
-| `packages/widget/` | The web component — TypeScript + Lit + DuckDB-WASM + MapLibre |
-| `packages/site/` | Next.js marketing site + standalone `/app` (Vercel-ready) |
-| `packages/eval/` | Python + Playwright eval harness (`packages/eval/README.md`) |
+| **Input formats** | CSV · TSV · GeoJSON · Shapefile (`.zip`) · Parquet · Excel (`.xlsx`) |
+| **Spatial ops** | buffer · centroid · convex hull · union · intersect · difference · dissolve · simplify · point-in-polygon · spatial join · nearest-neighbor · geocoding |
+| **Analysis** | arbitrary DuckDB spatial SQL · aggregation · summary stats · distance matrix · bucketize · quick-scan profiling |
+| **Outputs** | interactive map · chart · table · text summary |
+| **LLM providers** | Groq · Gemini · OpenAI · Anthropic · OpenAI-compatible |
+
+## Engineering quality
+
+- **960 passing tests** across 97 files ([Vitest](https://vitest.dev)) — loaders, tools, planner, executor, RAG, and UI. Run `pnpm test`.
+- **Playwright E2E** specs driving the real widget ([`e2e/`](e2e/)) — plan/approval happy-path, plan editing, headless mode.
+- **Python eval harness** ([`packages/eval/`](packages/eval/)) that benchmarks multiple models against a task set and emits a leaderboard (`--models a,b,c`).
+- **Architecture Decision Records** ([`docs/adr/`](docs/adr/)) — [tool-calling over code-gen](docs/adr/0003-tool-calling-over-codegen.md), [plan-then-execute](docs/adr/0002-plan-then-execute.md), [shadow-DOM web component](docs/adr/0004-web-component-shadow-dom.md).
+- **CI** on every push/PR: install → Biome lint → typecheck → test → build ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+- **Monorepo** (`packages/widget` · `site` · `demo` · `eval` · `e2e`) — strict TypeScript, `@duckdb/duckdb-wasm`, `maplibre-gl`, `@deck.gl/*`, `lit`, `apache-arrow`, `@xenova/transformers`.
+
+## Honest limitations
+
+I'd rather you know these up front:
+
+- **CRS reprojection is a passthrough.** `geometry.reproject` is registered but currently returns the layer unchanged (proj4js isn't bundled yet), so distance/area math assumes **lon/lat (WGS84)**. Projected shapefiles are not re-projected. See [`runners/geometry.ts`](packages/widget/src/agent/executor/runners/geometry.ts).
+- **Advanced spatial statistics are deferred, not implemented.** Moran's I, Getis-Ord Gi\*, hex-binning, density grids, and Voronoi exist in the tool schema but are **deliberately hidden from the planner** and stubbed, so a weak model can't dead-end on them ([`tools/deferred.ts`](packages/widget/src/agent/tools/deferred.ts)). Wiring their executors is future work.
+- **Streaming is per-agent-step, not token-level.** You see each plan step complete; individual LLM tokens are not streamed into the UI.
+- **Scope.** GeoChatBot is a *browser-native* spatial agent, not a QGIS/PostGIS replacement — raster analysis, network/routing, and server-side hydrology are intentionally out of scope.
+
+## Contributing
+
+Issues and PRs are welcome. `pnpm install && pnpm test && pnpm build` should be green from a clean clone (that's enforced in CI). Please run `pnpm lint` before opening a PR.
 
 ## License
 
-MIT.
+[MIT](LICENSE) © 2026 Goshtasb Shahriari-Mehr. Third-party components are attributed in [NOTICE](NOTICE).
+
+## Author
+
+**Goshtasb Shahriari-Mehr**
+· GitHub [@GoshtasbSh](https://github.com/GoshtasbSh)
+· LinkedIn _(add your profile URL)_
+· ✉️ goshtasbshahriari@gmail.com
