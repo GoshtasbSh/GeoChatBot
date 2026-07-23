@@ -1,0 +1,22 @@
+GeoChatBot
+Copyright (c) 2026 Goshtasb Shahriari-Mehr
+
+This product is licensed under the MIT License (see LICENSE).
+
+It bundles and builds upon the following third-party open-source components,
+each under its own license (all permissive and MIT-compatible):
+
+  - DuckDB / DuckDB-WASM ................. MIT License
+  - Apache Arrow (apache-arrow) ......... Apache License 2.0
+  - MapLibre GL JS ...................... BSD-3-Clause
+  - deck.gl ............................. MIT License
+  - loaders.gl (@loaders.gl/*) .......... MIT License
+  - Lit ................................. BSD-3-Clause
+  - Transformers.js (@xenova/transformers) Apache License 2.0
+  - Vite / Vitest ....................... MIT License
+  - Next.js ............................. MIT License
+
+Full license texts for dependencies are available in their respective
+packages under node_modules/ after installation, and via each project's
+upstream repository. This NOTICE is provided for attribution convenience
+and is not a substitute for those licenses.
