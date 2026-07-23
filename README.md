@@ -23,7 +23,7 @@
 
 ## Live demo & quickstart
 
-> **Live demo:** _deploying — URL will be added here._ Bring your own free [Groq](https://console.groq.com/keys) or [Gemini](https://aistudio.google.com/app/apikey) key; a sample NYC-311 dataset is preloaded so you can see the UI immediately.
+> **▶ Live demo: [geochatbot-eight.vercel.app/app](https://geochatbot-eight.vercel.app/app)** — a sample NYC-311 dataset is **preloaded**, so you see real data with no setup. To ask questions, open ⚙ and paste a free [Groq](https://console.groq.com/keys) or [Gemini](https://aistudio.google.com/app/apikey) key (your key stays in your browser). Also: [landing](https://geochatbot-eight.vercel.app) · [docs](https://geochatbot-eight.vercel.app/docs) · [evals](https://geochatbot-eight.vercel.app/evals).
 
 **Run it locally in three commands:**
 
