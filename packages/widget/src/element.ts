@@ -1344,7 +1344,7 @@ export class GeoChatBotElement extends LitElement {
           <gcb-ask-input
             style="flex:1;"
             .disabledReason=${disabledReason}
-            .examples=${disabledReason === null && !this._pendingClarification ? this._exampleQuestions() : []}
+            .examples=${!this._pendingClarification ? this._exampleQuestions() : []}
             ?busy=${this._agentBusy && !this._pendingClarification}
             .clarifyQuestion=${this._pendingClarification?.question ?? null}
             @gcb:ask=${this._onAskFromInput}

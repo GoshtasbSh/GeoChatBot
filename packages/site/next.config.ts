@@ -19,6 +19,22 @@ const nextConfig: NextConfig = {
 			},
 		];
 	},
+	// The embeddable widget bundle is served from /widget/* and loaded as a
+	// cross-origin ES module from other sites (the README/docs embed snippet).
+	// Module scripts (and their lazily-imported chunks) are fetched in CORS
+	// mode, so the responses must allow any origin or the browser blocks them.
+	async headers() {
+		return [
+			{
+				source: "/widget/:path*",
+				headers: [
+					{ key: "Access-Control-Allow-Origin", value: "*" },
+					{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+					{ key: "Cache-Control", value: "public, max-age=3600" },
+				],
+			},
+		];
+	},
 };
 
 export default nextConfig;

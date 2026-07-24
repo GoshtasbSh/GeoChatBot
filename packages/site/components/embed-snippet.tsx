@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 const SNIPPET = `<script type="module"
-  src="https://cdn.jsdelivr.net/npm/@geochatbot/widget/dist/geochatbot.js">
+  src="https://geochatbot-eight.vercel.app/widget/geochatbot.js">
 </script>
 
 <geo-chatbot dangerously-allow-browser></geo-chatbot>`;

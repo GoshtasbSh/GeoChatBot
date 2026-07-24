@@ -10,6 +10,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Github } from "lucide-react";
 import Link from "next/link";
 
 const DIFFERENTIATORS = [
@@ -98,6 +99,7 @@ export default function HomePage() {
 								target="_blank"
 								rel="noopener noreferrer"
 							>
+								<Github className="mr-2 h-4 w-4" aria-hidden="true" />
 								View on GitHub
 							</a>
 						</Button>
@@ -159,56 +161,6 @@ export default function HomePage() {
 						question.
 					</p>
 					<GeoChatBotEmbed />
-				</section>
-
-				<Separator />
-
-				{/* Eval leaderboard */}
-				<section className="mx-auto max-w-4xl px-6 py-20">
-					<h2 className="mb-4 text-3xl font-bold text-zinc-900 dark:text-zinc-50">
-						Eval leaderboard
-					</h2>
-					<p className="mb-8 text-zinc-500 dark:text-zinc-400">
-						Pass rates and latencies across models, measured by the automated
-						eval harness.
-					</p>
-					<div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-						<table className="w-full text-sm">
-							<thead className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
-								<tr>
-									<th className="px-4 py-3 text-left font-medium text-zinc-600 dark:text-zinc-400">
-										Model
-									</th>
-									<th className="px-4 py-3 text-left font-medium text-zinc-600 dark:text-zinc-400">
-										Pass rate
-									</th>
-									<th className="px-4 py-3 text-left font-medium text-zinc-600 dark:text-zinc-400">
-										Mean latency
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr>
-									<td
-										colSpan={3}
-										className="px-4 py-8 text-center text-zinc-400"
-									>
-										Placeholder — run{" "}
-										<code className="font-mono text-xs">
-											packages/eval/README.md
-										</code>{" "}
-										to populate.{" "}
-										<Link
-											href="/evals"
-											className="underline hover:text-zinc-700"
-										>
-											Full leaderboard
-										</Link>
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
 				</section>
 			</main>
 

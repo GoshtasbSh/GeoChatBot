@@ -33,14 +33,14 @@ pnpm demo             # standalone demo app  → http://localhost:5174
 # open the ⚙ settings drawer, paste a Groq/Gemini/OpenAI/Anthropic key, ask away
 ```
 
-**Embed the widget** (one script tag, full UI):
+**Embed the widget** (one script tag, full UI) — paste into any HTML page:
 
 ```html
-<script type="module" src="/geochatbot.js"></script>
+<script type="module" src="https://geochatbot-eight.vercel.app/widget/geochatbot.js"></script>
 <geo-chatbot dangerously-allow-browser></geo-chatbot>
 ```
 
-Build the embeddable bundle with `pnpm build:widget` (emits `packages/widget/dist/geochatbot.js`). Attributes: `mode="full|headless"`, `agentic-mode="agentic"`, `theme="auto|light|dark"`, `persist-api-key`. In `headless` mode the widget renders no UI and emits typed `CustomEvent`s (`plan`, `progress`, `result`) so you can drive your own dashboard.
+That URL serves the built bundle straight from the live deployment (no npm install needed). To self-host, build it with `pnpm build:widget` (emits `packages/widget/dist/geochatbot.js` plus its chunks) and serve that directory. Attributes: `mode="full|headless"`, `agentic-mode="agentic"`, `theme="auto|light|dark"`, `persist-api-key`. In `headless` mode the widget renders no UI and emits typed `CustomEvent`s (`plan`, `progress`, `result`) so you can drive your own dashboard.
 
 ## Architecture
 

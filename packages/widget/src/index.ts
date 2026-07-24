@@ -6,6 +6,11 @@
  * programmatic control.
  */
 
+// MUST be first: installs a `process` shim (when absent) before any bundled
+// dependency that references it at module-eval time runs. Without this the
+// bare-browser <script type="module"> embed throws "process is not defined".
+import "./process-shim";
+
 export { GeoChatBotElement } from "./element";
 export type { GeoChatBotEvents } from "./element";
 export type {

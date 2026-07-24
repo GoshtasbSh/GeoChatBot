@@ -9,6 +9,10 @@ interface Props {
 	onResult?: (detail: unknown) => void;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+type WidgetEl = HTMLElement & { pushData?: (f: File) => Promise<void> };
+
 export function GeoChatBotEmbed({
 	mode = "full",
 	full,
@@ -24,11 +28,12 @@ export function GeoChatBotEmbed({
 		(async () => {
 			// Lazy import the widget bundle so SSR doesn't choke on `customElements`.
 			await import("@geochatbot/widget");
+			// Wait until the custom element is actually defined before creating it,
+			// so its methods (pushData) are guaranteed to exist after upgrade.
+			await customElements.whenDefined("geo-chatbot");
 			if (!mounted || !ref.current) return;
 
-			const el = document.createElement("geo-chatbot") as HTMLElement & {
-				pushData?: (f: File) => Promise<void>;
-			};
+			const el = document.createElement("geo-chatbot") as WidgetEl;
 			if (mode === "headless") el.setAttribute("mode", "headless");
 			// Bring-your-own-key: the visitor's own key is stored in their
 			// localStorage and sent only to the provider they choose, directly
@@ -44,20 +49,39 @@ export function GeoChatBotEmbed({
 			}
 
 			// Preload a sample dataset so a visitor with no API key still sees
-			// real data in the UI immediately. Non-fatal if it fails.
-			if (preloadSample && typeof el.pushData === "function") {
-				try {
-					const res = await fetch(preloadSample);
-					if (res.ok) {
-						const name = preloadSample.split("/").pop() ?? "sample.csv";
-						const file = new File([await res.blob()], name, {
-							type: "text/csv",
-						});
-						await el.pushData(file);
-					}
-				} catch {
-					// demo still works; it just starts with an empty dataset panel
+			// real data in the UI within a couple of seconds. Robust against the
+			// element not being fully upgraded yet, and retries a transient
+			// DuckDB cold-start failure a few times before giving up.
+			if (!preloadSample) return;
+			try {
+				const res = await fetch(preloadSample);
+				if (!res.ok) return;
+				const name = preloadSample.split("/").pop() ?? "sample.csv";
+				const type = name.endsWith(".geojson")
+					? "application/geo+json"
+					: name.endsWith(".json")
+						? "application/json"
+						: "text/csv";
+				const file = new File([await res.blob()], name, { type });
+
+				// Wait for pushData to exist (element upgrade may lag createElement).
+				for (let i = 0; i < 40 && mounted; i++) {
+					if (typeof el.pushData === "function") break;
+					await sleep(100);
 				}
+				if (!mounted || typeof el.pushData !== "function") return;
+
+				// Retry the ingest itself (DuckDB-WASM cold start can throw once).
+				for (let attempt = 0; attempt < 4 && mounted; attempt++) {
+					try {
+						await el.pushData(file);
+						return;
+					} catch {
+						await sleep(400);
+					}
+				}
+			} catch {
+				// Non-fatal: the demo still works, the visitor can drop a file.
 			}
 		})();
 

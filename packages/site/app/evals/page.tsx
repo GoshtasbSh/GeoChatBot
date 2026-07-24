@@ -70,13 +70,54 @@ export default async function EvalsPage() {
 						dangerouslySetInnerHTML={{ __html: await marked(content) }}
 					/>
 				) : (
-					<div className="rounded-xl border border-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-800 dark:bg-zinc-900">
-						<p className="text-zinc-500 dark:text-zinc-400">
-							No runs yet — see{" "}
-							<code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs dark:bg-zinc-800">
-								packages/eval/README.md
-							</code>{" "}
-							to run.
+					<div className="space-y-6">
+						<h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+							Methodology
+						</h2>
+						<p className="text-zinc-600 dark:text-zinc-400">
+							The harness drives the real widget through a headless browser
+							(Playwright) against a fixed task set, injecting each model via
+							bring-your-own-key and scoring the agent&rsquo;s output for
+							correctness and latency — no mocks, the full plan-then-execute
+							loop against DuckDB-WASM.
+						</p>
+						<ul className="list-inside list-disc space-y-2 text-zinc-600 dark:text-zinc-400">
+							<li>
+								<span className="font-medium text-zinc-800 dark:text-zinc-200">
+									Tasks
+								</span>{" "}
+								— plain-English questions with expected result shapes (e.g.{" "}
+								<code className="rounded bg-zinc-100 px-1 py-0.5 font-mono text-xs dark:bg-zinc-800">
+									tasks/nyc_311_v1.json
+								</code>
+								).
+							</li>
+							<li>
+								<span className="font-medium text-zinc-800 dark:text-zinc-200">
+									Score
+								</span>{" "}
+								— per-task pass/fail from the produced map/chart/table/answer,
+								plus wall-clock latency.
+							</li>
+							<li>
+								<span className="font-medium text-zinc-800 dark:text-zinc-200">
+									Output
+								</span>{" "}
+								— a leaderboard table that renders here automatically once a run
+								is committed.
+							</li>
+						</ul>
+						<p className="text-zinc-600 dark:text-zinc-400">
+							Harness, tasks, and scorer are open in{" "}
+							<a
+								href="https://github.com/GoshtasbSh/GeoChatBot/tree/main/packages/eval"
+								target="_blank"
+								rel="noopener noreferrer"
+								className="underline hover:text-zinc-900 dark:hover:text-zinc-50"
+							>
+								packages/eval
+							</a>
+							.
 						</p>
 					</div>
 				)}

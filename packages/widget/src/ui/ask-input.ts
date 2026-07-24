@@ -229,7 +229,15 @@ export class GcbAskInput extends LitElement {
 	}
 
 	private _onChip = (q: string) => {
-		if (this.disabledReason !== null || this.busy) return;
+		if (this.busy) return;
+		// Example chips can be shown before a provider key is set (so a
+		// first-time visitor sees what they can ask). If the input is disabled
+		// because no key is configured, clicking a chip guides them to settings
+		// instead of silently doing nothing.
+		if (this.disabledReason !== null) {
+			this._requestSettings();
+			return;
+		}
 		this.dispatchEvent(new CustomEvent<string>("gcb:ask", { detail: q }));
 	};
 
@@ -288,9 +296,27 @@ export class GcbAskInput extends LitElement {
 			return html`
         <div class="wrap">
           <div class="empty" role="status">
-            <span>Set your Anthropic API key to start chatting.</span>
+            <span>Add an API key to start asking — or try an example:</span>
             <button type="button" @click=${this._requestSettings}>Open settings</button>
           </div>
+          ${
+						this.examples.length
+							? html`
+                <div class="examples" role="list" aria-label="Example questions">
+                  ${this.examples.map(
+										(ex) => html`
+                      <button
+                        class="chip"
+                        type="button"
+                        role="listitem"
+                        @click=${() => this._onChip(ex)}
+                      >${ex}</button>
+                    `,
+									)}
+                </div>
+              `
+							: nothing
+					}
         </div>
       `;
 		}
